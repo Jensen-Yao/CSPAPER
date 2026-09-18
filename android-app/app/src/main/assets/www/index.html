@@ -9,63 +9,87 @@
 <style>
   :root {
     --bg: #faf9f7; --bg2: #ffffff; --line: #e8e5e2; --ink: #24242a; --ink2: #8a857d;
-    --accent: #98122e; --accent2: #1558c0; --ok: #1c7a2e;
+    --accent: #98122e; --accent2: #1558c0; --ok: #1c7a2e; --warn: #b4443c;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #17161a; --bg2: #201f25; --line: #33323a; --ink: #ece7e9; --ink2: #938e97; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Microsoft YaHei", system-ui, sans-serif; }
+  button { font-family: inherit; }
   header { position: sticky; top: 0; z-index: 5; background: var(--bg2); border-bottom: 1px solid var(--line);
-           padding: calc(env(safe-area-inset-top) + 10px) 16px 10px; display: flex; align-items: center; gap: 10px; }
-  header .logo { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+           padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; display: flex; align-items: center; gap: 8px; }
+  header .logo { font-size: 16px; font-weight: 700; }
   header .logo b { color: var(--accent); }
   header .sp { flex: 1; }
   .btn { border: 1px solid var(--line); background: var(--bg2); color: var(--ink); border-radius: 9px;
-         padding: 8px 13px; font-size: 13px; cursor: pointer; }
+         padding: 8px 12px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .btn:disabled { opacity: .5; }
-  main { max-width: 760px; margin: 0 auto; padding: 18px 16px 90px; }
-  .drop { border: 1.5px dashed var(--line); border-radius: 16px; padding: 44px 20px; text-align: center; margin-top: 26px; }
-  .drop .big { font-size: 44px; margin-bottom: 12px; }
-  .drop h2 { font-size: 17px; margin: 0 0 8px; }
-  .drop p { color: var(--ink2); font-size: 13px; line-height: 1.8; margin: 0 0 18px; }
-  .hint { color: var(--ink2); font-size: 12px; line-height: 1.8; margin-top: 22px;
-          border-top: 1px solid var(--line); padding-top: 16px; }
-  .toolbar { display: flex; gap: 8px; align-items: center; margin: 14px 0 10px; flex-wrap: wrap; }
+  main { max-width: 760px; margin: 0 auto; padding: 14px 16px 90px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0 10px; flex-wrap: wrap; }
   .toolbar input { flex: 1; min-width: 140px; border: 1px solid var(--line); background: var(--bg2); color: var(--ink);
                    border-radius: 9px; padding: 9px 12px; font-size: 13.5px; }
-  .cat { margin: 20px 0 8px; font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: 1.5px; }
+  .cat { margin: 18px 0 8px; font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: 1.5px; }
   .paper { display: flex; align-items: center; gap: 12px; background: var(--bg2); border: 1px solid var(--line);
            border-radius: 12px; padding: 12px 14px; margin-bottom: 7px; cursor: pointer; }
-  .paper:active { border-color: var(--accent); }
   .paper .t { flex: 1; font-size: 13.5px; line-height: 1.5; }
   .paper .m { font-size: 11px; color: var(--ink2); margin-top: 3px; }
-  .badge { font-size: 10.5px; border-radius: 99px; padding: 2px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--ink2); white-space: nowrap; }
+  .paper .sum { font-size: 11.5px; color: var(--ink2); line-height: 1.6; margin-top: 6px;
+                display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { font-size: 10.5px; border-radius: 99px; padding: 2px 8px; background: var(--bg2); border: 1px solid var(--line); color: var(--ink2); white-space: nowrap; }
   .badge.read { color: var(--ok); border-color: transparent; background: rgba(28,122,46,.1); }
   .badge.reading { color: var(--accent2); border-color: transparent; background: rgba(21,88,192,.1); }
-  /* 阅读视图 */
+  .drop { border: 1.5px dashed var(--line); border-radius: 16px; padding: 40px 20px; text-align: center; margin-top: 22px; }
+  .drop .big { font-size: 42px; margin-bottom: 10px; }
+  .drop h2 { font-size: 17px; margin: 0 0 8px; }
+  .drop p { color: var(--ink2); font-size: 13px; line-height: 1.8; margin: 0 0 18px; }
+  .hint { color: var(--ink2); font-size: 12px; line-height: 1.8; margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .empty { color: var(--ink2); font-size: 13px; text-align: center; padding: 26px 0; }
+
   #reader { position: fixed; inset: 0; background: var(--bg); z-index: 20; display: none; flex-direction: column; }
   #reader.open { display: flex; }
   #reader header .title { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #pages { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 12px; }
-  #pages canvas { width: 100% !important; height: auto !important; display: block; margin: 0 auto 12px;
+  .rtools { display: flex; align-items: center; gap: 6px; padding: 7px 12px; background: var(--bg2); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .rtools .chip { font-size: 11.5px; color: var(--ink2); background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  .rtools .chip.on { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  #pages { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 10px; position: relative; }
+  #pages canvas { width: 100% !important; height: auto !important; display: block; margin: 0 auto 4px;
                   background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,.14); }
-  body.dark #pages canvas { background: #26252b; }
+  .pageno { text-align: center; color: var(--ink2); font-size: 11px; margin: 2px 0 14px; }
+  .pg { position: relative; }
+  .pg .tl { position: absolute; inset: 0; overflow: hidden; }
+  .pg .tl span { position: absolute; color: transparent; }
+  .bil { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin: 0 auto 12px; max-width: 640px; }
+  .bil .src { font-size: 11.5px; color: var(--ink2); line-height: 1.65; }
+  .bil .dst { font-size: 12.5px; line-height: 1.75; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
   #hlbar { position: fixed; z-index: 30; background: var(--ink); color: var(--bg); border-radius: 99px;
-           padding: 8px 16px; font-size: 13px; display: none; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-  .pageno { text-align: center; color: var(--ink2); font-size: 11.5px; margin: 4px 0 14px; }
-  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
-           padding: 10px 20px; border-radius: 99px; font-size: 13px; z-index: 50; opacity: 0; transition: opacity .25s; pointer-events: none; }
+           padding: 7px 8px 7px 14px; font-size: 12.5px; display: none; box-shadow: 0 4px 14px rgba(0,0,0,.3); align-items: center; gap: 8px; }
+  #hlbar button { border: 0; background: var(--bg); color: var(--ink); border-radius: 99px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .sheet { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; background: var(--bg2); border-top: 1px solid var(--line);
+           border-radius: 16px 16px 0 0; padding: 14px 16px calc(env(safe-area-inset-bottom) + 16px); display: none;
+           max-height: 72vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(0,0,0,.25); }
+  .sheet.open { display: block; }
+  .sheet h3 { font-size: 14px; margin: 0 0 10px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11.5px; color: var(--ink2); margin-bottom: 4px; }
+  .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px;
+          font-size: 13px; background: var(--bg); color: var(--ink); font-family: inherit; }
+  .row2 { display: flex; gap: 8px; margin-top: 12px; }
+  .row2 .btn { flex: 1; text-align: center; padding: 10px; }
+  .qa-msg { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.7; margin-bottom: 8px; }
+  .qa-msg.user { background: rgba(21,88,192,.07); }
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+           padding: 10px 20px; border-radius: 99px; font-size: 13px; z-index: 60; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 86vw; }
   .toast.show { opacity: 1; }
-  .empty { color: var(--ink2); font-size: 13px; text-align: center; padding: 30px 0; }
 </style>
 </head>
 <body>
 <header>
   <div class="logo">📚 <b>CS</b>PAPER</div>
   <div class="sp"></div>
-  <button class="btn" id="exportBtn" style="display:none" title="把阅读数据导出给桌面端合并">导出阅读数据</button>
+  <button class="btn" id="settingsBtn" title="AI 与翻译设置">⚙️ 设置</button>
+  <button class="btn" id="exportBtn" style="display:none">导出阅读数据</button>
   <button class="btn primary" id="openBtn">打开 .cspack</button>
 </header>
 
@@ -74,13 +98,13 @@
     <div class="big">📲</div>
     <h2>把桌面端文献库装进手机</h2>
     <p>
-      在电脑版 CSPAPER：文件菜单 → 「导出移动端数据包」，得到 <b>.cspack</b> 文件。<br>
-      发到手机（微信/数据线/网盘皆可），在这里打开，随时随地读文献。
+      电脑版 CSPAPER：文件菜单 → 「导出移动端数据包」，得到 <b>.cspack</b> 文件。<br>
+      发到手机后在这里打开：分类、阅读状态、划词高亮完整迁移，支持划词翻译、AI 问答与小结。
     </p>
     <button class="btn primary" id="openBtn2">选择 .cspack 文件</button>
     <div class="hint">
-      支持文献列表、分类、阅读状态、划词高亮完整迁移；阅读产生的高亮与已读状态可「导出阅读数据」后，
-      在桌面端「文件 → 从手机合并阅读数据」一键同步回去。手机需联网加载 PDF 渲染引擎。
+      手机端支持：划词翻译（免 Key 可用）· 全文逐段对照 · 单篇 AI 问答 · AI 小结 · 目录与页码跳转。
+      阅读数据可一键导出回传桌面端合并。
     </div>
   </div>
 </main>
@@ -91,8 +115,17 @@
     <div class="title" id="rTitle"></div>
     <button class="btn" id="statusBtn">未读</button>
   </header>
+  <div class="rtools">
+    <button class="chip" id="thumbsBtn">▦ 页面</button>
+    <button class="chip" id="tocBtn">☰ 目录</button>
+    <span style="flex:1"></span>
+    <button class="chip" id="zoomOut">A−</button>
+    <button class="chip" id="zoomIn">A+</button>
+    <button class="chip" id="bilBtn" title="当前页逐段中英对照">对照</button>
+    <button class="chip" id="aiBtn" title="AI 问答 / 小结">✨ AI</button>
+  </div>
   <div id="pages"><div class="empty">加载中…</div></div>
-  <div id="hlbar"><span id="hlText"></span> <button class="btn" id="hlAdd" style="padding:4px 10px;font-size:12px">✏️ 高亮</button></div>
+  <div id="hlbar"><span id="hlText"></span> <button id="hlAdd">✏️ 高亮</button> <button id="hlTr">🌐 翻译</button></div>
 </div>
 
 <input type="file" id="fileInput" accept=".cspack,.zip" style="display:none">
@@ -100,14 +133,15 @@
 
 <script type="module">
 const $ = (id) => document.getElementById(id)
-let LIB = null            // { papers, highlights }
-let CURRENT = null        // 当前阅读的 paper
+let LIB = null, ZIPBUF = null, ZIPFILES = null
+let CURRENT = null, DOC = null, PAGE_COUNT = 0, zoomK = 1
 const NOTES_KEY = 'cspaper.mobile.notes'
-const notes = (() => { try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || { highlights: [], statuses: {} } } catch { return { highlights: [], statuses: {} } } })()
+const AI_KEY = 'cspaper.mobile.ai'
+const notes = (() => { try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || { highlights: [], statuses: {}, summaries: {} } } catch { return { highlights: [], statuses: {}, summaries: {} } } })()
 const saveNotes = () => localStorage.setItem(NOTES_KEY, JSON.stringify(notes))
-const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200) }
+const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2400) }
 
-// ---------- ZIP（STORE）解析：桌面端导出的 .cspack 不压缩，直接按偏移切分 ----------
+// ---------- ZIP（STORE）解析 ----------
 async function readZip(buf) {
   const dv = new DataView(buf)
   let eocd = -1
@@ -129,8 +163,7 @@ async function readZip(buf) {
     if (dv.getUint16(ptr + 10, true) !== 0) throw new Error('数据包格式异常（期望不压缩条目）')
     const lnLen = dv.getUint16(localOff + 26, true)
     const leLen = dv.getUint16(localOff + 28, true)
-    const start = localOff + 30 + lnLen + leLen
-    files[name] = { start, size: compSize }
+    files[name] = { start: localOff + 30 + lnLen + leLen, size: compSize }
     ptr += 46 + nameLen + extraLen + cmtLen
   }
   return files
@@ -146,78 +179,263 @@ async function ensurePdfjs() {
   return pdfjs
 }
 
-// ---------- 文库视图 ----------
+// ---------- 翻译 / AI 引擎（免 Key 免费 → 自配大模型） ----------
+function aiCfg() { try { return JSON.parse(localStorage.getItem(AI_KEY)) || {} } catch { return {} } }
+function saveAiCfg(cfgData) { localStorage.setItem(AI_KEY, JSON.stringify(cfgData)) }
+
+const TARGET_MAP = { 中文: 'zh-CN', 英文: 'en', 日文: 'ja', 韩文: 'ko' }
+const targetCode = (t) => TARGET_MAP[t?.trim()] ?? 'zh-CN'
+
+async function googleTranslate(text, tl) {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(text)}`
+    const r = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    if (!r.ok) return null
+    const j = await r.json()
+    const out = (j?.[0] ?? []).map((s) => (Array.isArray(s) ? s[0] ?? '' : '')).join('').trim()
+    return out || null
+  } catch { return null }
+}
+async function myMemoryTranslate(text, tl) {
+  const src = tl.startsWith('zh') || tl === 'ja' || tl === 'ko' ? 'en' : 'zh-CN'
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 450))}&langpair=${src}|${tl}`
+    const r = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    if (!r.ok) return null
+    const j = await r.json()
+    return j?.responseData?.translatedText || null
+  } catch { return null }
+}
+
+const cfg = () => aiCfg()
+const hasLLM = () => !!(cfg().base && cfg().key && cfg().model)
+async function llmOnce(messages) {
+  const c = cfg()
+  const r = await fetch(c.base.replace(/\/+$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${c.key}` },
+    body: JSON.stringify({ model: c.model, messages, temperature: 0.3 })
+  })
+  if (!r.ok) throw new Error(`AI 接口 ${r.status}：${(await r.text().catch(() => '')).slice(0, 120)}`)
+  const j = await r.json()
+  return j.choices?.[0]?.message?.content ?? ''
+}
+
+async function translateText(text) {
+  const target = targetCode(cfg().translateTarget || '中文')
+  if (hasLLM()) {
+    try {
+      return (await llmOnce([
+        { role: 'system', content: `你是学术翻译。将用户文本翻译为${cfg().translateTarget || '中文'}，只输出译文。` },
+        { role: 'user', content: text }
+      ])).trim()
+    } catch { /* 落到免费通道 */ }
+  }
+  const g = await googleTranslate(text, target)
+  if (g) return g
+  const m = await myMemoryTranslate(text, target)
+  if (m) return m
+  throw new Error('翻译服务暂不可用，可在设置里配置 AI 接口')
+}
+
+// ---------- 文库 ----------
 function statusOf(p) { return notes.statuses[p.slug] || p.status || 'unread' }
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读' }
+const summaryOf = (p) => notes.summaries[p.slug] || p.summary || ''
 
 function renderLibrary(filter = '') {
   const main = $('home')
   const byCat = new Map()
   const q = filter.trim().toLowerCase()
   for (const p of LIB.papers) {
-    if (q && !`${p.title} ${p.authors} ${p.venue}`.toLowerCase().includes(q)) continue
+    if (q && !`${p.title} ${p.authors} ${p.venue} ${summaryOf(p)}`.toLowerCase().includes(q)) continue
     if (!byCat.has(p.category)) byCat.set(p.category, [])
     byCat.get(p.category).push(p)
   }
   let html = `<div class="toolbar">
-    <input id="q" placeholder="搜索 ${LIB.papers.length} 篇文献…" value="${filter.replace(/"/g, '&quot;')}">
-    <span class="badge">${new Set(LIB.papers.map(p => p.category)).size} 个分类</span>
+    <input id="q" placeholder="搜索 ${LIB.papers.length} 篇文献（含 AI 小结）…" value="${filter.replace(/"/g, '&quot;')}">
+    <span class="badge">${new Set(LIB.papers.map((p) => p.category)).size} 个分类</span>
   </div>`
   if (!byCat.size) html += '<div class="empty">没有匹配的文献</div>'
-  for (const [cat, papers] of byCat) {
-    html += `<div class="cat">${cat.toUpperCase()} · ${papers.length}</div>`
-    for (const p of papers) {
+  for (const [cat, list] of byCat) {
+    html += `<div class="cat">${cat.toUpperCase()} · ${list.length}</div>`
+    for (const p of list) {
       const st = statusOf(p)
+      const sum = summaryOf(p)
       html += `<div class="paper" data-slug="${p.slug}">
-        <div class="t">${p.title}<div class="m">${[p.authors.split(',')[0], p.venue, p.year].filter(Boolean).join(' · ')}</div></div>
+        <div class="t">${p.title}
+          <div class="m">${[p.authors.split(',')[0], p.venue, p.year].filter(Boolean).join(' · ')}</div>
+          ${sum ? `<div class="sum">✨ ${sum}</div>` : ''}
+        </div>
         <span class="badge ${st}">${STATUS_LABEL[st] || '未读'}</span>
       </div>`
     }
   }
   main.innerHTML = html
   const input = $('q')
-  input.addEventListener('input', () => {
-    clearTimeout(input._t)
-    input._t = setTimeout(() => renderLibrary(input.value), 220)
-  })
+  input.addEventListener('input', () => { clearTimeout(input._t); input._t = setTimeout(() => renderLibrary(input.value), 220) })
   main.querySelectorAll('.paper').forEach((el) =>
-    el.addEventListener('click', () => openPaper(LIB.papers.find((p) => p.slug === el.dataset.slug)))
-  )
+    el.addEventListener('click', () => openPaper(LIB.papers.find((p) => p.slug === el.dataset.slug))))
 }
 
-// ---------- 阅读视图 ----------
+// ---------- 阅读 ----------
+let bilOn = false
 async function openPaper(p) {
   CURRENT = p
   $('rTitle').textContent = p.title
+  notes.statuses[p.slug] = 'reading'; saveNotes()
   $('statusBtn').textContent = STATUS_LABEL[statusOf(p)]
   $('pages').innerHTML = '<div class="empty">加载中…</div>'
   $('reader').classList.add('open')
-  notes.statuses[p.slug] = 'reading'; saveNotes()
   try {
     const pdfjsLib = await ensurePdfjs()
     const data = sliceFile(ZIPBUF, ZIPFILES[`pdfs/${p.slug}.pdf`])
     if (!data) throw new Error('数据包里没有这篇的 PDF')
     const doc = await pdfjsLib.getDocument({ data: data.slice().buffer }).promise
-    $('pages').innerHTML = ''
-    const scale = Math.min(1.6, Math.max(1.1, ($('pages').clientWidth - 24) / 612))
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i)
-      const vp = page.getViewport({ scale: scale * 2 }) // 2x 渲染抗模糊，CSS 缩回
-      const canvas = document.createElement('canvas')
-      canvas.width = vp.width; canvas.height = vp.height
-      canvas.style.width = `${vp.width / 2}px`
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise
-      $('pages').append(canvas)
-      const no = document.createElement('div')
-      no.className = 'pageno'; no.textContent = `第 ${i} / ${doc.numPages} 页`
-      $('pages').append(no)
-    }
+    DOC = doc; PAGE_COUNT = doc.numPages
+    await renderAll()
   } catch (e) {
     $('pages').innerHTML = `<div class="empty">${e.message || String(e)}</div>`
   }
 }
 
-$('backBtn').addEventListener('click', () => { $('reader').classList.remove('open'); renderLibrary($('q')?.value || '') })
+let renderSeq = 0
+async function renderAll() {
+  const seq = ++renderSeq
+  const pdfjsLib = await ensurePdfjs()
+  const host = $('pages')
+  host.innerHTML = ''
+  const dims = []
+  for (let n = 1; n <= PAGE_COUNT; n++) {
+    const pg = await DOC.getPage(n)
+    const v = pg.getViewport({ scale: 1 })
+    dims.push({ w: v.width, h: v.height })
+  }
+  const base = Math.min(2.2, Math.max(1.0, (host.clientWidth - 24) / dims[0].w)) * zoomK
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue
+      const wrap = en.target
+      const num = Number(wrap.dataset.num)
+      io.unobserve(wrap)
+      void wrap._render()
+      if (bilOn) fillBilingual(wrap, num)
+    }
+  }, { root: host, rootMargin: '600px 0px' })
+  for (let n = 1; n <= PAGE_COUNT; n++) {
+    const wrap = document.createElement('div')
+    wrap.className = 'pg'; wrap.dataset.num = n
+    wrap.style.width = Math.floor(dims[n - 1].w * base) + 'px'
+    wrap.style.margin = '0 auto 12px'
+    const canvas = document.createElement('canvas')
+    const tl = document.createElement('div'); tl.className = 'tl'
+    const no = document.createElement('div')
+    no.className = 'pageno'; no.textContent = `第 ${n} / ${PAGE_COUNT} 页`
+    wrap.append(canvas, tl, no)
+    host.append(wrap)
+    io.observe(wrap)
+    wrap._render = async () => {
+      const page = await DOC.getPage(n)
+      const vp = page.getViewport({ scale: base * 2 })
+      canvas.width = vp.width; canvas.height = vp.height
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise
+      const tc = await page.getTextContent()
+      const txt = (tc.items.map((it) => it.str + (it.hasEOL ? '\n' : '')).join('')).replace(/[ \t]+\n/g, '\n')
+      wrap._text = txt
+      tl.innerHTML = ''
+      tl.style.setProperty('--scale-factor', String(base * 2))
+      try {
+        const layer = new pdfjsLib.TextLayer({ textContentSource: tc, container: tl, viewport: page.getViewport({ scale: base * 2 }) })
+        await layer.render()
+      } catch { /* 选择层失败不影响画布 */ }
+      if (bilOn) fillBilingual(wrap, n, txt)
+    }
+  }
+}
+
+// 全文对照：页内切块逐段双语（每页只译一次）
+async function fillBilingual(wrap, num, text) {
+  if (wrap._bilDone) return
+  wrap._bilDone = true
+  const txt = (text ?? wrap._text ?? '').trim()
+  if (!txt) return
+  const host = document.createElement('div')
+  host.className = 'bil-host'
+  wrap.after(host)
+  const sentences = txt.replace(/[ \t]+/g, ' ').split(/(?<=[.!?。！？；;])\s*/)
+  const blocks = []
+  let cur = ''
+  for (const sn of sentences) {
+    if (cur && cur.length + sn.length > 500) { blocks.push(cur.trim()); cur = sn } else cur += (cur ? ' ' : '') + sn
+  }
+  if (cur.trim()) blocks.push(cur.trim())
+  for (const b of blocks.slice(0, 16)) {
+    const el = document.createElement('div'); el.className = 'bil'
+    const srcEl = document.createElement('div'); srcEl.className = 'src'; srcEl.textContent = b
+    const dstEl = document.createElement('div'); dstEl.className = 'dst'; dstEl.textContent = '…'
+    el.append(srcEl, dstEl)
+    host.append(el)
+    try { dstEl.textContent = await translateText(b) }
+    catch (e) { dstEl.textContent = '⚠ ' + String(e).slice(0, 80) }
+  }
+}
+
+$('bilBtn').addEventListener('click', () => {
+  bilOn = !bilOn
+  $('bilBtn').classList.toggle('on', bilOn)
+  if (bilOn && CURRENT) {
+    const wraps = [...document.querySelectorAll('.pg')]
+    let n = 1
+    for (let i = 0; i < wraps.length; i++) {
+      if (wraps[i].getBoundingClientRect().top < 240) n = i + 1
+    }
+    const wrap = wraps[n - 1]
+    if (wrap) { wrap._bilDone = false; fillBilingual(wrap, n, wrap._text); toast('对照开启：往后翻页自动逐段翻译') }
+    else toast('先滚动到要看的页面')
+    $('bilBtn').textContent = '对照开'
+  } else {
+    $('bilBtn').textContent = '对照'
+    document.querySelectorAll('.bil-host').forEach((h) => h.remove())
+    document.querySelectorAll('.pg').forEach((w) => { w._bilDone = false })
+  }
+})
+
+// 划词：高亮存注 / 翻译
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection()
+  const bar = $('hlbar')
+  const text = sel && sel.toString().trim()
+  if (!CURRENT || !text || text.length < 4 || !$('reader').classList.contains('open')) { bar.style.display = 'none'; return }
+  const r = sel.getRangeAt(0).getBoundingClientRect()
+  bar.style.display = 'flex'
+  bar.style.left = Math.max(10, Math.min(window.innerWidth - 210, r.left + r.width / 2 - 90)) + 'px'
+  bar.style.top = Math.max(60, r.top - 46) + 'px'
+  $('hlText').textContent = text.slice(0, 20) + (text.length > 20 ? '…' : '')
+  bar._text = text
+})
+$('hlAdd').addEventListener('click', () => {
+  const text = $('hlbar')._text || ''
+  if (!text || !CURRENT) return
+  notes.highlights.push({ slug: CURRENT.slug, page: currentPage(), text: text.slice(0, 500) })
+  saveNotes(); $('hlbar').style.display = 'none'; window.getSelection().removeAllRanges()
+  toast('已加入标注，导出后可在电脑端查看')
+})
+$('hlTr').addEventListener('click', async () => {
+  const text = $('hlbar')._text || ''
+  $('hlbar').style.display = 'none'
+  if (!text) return
+  toast('翻译中…')
+  try { toast((await translateText(text)).slice(0, 120)) } catch { toast('翻译失败') }
+})
+
+function currentPage() {
+  const pgs = [...document.querySelectorAll('.pageno')]
+  let n = 1
+  for (const el of pgs) if (el.getBoundingClientRect().top < 200) n = Number(el.textContent.match(/\d+/)?.[0] ?? n)
+  return n
+}
+
+$('backBtn').addEventListener('click', () => { $('reader').classList.remove('open'); DOC = null; renderLibrary($('q')?.value || '') })
 $('statusBtn').addEventListener('click', () => {
   if (!CURRENT) return
   const order = ['unread', 'reading', 'read']
@@ -227,32 +445,117 @@ $('statusBtn').addEventListener('click', () => {
   toast(`标记为「${STATUS_LABEL[next]}」`)
 })
 
-// 划词高亮：选择阅读区文字 → 高亮（文本模式，合并回桌面端进笔记导出）
-document.addEventListener('selectionchange', () => {
-  const sel = window.getSelection()
-  const bar = $('hlbar')
-  const text = sel && sel.toString().trim()
-  if (!CURRENT || !text || text.length < 4 || !$('reader').classList.contains('open')) { bar.style.display = 'none'; return }
-  const r = sel.getRangeAt(0).getBoundingClientRect()
-  bar.style.display = 'block'
-  bar.style.left = Math.max(10, Math.min(window.innerWidth - 190, r.left + r.width / 2 - 80)) + 'px'
-  bar.style.top = Math.max(60, r.top - 46) + 'px'
-  $('hlText').textContent = text.slice(0, 26) + (text.length > 26 ? '…' : '')
+// 页面跳转 / 目录
+$('tocBtn').addEventListener('click', async () => {
+  if (!DOC) return
+  const sheet = openSheet(`<h3>页面与目录</h3>`)
+  let html = `<div class="field"><label>跳转到页（1-${PAGE_COUNT}）</label><input id="pgJump" type="number" min="1" max="${PAGE_COUNT}"></div>`
+  const ol = await DOC.getOutline().catch(() => [])
+  if (ol && ol.length) html += '<div class="hint" style="border:none;padding-top:4px">目录书签</div>'
+  sheet.innerHTML = html
+  const list = document.createElement('div')
+  for (const it of ol ?? []) {
+    let pg = 0
+    try {
+      const dest = typeof it.dest === 'string' ? await DOC.getDestination(it.dest) : it.dest
+      if (dest?.length) pg = (await DOC.getPageIndex(dest[0])) + 1
+    } catch {}
+    const row = document.createElement('div'); row.className = 'qa-msg'; row.style.cursor = 'pointer'
+    row.textContent = it.title || '(无标题)'
+    if (pg) {
+      const b = document.createElement('span'); b.className = 'badge'; b.textContent = 'p.' + pg
+      row.append(b)
+      row.addEventListener('click', () => { closeSheets(); jumpToPage(pg) })
+    }
+    list.append(row)
+  }
+  if (!list.children.length) list.innerHTML = '<div class="empty">本文档没有目录书签</div>'
+  sheet.append(list)
+  const j = sheet.querySelector('#pgJump')
+  j.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const v = Number(j.value); closeSheets(); jumpToPage(v) } })
 })
-$('hlAdd').addEventListener('click', () => {
-  const sel = window.getSelection()
-  const text = sel ? sel.toString().trim() : ''
-  if (!text) return
-  const page = Math.max(1, [...$('pages').querySelectorAll('.pageno')].filter((el) => el.getBoundingClientRect().top < 120).length)
-  notes.highlights.push({ slug: CURRENT.slug, page, text: text.slice(0, 500) })
-  saveNotes()
-  $('hlbar').style.display = 'none'
-  sel.removeAllRanges()
-  toast('已加入高亮，导出后可在电脑端查看')
+function openSheet(html) { closeSheets(); const s = document.createElement('div'); s.className = 'sheet open'; s.innerHTML = html; document.body.append(s); return s }
+function closeSheets() { document.querySelectorAll('.sheet').forEach((s) => s.remove()) }
+document.addEventListener('click', (e) => { if (e.target.classList?.contains('sheet')) e.target.remove() })
+
+async function jumpToPage(n) {
+  n = Math.max(1, Math.min(PAGE_COUNT || 1, n))
+  const wraps = [...document.querySelectorAll('.pg')]
+  if (wraps[n - 1]) wraps[n - 1].scrollIntoView({ block: 'start' })
+}
+
+// 缩放
+$('zoomIn').addEventListener('click', () => { zoomK = Math.min(2.4, zoomK + 0.2); if (CURRENT) { const keep = currentPage(); renderAll().then(() => jumpToPage(keep)) } })
+$('zoomOut').addEventListener('click', () => { zoomK = Math.max(0.6, zoomK - 0.2); if (CURRENT) { const keep = currentPage(); renderAll().then(() => jumpToPage(keep)) } })
+
+// AI：问答 + 小结
+$('aiBtn').addEventListener('click', () => {
+  if (!CURRENT) return toast('先打开一篇文献')
+  const sheet = openSheet(`
+    <h3>✨ AI 问答 — ${CURRENT.title.slice(0, 26)}…</h3>
+    <div id="qaLog"></div>
+    <div class="field"><label>针对本篇提问（全文进上下文）</label><textarea id="qaQ" rows="2" placeholder="这篇的核心结论是什么？"></textarea></div>
+    <div class="row2"><button class="btn primary" id="qaSend">提问</button><button class="btn" id="sumBtn">生成 AI 小结</button></div>
+    <div class="hint">${hasLLM() ? `当前引擎：${cfg().model}` : '未配置 AI 接口：问答/小结不可用；划词与对照翻译仍可免 Key 使用。在 ⚙️ 设置里填 base / key / model 即可启用。'}</div>
+  `)
+  sheet.querySelector('#qaSend').addEventListener('click', async () => {
+    const q = sheet.querySelector('#qaQ').value.trim()
+    const log = sheet.querySelector('#qaLog')
+    if (!q) return
+    if (!hasLLM()) { log.innerHTML = '<div class="qa-msg">⚠ 请先在 ⚙️ 设置里配置 AI 接口（base / key / model）</div>'; return }
+    log.insertAdjacentHTML('beforeend', `<div class="qa-msg user">${q.replace(/</g, '&lt;')}</div><div class="qa-msg">思考中…</div>`)
+    sheet.querySelector('#qaSend').disabled = true
+    try {
+      const pages = []
+      for (let i = 1; i <= Math.min(PAGE_COUNT, 30); i++) {
+        const pg = await DOC.getPage(i)
+        const tc = await pg.getTextContent()
+        pages.push(`【第${i}页】` + tc.items.map((it) => it.str).join(' '))
+      }
+      const ans = await llmOnce([
+        { role: 'system', content: '你是严谨的学术问答助手。仅依据给定论文正文回答，标注页码如 [3]，中文回答，术语首次出现给英文。论文未覆盖的明确说明。' },
+        { role: 'user', content: `【论文：${CURRENT.title}】\n${pages.join('\n\n').slice(0, 90000)}\n\n【问题】${q}` }
+      ])
+      log.lastElementChild.textContent = ans
+    } catch (e) { log.lastElementChild.textContent = '⚠ ' + String(e).slice(0, 160) }
+    sheet.querySelector('#qaSend').disabled = false
+  })
+  sheet.querySelector('#sumBtn').addEventListener('click', async () => {
+    if (!hasLLM()) return toast('请先在设置里配置 AI 接口')
+    toast('生成小结中…')
+    try {
+      const texts = []
+      for (let i = 1; i <= Math.min(PAGE_COUNT, 4); i++) {
+        const pg = await DOC.getPage(i)
+        const tc = await pg.getTextContent()
+        texts.push(tc.items.map((it) => it.str).join(' '))
+      }
+      const ans = await llmOnce([
+        { role: 'system', content: '用中文为论文写卡片式小结，150字内：一句研究问题，一句方法，一到两句核心结果。只输出小结。' },
+        { role: 'user', content: `【${CURRENT.title}】\n${texts.join('\n').slice(0, 20000)}` }
+      ])
+      notes.summaries[CURRENT.slug] = ans.trim(); saveNotes()
+      toast('✓ 小结已生成并保存')
+    } catch (e) { toast('生成失败：' + String(e).slice(0, 100)) }
+  })
 })
 
-// ---------- 打包打开 / 导出 ----------
-let ZIPBUF = null, ZIPFILES = null
+// ---------- 导出 / 打开 ----------
+$('exportBtn').addEventListener('click', () => {
+  const payload = {
+    app: 'CSPAPER-Mobile', exportedAt: new Date().toISOString(),
+    highlights: notes.highlights,
+    statuses: Object.entries(notes.statuses).map(([slug, status]) => ({ slug, status })),
+    summaries: Object.entries(notes.summaries).map(([slug, summary]) => ({ slug, summary }))
+  }
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `CSPAPER-阅读数据-${new Date().toISOString().slice(0, 10)}.csnotes.json`
+  a.click()
+  toast('已导出，发回电脑端合并即可')
+})
+
 async function openPack(file) {
   toast('正在读取数据包…')
   ZIPBUF = await file.arrayBuffer()
@@ -271,7 +574,33 @@ $('fileInput').addEventListener('change', async (e) => {
   if (!f) return
   try { await openPack(f) } catch (err) { toast(err.message || String(err)) }
 })
-// URL 直读数据包：?pack=sample.cspack（同目录或绝对地址）
+
+// 设置抽屉
+$('settingsBtn').addEventListener('click', () => {
+  const c = cfg()
+  const sheet = openSheet(`
+    <h3>⚙️ AI 与翻译设置</h3>
+    <div class="field"><label>翻译目标语言</label>
+      <select id="stTarget">${['中文', '英文', '日文', '韩文'].map((t) => `<option ${((c.translateTarget || '中文') === t ? 'selected' : '')}>${t}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>AI 接口 Base（OpenAI 兼容）</label><input id="stBase" placeholder="https://open.bigmodel.cn/api/paas/v4" value="${c.base ?? ''}"></div>
+    <div class="field"><label>API Key</label><input id="stKey" type="password" placeholder="sk-…" value="${c.key ?? ''}"></div>
+    <div class="field"><label>模型</label><input id="stModel" placeholder="glm-4.6 / deepseek-chat / …" value="${c.model ?? ''}"></div>
+    <div class="row2"><button class="btn primary" id="stSave">保存</button></div>
+    <div class="hint">不配置也能用：划词与对照翻译走免费通道。配置后翻译质量更高，并解锁 AI 问答与小结。Key 仅保存在本机。</div>
+  `)
+  sheet.querySelector('#stSave').addEventListener('click', () => {
+    saveAiCfg({
+      base: sheet.querySelector('#stBase').value.trim(),
+      key: sheet.querySelector('#stKey').value.trim(),
+      model: sheet.querySelector('#stModel').value.trim(),
+      translateTarget: sheet.querySelector('#stTarget').value
+    })
+    sheet.remove(); toast('设置已保存')
+  })
+})
+
+// ?pack= 直读
 const packParam = new URLSearchParams(location.search).get('pack')
 if (packParam) {
   void (async () => {
@@ -282,15 +611,6 @@ if (packParam) {
     } catch (e) { toast('读取数据包失败：' + (e.message || e)) }
   })()
 }
-$('exportBtn').addEventListener('click', () => {
-  const payload = { app: 'CSPAPER-Mobile', exportedAt: new Date().toISOString(), highlights: notes.highlights, statuses: Object.entries(notes.statuses).map(([slug, status]) => ({ slug, status })) }
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `CSPAPER-阅读数据-${new Date().toISOString().slice(0, 10)}.csnotes.json`
-  a.click()
-  toast('已导出，发回电脑端合并即可')
-})
 </script>
 </body>
 </html>

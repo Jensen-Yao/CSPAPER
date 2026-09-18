@@ -129,6 +129,7 @@ export interface MobilePackResult {
 export interface MobileMergeResult {
   mergedHighlights: number
   mergedStatus: number
+  mergedSummaries: number
   skipped: number
 }
 

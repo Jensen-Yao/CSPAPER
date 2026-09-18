@@ -15,14 +15,15 @@ export interface MobilePackResult {
 export interface MobileMergeResult {
   mergedHighlights: number
   mergedStatus: number
+  mergedSummaries: number
   skipped: number
 }
 
 export function exportMobilePack(destPath: string, send: (ev: string, payload: unknown) => void): MobilePackResult {
   const db = getDb()
   const papers = db
-    .prepare('SELECT slug, title, authors, year, venue, category, path, status FROM papers ORDER BY category, slug')
-    .all() as Array<{ slug: string; title: string; authors: string; year: number | null; venue: string; category: string; path: string; status: string }>
+    .prepare('SELECT slug, title, authors, year, venue, category, path, status, summary FROM papers ORDER BY category, slug')
+    .all() as Array<{ slug: string; title: string; authors: string; year: number | null; venue: string; category: string; path: string; status: string; summary: string | null }>
   const highlights = db
     .prepare(`SELECT h.page, h.text, h.rects, p.slug FROM highlights h JOIN papers p ON p.id = h.paper_id ORDER BY p.slug, h.page, h.id`)
     .all() as Array<{ slug: string; page: number; text: string; rects: string }>
@@ -43,6 +44,7 @@ export function exportMobilePack(destPath: string, send: (ev: string, payload: u
         venue: p.venue,
         category: p.category,
         status: p.status,
+        summary: p.summary,
         pdf: `pdfs/${p.slug}.pdf`
       })
     } catch {
@@ -68,6 +70,7 @@ export function mergeMobileNotes(jsonPath: string): MobileMergeResult {
   const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8')) as {
     highlights?: Array<{ slug: string; page: number; text: string; rects?: Array<{ x: number; y: number; w: number; h: number }> }>
     statuses?: Array<{ slug: string; status: string }>
+    summaries?: Array<{ slug: string; summary: string }>
   }
   const bySlug = db.prepare('SELECT id FROM papers WHERE slug=?')
   const insHl = db.prepare('INSERT INTO highlights(paper_id,page,rects,text) VALUES(?,?,?,?)')
@@ -91,5 +94,12 @@ export function mergeMobileNotes(jsonPath: string): MobileMergeResult {
     const r = setStatus.run(s.status, s.slug, s.status)
     mergedStatus += Number(r.changes > 0)
   }
-  return { mergedHighlights, mergedStatus, skipped }
+  // 手机端生成的 AI 小结：回写文献 summary（仅覆盖空小结，不覆盖桌面已生成的）
+  const setSummary = db.prepare("UPDATE papers SET summary=? WHERE slug=? AND (summary IS NULL OR summary='')")
+  let mergedSummaries = 0
+  for (const sm of raw.summaries ?? []) {
+    const r = setSummary.run((sm.summary ?? '').slice(0, 2000), sm.slug)
+    mergedSummaries += Number(r.changes > 0)
+  }
+  return { mergedHighlights, mergedStatus, mergedSummaries, skipped }
 }
