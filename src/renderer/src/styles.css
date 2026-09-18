@@ -1102,3 +1102,129 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .bridge-chip.on { color: var(--ok); }
 .bridge-chip.off { color: var(--text-dim); }
 .statusbar .chip { transition: color var(--speed) var(--ease); }
+
+/* ============================================================
+   v0.5 深度美化层
+   ============================================================ */
+
+/* ---- 1. 可见拖拽把手：细线 + 中央握点，悬停点亮 ---- */
+.col-resizer {
+  width: 9px; margin: 0 -2px; z-index: 6; position: relative;
+  cursor: col-resize; background: transparent;
+}
+.col-resizer::after {
+  content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 3px; height: 36px; border-radius: 3px;
+  background: var(--border-lit); transition: background var(--speed) var(--ease), height var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+.col-resizer:hover { background: var(--accent-soft); }
+.col-resizer:hover::after {
+  background: var(--accent); height: 64px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.pdf-main + .side-wrap .col-resizer,
+.side-wrap .col-resizer { border-left: 1px solid transparent; }
+
+/* ---- 2. 显隐按钮：明确的按下态 ---- */
+.icon-btn { width: 30px; height: 30px; border-radius: 8px; }
+.icon-btn.on {
+  background: var(--accent-soft); color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(224, 85, 124, 0.35);
+}
+.icon-btn.on:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* ---- 3. 主操作按钮：渐变主色 ---- */
+.add-btn {
+  background: linear-gradient(135deg, #c9134f, #a6093d);
+  color: #fff; border: none; font-weight: 650; letter-spacing: 0.3px;
+  box-shadow: 0 2px 8px rgba(166, 9, 61, 0.28);
+  transition: transform var(--speed) var(--ease), box-shadow var(--speed) var(--ease), filter var(--speed);
+}
+.add-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(166, 9, 61, 0.36); filter: brightness(1.06); }
+html[data-theme='dark'] .add-btn { background: linear-gradient(135deg, #e0557c, #b0405f); }
+
+.new-chat-btn {
+  border: 1px solid var(--border-lit); background: var(--bg); color: var(--text);
+  transition: border-color var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+.new-chat-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- 4. 文献列表：留白与层次 ---- */
+.paper-item { padding: 9px 11px; border-radius: 9px; margin-bottom: 2px; }
+.paper-item .t { font-size: 12.6px; line-height: 1.5; font-weight: 500; }
+.lib-section {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 1.6px; color: var(--text-dim);
+  margin: 14px 4px 7px; text-transform: uppercase;
+}
+.lib-view-toggle { padding-bottom: 8px; }
+
+/* ---- 5. 阅读器标签页：更清晰的激活态 ---- */
+.tab { padding: 8px 11px 7px; border-radius: 8px 8px 0 0; }
+.tab.active {
+  background: var(--bg); border-bottom: 2px solid var(--accent);
+  font-weight: 550; color: var(--text);
+}
+.tabbar { padding: 6px 8px 0; gap: 4px; border-bottom: 1px solid var(--border-lit); background: var(--bg2); }
+
+/* ---- 6. 搜索框与输入 ---- */
+.searchbox, .chat-input, .palette-input {
+  border-radius: 9px; transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease), background var(--speed);
+}
+.searchbox:focus, .chat-input:focus, .palette-input:focus {
+  border-color: var(--accent); box-shadow: var(--glow); background: var(--bg);
+}
+
+/* ---- 7. 状态栏芯片精修 ---- */
+.statusbar { height: 26px; gap: 8px; }
+.statusbar .chip { border-radius: 6px; background: transparent; padding: 2px 8px; }
+.statusbar .chip:hover { background: var(--bg3); }
+.bridge-chip { font-weight: 600; letter-spacing: 0.3px; }
+
+/* ---- 8. 弹窗与卡片 ---- */
+.modal { border-radius: var(--radius-lg); box-shadow: 0 24px 70px rgba(10, 5, 8, 0.35), 0 2px 10px rgba(10, 5, 8, 0.12); }
+.modal-head h2 { letter-spacing: 0.3px; }
+.pcard { border-radius: 13px; }
+.btn { border-radius: 10px; }
+
+/* ---- 9. 滚动条更细更含蓄 ---- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(128, 122, 132, 0.25); border: 2px solid transparent; background-clip: content-box; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128, 122, 132, 0.45); border: 2px solid transparent; background-clip: content-box; }
+
+/* ---- 10. 标注/详情嵌入面板去边框 ---- */
+.pd-embed .pd-panel { border: none; background: transparent; padding: 0; }
+
+/* ---- 拖拽把手强化：默认即可见，悬停点亮 ---- */
+.col-resizer::after {
+  width: 4px; height: 44px;
+  background: var(--bg4);
+  box-shadow: inset 0 0 0 0.5px rgba(128, 122, 132, 0.25);
+}
+.col-resizer:hover::after {
+  background: var(--accent); height: 72px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---- 重建索引按钮：弱化为辅助操作 ---- */
+.func-row { justify-content: flex-start; }
+.func-row .mini-btn {
+  width: auto; border: 1px dashed var(--border-lit); background: transparent;
+  color: var(--text-dim); border-radius: 8px; padding: 5px 12px; font-size: 11.5px;
+}
+.func-row .mini-btn:hover {
+  color: var(--accent); border-color: var(--accent); background: var(--accent-soft);
+}
+
+/* ---- 把手与搜索框可见度强化 ---- */
+.col-resizer::after {
+  width: 4px; height: 48px;
+  background: repeating-linear-gradient(180deg, var(--text-dim) 0 3px, transparent 3px 7px);
+  opacity: 0.75; box-shadow: none;
+}
+.col-resizer:hover::after {
+  background: var(--accent); opacity: 1; height: 76px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.searchbox { background: var(--bg); border: 1px solid var(--border-lit); }
+.searchbox::placeholder { color: var(--text-dim); }
+.func-row .mini-btn { border-style: solid; color: var(--text); background: var(--bg); }

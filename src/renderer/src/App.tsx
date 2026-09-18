@@ -583,7 +583,11 @@ export default function App(): JSX.Element {
           <MenuBar menus={menus} openMenu={openMenu} setOpenMenu={setOpenMenu} />
         )}
         <div className="tb-side tb-left">
-          <button className={`icon-btn ${showLib ? 'on' : ''}`} title="显示/隐藏 侧栏" onClick={() => setShowLib((v) => !v)}>
+          <button
+            className={`icon-btn tb-toggle ${showLib ? 'on' : ''}`}
+            title={showLib ? '隐藏 文献边栏' : '显示 文献边栏'}
+            onClick={() => setShowLib((v) => !v)}
+          >
             <SidebarIcon />
           </button>
         </div>
@@ -592,7 +596,11 @@ export default function App(): JSX.Element {
         <div className="tb-drag" />
         <div className="tb-side tb-right">
           {mode === 'read' && (
-            <button className={`icon-btn ${showSide ? 'on' : ''}`} title="显示/隐藏 问答·翻译" onClick={() => setShowSide((v) => !v)}>
+            <button
+              className={`icon-btn tb-toggle ${showSide ? 'on' : ''}`}
+              title={showSide ? '隐藏 问答·翻译面板' : '显示 问答·翻译面板'}
+              onClick={() => setShowSide((v) => !v)}
+            >
               <PanelIcon />
             </button>
           )}

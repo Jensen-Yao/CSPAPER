@@ -91,9 +91,10 @@ try {
     await page.waitForSelector('.pdf-toc-item, .pdf-navi-empty', { timeout: 15000 })
   })
 
-  await step('T8 标注标签页（已种子 1 条）', async () => {
+  await step('T8 标注标签页（打开预置高亮的论文）', async () => {
+    await page.locator('.paper-item', { hasText: '多状态网络' }).first().click()
     await page.locator('.side-tab', { hasText: '标注' }).click()
-    await page.waitForFunction(() => (document.body.innerText.includes('p.1')), null, { timeout: 15000 })
+    await page.waitForFunction(() => document.body.innerText.includes('韧性是指'), null, { timeout: 20000 })
   })
 
   await step('T9 详情标签页（嵌入式详情）', async () => {
