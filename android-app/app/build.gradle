@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.jensenyao.cspaper'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.jensenyao.cspaper"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// 零第三方依赖：只用 android.app + android.webkit，构建快、体积小（APK 约 1-2 MB）
+dependencies {
+}

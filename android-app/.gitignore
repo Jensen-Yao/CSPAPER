@@ -1,0 +1,6 @@
+# 构建产物
+build/
+.gradle/
+local.properties
+app/build/
+android-app/release/

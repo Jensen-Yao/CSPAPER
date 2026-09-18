@@ -8,6 +8,9 @@ import { freeTranslate } from './free-translate'
 import { importPapers, previewImport, movePaperToCategory, createCategory, deleteCategory, deletePaper, renamePaper, sanitizeCategoryName } from './import'
 import { embed } from './embed'
 import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroImportItem } from './zotero'
+import { startBridge } from './bridge'
+import { parseRecords, importRecords, type RecordEntry } from './records'
+import { exportMobilePack, mergeMobileNotes } from './mobilepack'
 
 let win: BrowserWindow | null = null
 
@@ -110,6 +113,8 @@ app.whenReady().then(() => {
   dbmod.initDb()
   registerIpc()
   createWindow()
+  // 本地桥接服务：浏览器插件 / Word·WPS 插件一键存文献、检索插引文
+  startBridge((title, detail) => send('app:notice', { title, detail }))
   // macOS：Dock 图标与名字（打包后由 app bundle 提供，开发态手动设）
   if (process.platform === 'darwin') {
     try {
@@ -198,6 +203,43 @@ function registerIpc(): void {
   })
   ipcMain.handle('zotero:preview', (_e, dataDir?: string) => previewZoteroForUi(dataDir))
   ipcMain.handle('zotero:import', (_e, items: ZoteroImportItem[]) => importFromZotero(items, send))
+
+  // 题录文件导入：RIS / EndNote(.enw) / CNKI 自定义格式 → 生成题录页入库（可后续替换为原文 PDF）
+  ipcMain.handle('records:pick-parse', async () => {
+    const r = await dialog.showOpenDialog(win!, {
+      title: '选择题录文件（RIS / EndNote / CNKI 导出）',
+      filters: [{ name: '题录文件', extensions: ['ris', 'enw', 'txt', 'ciw', 'bib'] }],
+      properties: ['openFile']
+    })
+    if (r.canceled || !r.filePaths[0]) return null
+    const entries = parseRecords(fs.readFileSync(r.filePaths[0], 'utf8'))
+    return { file: path.basename(r.filePaths[0]), entries }
+  })
+  ipcMain.handle('records:import', (_e, entries: RecordEntry[], category: string) => importRecords(entries, category, send))
+
+  // 移动端数据互导：导出 .cspack 数据包 / 合并手机端阅读数据
+  ipcMain.handle('mobile:export-pack', async () => {
+    const d = new Date()
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+    const r = await dialog.showSaveDialog(win!, {
+      title: '导出移动端数据包',
+      defaultPath: `CSPAPER-Mobile-${stamp}.cspack`,
+      filters: [{ name: 'CSPAPER 数据包', extensions: ['cspack'] }]
+    })
+    if (r.canceled || !r.filePath) return null
+    return exportMobilePack(r.filePath, send)
+  })
+  ipcMain.handle('mobile:merge-notes', async () => {
+    const r = await dialog.showOpenDialog(win!, {
+      title: '选择手机端导出的阅读数据',
+      filters: [{ name: 'CSPAPER 阅读数据', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (r.canceled || !r.filePaths[0]) return null
+    const result = mergeMobileNotes(r.filePaths[0])
+    send('papers:changed', { ids: [] })
+    return result
+  })
 
   // 手动归类：右键菜单 / 拖拽都走这里（移动文件夹 + 原地改写 DB，保留行身份）
   ipcMain.handle('papers:move', (_e, id: number, category: string) => {

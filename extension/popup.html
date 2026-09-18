@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light; }
+  body { width: 300px; margin: 0; font-family: "Microsoft YaHei", system-ui, sans-serif; color: #24242a; background: #faf9f7; }
+  header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid #e8e5e2; }
+  header img { width: 20px; height: 20px; }
+  header b { font-size: 14px; }
+  header .status { margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 99px; }
+  .on { background: #e2f2e4; color: #1c7a2e; }
+  .off { background: #f7e2e2; color: #a12c2c; }
+  .body { padding: 12px 14px 14px; }
+  .detected { font-size: 12px; color: #6c675f; margin-bottom: 6px; }
+  .field { margin-bottom: 8px; }
+  .field label { display: block; font-size: 11px; color: #8a857d; margin-bottom: 3px; }
+  .field input { width: 100%; box-sizing: border-box; border: 1px solid #ddd8d2; border-radius: 7px; padding: 6px 8px; font-size: 12.5px; background: #fff; }
+  .pdfrow { font-size: 12px; margin: 8px 0 10px; }
+  .pdfyes { color: #1c7a2e; } .pdfno { color: #a12c2c; }
+  button.save { width: 100%; padding: 9px; border: 0; border-radius: 9px; background: #1558c0; color: #fff; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  button.save:disabled { opacity: .55; cursor: default; }
+  .msg { margin-top: 9px; font-size: 12px; line-height: 1.55; min-height: 16px; }
+  .ok { color: #1c7a2e; } .err { color: #a12c2c; }
+  footer { border-top: 1px solid #e8e5e2; padding: 8px 14px; font-size: 11px; color: #8a857d; display: flex; align-items: center; gap: 6px; }
+  footer input { width: 74px; border: 1px solid #ddd8d2; border-radius: 6px; padding: 2px 6px; font-size: 11px; }
+</style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="">
+    <b>CSPAPER Connector</b>
+    <span class="status off" id="status">检测中…</span>
+  </header>
+  <div class="body">
+    <div class="detected" id="detected">正在识别当前页面…</div>
+    <div class="field"><label>标题</label><input id="title" type="text"></div>
+    <div class="field"><label>作者（逗号分隔）</label><input id="authors" type="text"></div>
+    <div class="field"><label>期刊 / 会议</label><input id="venue" type="text"></div>
+    <div class="field"><label>年份</label><input id="year" type="text"></div>
+    <div class="pdfrow" id="pdfrow"></div>
+    <button class="save" id="save">保存到 CSPAPER</button>
+    <div class="msg" id="msg"></div>
+  </div>
+  <footer>
+    端口 <input id="port" type="text">
+    <span>桌面端设置里可改</span>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

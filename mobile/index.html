@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#98122e">
+<title>CSPAPER Mobile</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<style>
+  :root {
+    --bg: #faf9f7; --bg2: #ffffff; --line: #e8e5e2; --ink: #24242a; --ink2: #8a857d;
+    --accent: #98122e; --accent2: #1558c0; --ok: #1c7a2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17161a; --bg2: #201f25; --line: #33323a; --ink: #ece7e9; --ink2: #938e97; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Microsoft YaHei", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg2); border-bottom: 1px solid var(--line);
+           padding: calc(env(safe-area-inset-top) + 10px) 16px 10px; display: flex; align-items: center; gap: 10px; }
+  header .logo { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  header .logo b { color: var(--accent); }
+  header .sp { flex: 1; }
+  .btn { border: 1px solid var(--line); background: var(--bg2); color: var(--ink); border-radius: 9px;
+         padding: 8px 13px; font-size: 13px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn:disabled { opacity: .5; }
+  main { max-width: 760px; margin: 0 auto; padding: 18px 16px 90px; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 16px; padding: 44px 20px; text-align: center; margin-top: 26px; }
+  .drop .big { font-size: 44px; margin-bottom: 12px; }
+  .drop h2 { font-size: 17px; margin: 0 0 8px; }
+  .drop p { color: var(--ink2); font-size: 13px; line-height: 1.8; margin: 0 0 18px; }
+  .hint { color: var(--ink2); font-size: 12px; line-height: 1.8; margin-top: 22px;
+          border-top: 1px solid var(--line); padding-top: 16px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 14px 0 10px; flex-wrap: wrap; }
+  .toolbar input { flex: 1; min-width: 140px; border: 1px solid var(--line); background: var(--bg2); color: var(--ink);
+                   border-radius: 9px; padding: 9px 12px; font-size: 13.5px; }
+  .cat { margin: 20px 0 8px; font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: 1.5px; }
+  .paper { display: flex; align-items: center; gap: 12px; background: var(--bg2); border: 1px solid var(--line);
+           border-radius: 12px; padding: 12px 14px; margin-bottom: 7px; cursor: pointer; }
+  .paper:active { border-color: var(--accent); }
+  .paper .t { flex: 1; font-size: 13.5px; line-height: 1.5; }
+  .paper .m { font-size: 11px; color: var(--ink2); margin-top: 3px; }
+  .badge { font-size: 10.5px; border-radius: 99px; padding: 2px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--ink2); white-space: nowrap; }
+  .badge.read { color: var(--ok); border-color: transparent; background: rgba(28,122,46,.1); }
+  .badge.reading { color: var(--accent2); border-color: transparent; background: rgba(21,88,192,.1); }
+  /* 阅读视图 */
+  #reader { position: fixed; inset: 0; background: var(--bg); z-index: 20; display: none; flex-direction: column; }
+  #reader.open { display: flex; }
+  #reader header .title { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #pages { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 12px; }
+  #pages canvas { width: 100% !important; height: auto !important; display: block; margin: 0 auto 12px;
+                  background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,.14); }
+  body.dark #pages canvas { background: #26252b; }
+  #hlbar { position: fixed; z-index: 30; background: var(--ink); color: var(--bg); border-radius: 99px;
+           padding: 8px 16px; font-size: 13px; display: none; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+  .pageno { text-align: center; color: var(--ink2); font-size: 11.5px; margin: 4px 0 14px; }
+  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+           padding: 10px 20px; border-radius: 99px; font-size: 13px; z-index: 50; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .empty { color: var(--ink2); font-size: 13px; text-align: center; padding: 30px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">📚 <b>CS</b>PAPER</div>
+  <div class="sp"></div>
+  <button class="btn" id="exportBtn" style="display:none" title="把阅读数据导出给桌面端合并">导出阅读数据</button>
+  <button class="btn primary" id="openBtn">打开 .cspack</button>
+</header>
+
+<main id="home">
+  <div class="drop" id="drop">
+    <div class="big">📲</div>
+    <h2>把桌面端文献库装进手机</h2>
+    <p>
+      在电脑版 CSPAPER：文件菜单 → 「导出移动端数据包」，得到 <b>.cspack</b> 文件。<br>
+      发到手机（微信/数据线/网盘皆可），在这里打开，随时随地读文献。
+    </p>
+    <button class="btn primary" id="openBtn2">选择 .cspack 文件</button>
+    <div class="hint">
+      支持文献列表、分类、阅读状态、划词高亮完整迁移；阅读产生的高亮与已读状态可「导出阅读数据」后，
+      在桌面端「文件 → 从手机合并阅读数据」一键同步回去。手机需联网加载 PDF 渲染引擎。
+    </div>
+  </div>
+</main>
+
+<div id="reader">
+  <header>
+    <button class="btn" id="backBtn">← 文库</button>
+    <div class="title" id="rTitle"></div>
+    <button class="btn" id="statusBtn">未读</button>
+  </header>
+  <div id="pages"><div class="empty">加载中…</div></div>
+  <div id="hlbar"><span id="hlText"></span> <button class="btn" id="hlAdd" style="padding:4px 10px;font-size:12px">✏️ 高亮</button></div>
+</div>
+
+<input type="file" id="fileInput" accept=".cspack,.zip" style="display:none">
+<div class="toast" id="toast"></div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id)
+let LIB = null            // { papers, highlights }
+let CURRENT = null        // 当前阅读的 paper
+const NOTES_KEY = 'cspaper.mobile.notes'
+const notes = (() => { try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || { highlights: [], statuses: {} } } catch { return { highlights: [], statuses: {} } } })()
+const saveNotes = () => localStorage.setItem(NOTES_KEY, JSON.stringify(notes))
+const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200) }
+
+// ---------- ZIP（STORE）解析：桌面端导出的 .cspack 不压缩，直接按偏移切分 ----------
+async function readZip(buf) {
+  const dv = new DataView(buf)
+  let eocd = -1
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 22 - 65536); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break }
+  }
+  if (eocd < 0) throw new Error('不是有效的 .cspack 数据包')
+  const count = dv.getUint16(eocd + 10, true)
+  let ptr = dv.getUint32(eocd + 16, true)
+  const dec = new TextDecoder()
+  const files = {}
+  for (let i = 0; i < count; i++) {
+    const compSize = dv.getUint32(ptr + 20, true)
+    const nameLen = dv.getUint16(ptr + 28, true)
+    const extraLen = dv.getUint16(ptr + 30, true)
+    const cmtLen = dv.getUint16(ptr + 32, true)
+    const localOff = dv.getUint32(ptr + 42, true)
+    const name = dec.decode(new Uint8Array(buf, ptr + 46, nameLen))
+    if (dv.getUint16(ptr + 10, true) !== 0) throw new Error('数据包格式异常（期望不压缩条目）')
+    const lnLen = dv.getUint16(localOff + 26, true)
+    const leLen = dv.getUint16(localOff + 28, true)
+    const start = localOff + 30 + lnLen + leLen
+    files[name] = { start, size: compSize }
+    ptr += 46 + nameLen + extraLen + cmtLen
+  }
+  return files
+}
+const sliceFile = (buf, f) => new Uint8Array(buf, f.start, f.size)
+
+// ---------- pdf.js 加载（CDN，失败给出提示） ----------
+let pdfjs = null
+async function ensurePdfjs() {
+  if (pdfjs) return pdfjs
+  try {
+    pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs')
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs'
+    return pdfjs
+  } catch {
+    throw new Error('PDF 渲染引擎加载失败：请检查手机网络后重试')
+  }
+}
+
+// ---------- 文库视图 ----------
+function statusOf(p) { return notes.statuses[p.slug] || p.status || 'unread' }
+const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读' }
+
+function renderLibrary(filter = '') {
+  const main = $('home')
+  const byCat = new Map()
+  const q = filter.trim().toLowerCase()
+  for (const p of LIB.papers) {
+    if (q && !`${p.title} ${p.authors} ${p.venue}`.toLowerCase().includes(q)) continue
+    if (!byCat.has(p.category)) byCat.set(p.category, [])
+    byCat.get(p.category).push(p)
+  }
+  let html = `<div class="toolbar">
+    <input id="q" placeholder="搜索 ${LIB.papers.length} 篇文献…" value="${filter.replace(/"/g, '&quot;')}">
+    <span class="badge">${new Set(LIB.papers.map(p => p.category)).size} 个分类</span>
+  </div>`
+  if (!byCat.size) html += '<div class="empty">没有匹配的文献</div>'
+  for (const [cat, papers] of byCat) {
+    html += `<div class="cat">${cat.toUpperCase()} · ${papers.length}</div>`
+    for (const p of papers) {
+      const st = statusOf(p)
+      html += `<div class="paper" data-slug="${p.slug}">
+        <div class="t">${p.title}<div class="m">${[p.authors.split(',')[0], p.venue, p.year].filter(Boolean).join(' · ')}</div></div>
+        <span class="badge ${st}">${STATUS_LABEL[st] || '未读'}</span>
+      </div>`
+    }
+  }
+  main.innerHTML = html
+  const input = $('q')
+  input.addEventListener('input', () => {
+    clearTimeout(input._t)
+    input._t = setTimeout(() => renderLibrary(input.value), 220)
+  })
+  main.querySelectorAll('.paper').forEach((el) =>
+    el.addEventListener('click', () => openPaper(LIB.papers.find((p) => p.slug === el.dataset.slug)))
+  )
+}
+
+// ---------- 阅读视图 ----------
+async function openPaper(p) {
+  CURRENT = p
+  $('rTitle').textContent = p.title
+  $('statusBtn').textContent = STATUS_LABEL[statusOf(p)]
+  $('pages').innerHTML = '<div class="empty">加载中…</div>'
+  $('reader').classList.add('open')
+  notes.statuses[p.slug] = 'reading'; saveNotes()
+  try {
+    const pdfjsLib = await ensurePdfjs()
+    const data = sliceFile(ZIPBUF, ZIPFILES[`pdfs/${p.slug}.pdf`])
+    if (!data) throw new Error('数据包里没有这篇的 PDF')
+    const doc = await pdfjsLib.getDocument({ data: data.slice().buffer }).promise
+    $('pages').innerHTML = ''
+    const scale = Math.min(1.6, Math.max(1.1, ($('pages').clientWidth - 24) / 612))
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i)
+      const vp = page.getViewport({ scale: scale * 2 }) // 2x 渲染抗模糊，CSS 缩回
+      const canvas = document.createElement('canvas')
+      canvas.width = vp.width; canvas.height = vp.height
+      canvas.style.width = `${vp.width / 2}px`
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise
+      $('pages').append(canvas)
+      const no = document.createElement('div')
+      no.className = 'pageno'; no.textContent = `第 ${i} / ${doc.numPages} 页`
+      $('pages').append(no)
+    }
+  } catch (e) {
+    $('pages').innerHTML = `<div class="empty">${e.message || String(e)}</div>`
+  }
+}
+
+$('backBtn').addEventListener('click', () => { $('reader').classList.remove('open'); renderLibrary($('q')?.value || '') })
+$('statusBtn').addEventListener('click', () => {
+  if (!CURRENT) return
+  const order = ['unread', 'reading', 'read']
+  const next = order[(order.indexOf(statusOf(CURRENT)) + 1) % 3]
+  notes.statuses[CURRENT.slug] = next; saveNotes()
+  $('statusBtn').textContent = STATUS_LABEL[next]
+  toast(`标记为「${STATUS_LABEL[next]}」`)
+})
+
+// 划词高亮：选择阅读区文字 → 高亮（文本模式，合并回桌面端进笔记导出）
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection()
+  const bar = $('hlbar')
+  const text = sel && sel.toString().trim()
+  if (!CURRENT || !text || text.length < 4 || !$('reader').classList.contains('open')) { bar.style.display = 'none'; return }
+  const r = sel.getRangeAt(0).getBoundingClientRect()
+  bar.style.display = 'block'
+  bar.style.left = Math.max(10, Math.min(window.innerWidth - 190, r.left + r.width / 2 - 80)) + 'px'
+  bar.style.top = Math.max(60, r.top - 46) + 'px'
+  $('hlText').textContent = text.slice(0, 26) + (text.length > 26 ? '…' : '')
+})
+$('hlAdd').addEventListener('click', () => {
+  const sel = window.getSelection()
+  const text = sel ? sel.toString().trim() : ''
+  if (!text) return
+  const page = Math.max(1, [...$('pages').querySelectorAll('.pageno')].filter((el) => el.getBoundingClientRect().top < 120).length)
+  notes.highlights.push({ slug: CURRENT.slug, page, text: text.slice(0, 500) })
+  saveNotes()
+  $('hlbar').style.display = 'none'
+  sel.removeAllRanges()
+  toast('已加入高亮，导出后可在电脑端查看')
+})
+
+// ---------- 打包打开 / 导出 ----------
+let ZIPBUF = null, ZIPFILES = null
+async function openPack(file) {
+  toast('正在读取数据包…')
+  ZIPBUF = await file.arrayBuffer()
+  ZIPFILES = await readZip(ZIPBUF)
+  const libRaw = sliceFile(ZIPBUF, ZIPFILES['library.json'])
+  LIB = JSON.parse(new TextDecoder().decode(libRaw))
+  $('exportBtn').style.display = ''
+  document.title = `CSPAPER Mobile · ${LIB.papers.length} 篇`
+  renderLibrary()
+  toast(`已载入 ${LIB.papers.length} 篇文献`)
+}
+$('openBtn').addEventListener('click', () => $('fileInput').click())
+$('openBtn2').addEventListener('click', () => $('fileInput').click())
+$('fileInput').addEventListener('change', async (e) => {
+  const f = e.target.files[0]
+  if (!f) return
+  try { await openPack(f) } catch (err) { toast(err.message || String(err)) }
+})
+$('exportBtn').addEventListener('click', () => {
+  const payload = { app: 'CSPAPER-Mobile', exportedAt: new Date().toISOString(), highlights: notes.highlights, statuses: Object.entries(notes.statuses).map(([slug, status]) => ({ slug, status })) }
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `CSPAPER-阅读数据-${new Date().toISOString().slice(0, 10)}.csnotes.json`
+  a.click()
+  toast('已导出，发回电脑端合并即可')
+})
+</script>
+</body>
+</html>

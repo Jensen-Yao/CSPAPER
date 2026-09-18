@@ -217,6 +217,8 @@ export interface ImportItem {
   path: string
   // 逐篇目标分类：'' = AI 自动推荐；'inbox' = 未分类；其余为分类名
   category?: string
+  // 已知元数据（浏览器插件/题录导入）：提供时跳过 AI 识别直接采用
+  meta?: { title: string; authors?: string; year?: number | null; venue?: string }
 }
 
 function normalizeItems(items: Array<string | ImportItem>): ImportItem[] {
@@ -237,6 +239,7 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
   fs.mkdirSync(libPapers, { recursive: true })
   // 每个文件的目标分类：该项路径（含文件夹展开出的文件）继承其选择；空串 = AI 自动
   const fileCat = new Map<string, string>()
+  const metaByFile = new Map<string, NonNullable<ImportItem['meta']>>()
   const files: string[] = []
   const seen = new Set<string>()
   for (const it of items) {
@@ -245,6 +248,7 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
       if (seen.has(key)) continue
       seen.add(key)
       fileCat.set(f, it.category ?? '')
+      if (it.meta) metaByFile.set(f, it.meta)
       files.push(f)
     }
   }
@@ -262,7 +266,15 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
     let classified = false
     let aiCat: string | null = null
     try {
-      if (s.apiKey) {
+      const meta = metaByFile.get(src)
+      if (meta?.title) {
+        // 外部已带元数据（浏览器插件保存/题录导入）：直接采用，不调 AI
+        title = meta.title
+        authors = meta.authors || ''
+        year = meta.year ?? year
+        venue = meta.venue || ''
+        paperSlug = slugify(`${year ?? ''}-${title}`)
+      } else if (s.apiKey) {
         // 预检过则直接命中缓存；没预检过（拖入即导、AI 中途断开重试）现场识别
         const info = await classifyCached(src)
         if (info) {

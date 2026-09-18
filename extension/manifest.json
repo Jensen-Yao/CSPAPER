@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "CSPAPER Connector",
+  "version": "1.0.0",
+  "description": "一键把 arXiv / 期刊页面 / PDF 链接保存到 CSPAPER 桌面端文献库（需运行 CSPAPER 桌面版）",
+  "permissions": ["contextMenus", "notifications", "storage", "activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1:24517/*"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "保存到 CSPAPER",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

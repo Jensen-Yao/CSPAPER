@@ -31,6 +31,32 @@ const api = {
     ipcRenderer.on('zotero:file', h)
     return () => ipcRenderer.removeListener('zotero:file', h)
   },
+  // 题录文件导入（RIS / EndNote / CNKI 导出）
+  recordsPickParse: () => ipcRenderer.invoke('records:pick-parse'),
+  recordsImport: (entries: unknown[], category: string) => ipcRenderer.invoke('records:import', entries, category),
+  onRecordsProgress: (cb: (p: { done: number; total: number; current: string }) => void) => {
+    const h = (_e: unknown, p: { done: number; total: number; current: string }) => cb(p)
+    ipcRenderer.on('records:progress', h)
+    return () => ipcRenderer.removeListener('records:progress', h)
+  },
+  onRecordsFile: (cb: (o: unknown) => void) => {
+    const h = (_e: unknown, o: unknown) => cb(o)
+    ipcRenderer.on('records:file', h)
+    return () => ipcRenderer.removeListener('records:file', h)
+  },
+  // 移动端数据互导
+  exportMobilePack: () => ipcRenderer.invoke('mobile:export-pack'),
+  mergeMobileNotes: () => ipcRenderer.invoke('mobile:merge-notes'),
+  onMobileProgress: (cb: (p: { done: number; total: number; current: string }) => void) => {
+    const h = (_e: unknown, p: { done: number; total: number; current: string }) => cb(p)
+    ipcRenderer.on('mobile:progress', h)
+    return () => ipcRenderer.removeListener('mobile:progress', h)
+  },
+  onAppNotice: (cb: (p: { title: string; detail: string }) => void) => {
+    const h = (_e: unknown, p: { title: string; detail: string }) => cb(p)
+    ipcRenderer.on('app:notice', h)
+    return () => ipcRenderer.removeListener('app:notice', h)
+  },
   onPreviewFile: (cb: (p: unknown) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p)
     ipcRenderer.on('preview:file', h)

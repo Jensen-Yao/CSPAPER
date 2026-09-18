@@ -102,6 +102,35 @@ export interface ZoteroOutcome {
   error?: string
 }
 
+// 题录文件（RIS/EndNote/CNKI 导出）解析出的条目
+export interface RecordEntry {
+  title: string
+  authors: string
+  year: number | null
+  venue: string
+  doi?: string
+  abstract?: string
+}
+
+export interface RecordOutcome {
+  title: string
+  ok: boolean
+  slug?: string
+  error?: string
+}
+
+export interface MobilePackResult {
+  papers: number
+  highlights: number
+  bytes: number
+}
+
+export interface MobileMergeResult {
+  mergedHighlights: number
+  mergedStatus: number
+  skipped: number
+}
+
 export interface SourceRef {
   n: number
   slug: string
@@ -141,6 +170,14 @@ declare global {
       zoteroImport: (items: Array<{ key: string; category?: string }>) => Promise<ZoteroOutcome[]>
       onZoteroProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       onZoteroFile: (cb: (o: ZoteroOutcome) => void) => () => void
+      recordsPickParse: () => Promise<{ file: string; entries: RecordEntry[] } | null>
+      recordsImport: (entries: RecordEntry[], category: string) => Promise<RecordOutcome[]>
+      onRecordsProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
+      onRecordsFile: (cb: (o: RecordOutcome) => void) => () => void
+      exportMobilePack: () => Promise<MobilePackResult | null>
+      mergeMobileNotes: () => Promise<MobileMergeResult | null>
+      onMobileProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
+      onAppNotice: (cb: (p: { title: string; detail: string }) => void) => () => void
       onPreviewFile: (cb: (p: ImportPreviewItem) => void) => () => void
       onPreviewProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string) => Promise<number>

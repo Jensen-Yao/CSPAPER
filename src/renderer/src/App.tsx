@@ -9,6 +9,7 @@ import ChatView from './ChatView'
 import RefViewer from './RefViewer'
 import ImportDialog from './ImportDialog'
 import ZoteroImportDialog from './ZoteroImportDialog'
+import RecordsDialog from './RecordsDialog'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
 
@@ -99,6 +100,7 @@ export default function App(): JSX.Element {
   const [cats, setCats] = useState<string[]>([])
   const [importFiles, setImportFiles] = useState<string[] | null>(null)
   const [zoteroOpen, setZoteroOpen] = useState(false)
+  const [recordsOpen, setRecordsOpen] = useState(false)
   const [importSeq, setImportSeq] = useState(0)
   const [importBusy, setImportBusy] = useState(false)
   const [chatReset, setChatReset] = useState(0)
@@ -214,12 +216,19 @@ export default function App(): JSX.Element {
         setImportSeq((s) => s + 1)
       }
     })
+    // 浏览器插件通过本地桥接服务保存文献成功后的提示
+    const offNotice = window.api.onAppNotice(({ title, detail }) => {
+      setImportInfo(`${title}：${detail}`)
+      setTimeout(() => setImportInfo(''), 6000)
+      void refreshPapers()
+    })
     const timer = setInterval(() => void window.api.indexStatus().then(setIndexedCount), 8000)
     return () => {
       off()
       offImp()
       offChg()
       offReq()
+      offNotice()
       clearInterval(timer)
     }
   }, [refreshPapers])
@@ -501,6 +510,9 @@ export default function App(): JSX.Element {
       items: [
         { label: '导入 PDF 文献…', hint: '拖入窗口也可以', action: addPapers },
         { label: '从 Zotero 导入…', hint: '迁移文献库', action: () => setZoteroOpen(true) },
+        { label: '导入题录文件…', hint: 'RIS / CNKI 导出', action: () => setRecordsOpen(true) },
+        { label: '导出移动端数据包…', hint: '手机端阅读', action: () => void window.api.exportMobilePack() },
+        { label: '从手机合并阅读数据…', action: () => void window.api.mergeMobileNotes() },
         { label: '选择文献库文件夹…', action: () => void pickLibraryNow() },
         { label: '重建全库索引', action: () => void window.api.rebuildIndex() },
         { sep: true, label: '' },
@@ -531,6 +543,8 @@ export default function App(): JSX.Element {
       name: '帮助',
       items: [
         { label: '命令面板…', hint: isMac ? '⌘K' : 'Ctrl+K', action: () => setPaletteOpen(true) },
+        { label: '引文助手（Word / WPS 插引文）', action: () => window.api.openExternal('http://127.0.0.1:24517/cite-ui') },
+        { label: '浏览器插件说明', action: () => window.api.openExternal('https://github.com/Jensen-Yao/CSPAPER#-浏览器插件') },
         { label: 'GitHub 仓库', action: () => window.api.openExternal('https://github.com/Jensen-Yao/CSPAPER') }
       ] as MenuItem[]
     }
@@ -739,6 +753,7 @@ export default function App(): JSX.Element {
         />
       )}
       {zoteroOpen && <ZoteroImportDialog initialCats={cats} onClose={() => setZoteroOpen(false)} onFinished={() => void refreshPapers()} />}
+      {recordsOpen && <RecordsDialog initialCats={cats} onClose={() => setRecordsOpen(false)} onFinished={() => void refreshPapers()} />}
       {paletteOpen && (
         <CommandPalette
           papers={papers}
