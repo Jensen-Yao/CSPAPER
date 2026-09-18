@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DeepHit, Paper } from './types'
 
 interface Props {
@@ -97,6 +97,7 @@ export default function LibraryPane({
   const searching = kw.length > 0
 
   // 深度搜索：标题命中之外，再搜正文与划词笔记，展示命中片段
+  // 注意：依赖只留关键词——papers 数组在后台索引时会频繁换新，挂进依赖会不断重置防抖
   const [deep, setDeep] = useState<DeepHit[]>([])
   useEffect(() => {
     if (!searching || kw.length < 2) {
@@ -106,11 +107,13 @@ export default function LibraryPane({
     const t = setTimeout(() => {
       void window.api
         .deepSearch(kw)
-        .then((hits) => setDeep(hits.filter((h) => !papers.some((p) => p.id === h.id && match(p)))))
+        .then(setDeep)
         .catch(() => setDeep([]))
     }, 350)
     return () => clearTimeout(t)
-  }, [kw, searching, papers])
+  }, [kw, searching])
+  const deepMap = useMemo(() => new Map(deep.map((h) => [h.id, h])), [deep])
+  const extraDeep = deep.filter((h) => !papers.some((p) => p.id === h.id && match(p)))
 
   // 拖拽移动文献：拖到分类头放下
   const [dragCat, setDragCat] = useState<string | null>(null)
@@ -214,7 +217,7 @@ export default function LibraryPane({
     </button>
   )
 
-  const paperRow = (p: Paper, extra?: React.ReactNode): JSX.Element => (
+  const paperRow = (p: Paper, extra?: React.ReactNode, snippet?: DeepHit): JSX.Element => (
     <div
       key={p.id}
       className={`paper-item ${p.id === activeId ? 'active' : ''}`}
@@ -241,6 +244,12 @@ export default function LibraryPane({
         <span>{p.year ?? '—'}</span>
         {extra ?? <span className="cat">{catLabel(p.category)}</span>}
       </div>
+      {snippet && (
+        <div className="deep-snip">
+          {snippet.from === 'note' ? '🖍' : '📄'} {snippet.page ? `p.${snippet.page} · ` : ''}
+          {snippet.snippet}
+        </div>
+      )}
     </div>
   )
 
@@ -349,11 +358,11 @@ export default function LibraryPane({
           {searching ? (
             <>
               <div className="lib-section">搜索结果 · {papers.filter(match).length}</div>
-              {papers.filter(match).map((p) => paperRow(p))}
-              {deep.length > 0 && (
+              {papers.filter(match).map((p) => paperRow(p, undefined, deepMap.get(p.id)))}
+              {extraDeep.length > 0 && (
                 <>
-                  <div className="lib-section">正文 / 笔记匹配 · {deep.length}</div>
-                  {deep.map((h) => {
+                  <div className="lib-section">正文 / 笔记匹配 · {extraDeep.length}</div>
+                  {extraDeep.map((h) => {
                     const p = papers.find((x) => x.id === h.id)
                     return (
                       <div

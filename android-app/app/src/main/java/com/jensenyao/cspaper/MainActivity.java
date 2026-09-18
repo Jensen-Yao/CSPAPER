@@ -26,8 +26,10 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
+        s.setAllowFileAccessFromFileURLs(true);
+        s.setAllowUniversalAccessFromFileURLs(true);
         s.setJavaScriptCanOpenWindowsAutomatically(true);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW); // file:// 页面加载 pdf.js CDN
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW); // file:// 页面加载本地资源
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
         web.setWebViewClient(new WebViewClient());

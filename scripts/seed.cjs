@@ -32,9 +32,10 @@ app.whenReady().then(() => {
 })
 
 function main() {
-  // 独占重建数据目录：避免被残留进程的旧库干扰
+  // 独占重建数据目录与示例库：避免残留进程旧库和测试导入的干扰
   fs.rmSync(DATA_DIR, { recursive: true, force: true })
   fs.mkdirSync(DATA_DIR, { recursive: true })
+  fs.rmSync(LIB, { recursive: true, force: true })
   const db = new Database(path.join(DATA_DIR, 'cspaper.db'))
   db.pragma('journal_mode = WAL')
   db.exec(`
@@ -149,6 +150,24 @@ function main() {
     ]),
     '韧性是指系统在遭受扰动后恢复其基本功能与性能的能力'
   )
+
+  // ---- 正文块（供深度搜索演示；真实使用中由索引器自动生成）----
+  const chunkTexts = [
+    '韧性是指系统在遭受扰动后恢复其基本功能与性能的能力。本文综述多状态网络可靠性与韧性评估方法，包括解析法与蒙特卡洛仿真法。',
+    '太空体系弹性评估需要考虑对抗环境下的降级、重构与恢复能力，评估框架可分为基于能力、基于结构与基于任务三类。',
+    '武器装备体系弹性技术包括冗余备份、快速重构与体系结构设计，弹性量化评估是体系工程的重要环节。',
+    '韧性网络信息体系的分层技术框架涵盖骨干网络、传输与应用层，各层韧性增强机制需要协同设计。',
+    'UAV swarm resilience can be evaluated with a network approach that models communication topology under communication limits.',
+    'PDOCTOR detects erroneous plans of LLM agents through constraint satisfaction-based scenario synthesis and logical entailment.'
+  ]
+  const insChunk = db.prepare('INSERT INTO chunks(paper_id,page,ord,text) VALUES(?,?,?,?)')
+  const insFts = db.prepare('INSERT INTO chunks_fts(paper_id,page,text) VALUES(?,?,?)')
+  rows.forEach((p, i) => {
+    const pid = ids[i]
+    const body = chunkTexts[i] || p.title
+    insChunk.run(pid, 1, 0, body)
+    insFts.run(pid, 1, body)
+  })
 
   // ---- 对比表（三篇综述横向对比，带页码出处）----
   const cmp = {

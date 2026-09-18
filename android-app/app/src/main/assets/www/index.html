@@ -137,17 +137,13 @@ async function readZip(buf) {
 }
 const sliceFile = (buf, f) => new Uint8Array(buf, f.start, f.size)
 
-// ---------- pdf.js 加载（CDN，失败给出提示） ----------
+// ---------- pdf.js（本地 vendor，离线可用） ----------
 let pdfjs = null
 async function ensurePdfjs() {
   if (pdfjs) return pdfjs
-  try {
-    pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs')
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs'
-    return pdfjs
-  } catch {
-    throw new Error('PDF 渲染引擎加载失败：请检查手机网络后重试')
-  }
+  pdfjs = await import('./vendor/pdf.min.js')
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.js', location.href).href
+  return pdfjs
 }
 
 // ---------- 文库视图 ----------
@@ -275,6 +271,17 @@ $('fileInput').addEventListener('change', async (e) => {
   if (!f) return
   try { await openPack(f) } catch (err) { toast(err.message || String(err)) }
 })
+// URL 直读数据包：?pack=sample.cspack（同目录或绝对地址）
+const packParam = new URLSearchParams(location.search).get('pack')
+if (packParam) {
+  void (async () => {
+    try {
+      const resp = await fetch(packParam)
+      if (!resp.ok) throw new Error('HTTP ' + resp.status)
+      await openPack(new File([await resp.arrayBuffer()], packParam.split('/').pop() || 'pack.cspack'))
+    } catch (e) { toast('读取数据包失败：' + (e.message || e)) }
+  })()
+}
 $('exportBtn').addEventListener('click', () => {
   const payload = { app: 'CSPAPER-Mobile', exportedAt: new Date().toISOString(), highlights: notes.highlights, statuses: Object.entries(notes.statuses).map(([slug, status]) => ({ slug, status })) }
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
