@@ -256,6 +256,10 @@ function registerIpc(): void {
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, win))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
   ipcMain.handle('graph:data', () => knowledgeGraph())
+  ipcMain.handle('data:open', async () => {
+    const r = await shell.openPath(app.getPath('userData'))
+    return r === '' ? true : String(r)
+  })
   ipcMain.handle('app:status', () => ({
     bridge: bridgeStatus(),
     papers: (dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers').get() as { n: number }).n,
@@ -385,11 +389,11 @@ function registerIpc(): void {
   // 划词高亮持久化
   ipcMain.handle(
     'highlights:add',
-    (_e, paperId: number, page: number, rects: Array<{ x: number; y: number; w: number; h: number }>, text: string) => {
+    (_e, paperId: number, page: number, rects: Array<{ x: number; y: number; w: number; h: number }>, text: string, color?: string) => {
       const r = dbmod
         .getDb()
-        .prepare('INSERT INTO highlights(paper_id,page,rects,text) VALUES(?,?,?,?)')
-        .run(paperId, page, JSON.stringify(rects), text.slice(0, 500))
+        .prepare('INSERT INTO highlights(paper_id,page,rects,text,color) VALUES(?,?,?,?,?)')
+        .run(paperId, page, JSON.stringify(rects), text.slice(0, 500), color || 'yellow')
       return Number(r.lastInsertRowid)
     }
   )

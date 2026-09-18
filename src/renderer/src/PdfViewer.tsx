@@ -7,9 +7,15 @@ import { locateSnippet, locateByKeywords, flashHit } from './locate'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
+const HL_BG: Record<string, string> = {
+  yellow: 'rgba(255, 210, 0, 0.45)',
+  green: 'rgba(70, 200, 130, 0.35)',
+  red: 'rgba(235, 80, 80, 0.30)'
+}
+
 export interface ViewerHandle {
   scrollToPage: (n: number) => void
-  highlightSelection: () => Promise<void>
+  highlightSelection: (color?: string) => Promise<void>
   zoomBy: (delta: number) => void
   zoomReset: () => void
   removeHighlightLocal: (hid: number) => void
@@ -186,7 +192,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
   )
 
   // 把当前选区保存为持久化高亮
-  const highlightSelection = useCallback(async () => {
+  const highlightSelection = useCallback(async (color = 'yellow') => {
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed || !active) return
     const range = sel.getRangeAt(0)
@@ -214,8 +220,8 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
       }))
     if (rects.length === 0) return
     const text = sel.toString()
-    const id = await window.api.addHighlight(active.paper.id, pageNum, rects, text)
-    setHls((hs) => [...hs, { id, page: pageNum, rects, text }])
+    const id = await window.api.addHighlight(active.paper.id, pageNum, rects, text, color)
+    setHls((hs) => [...hs, { id, page: pageNum, rects, text, color }])
     sel.removeAllRanges()
   }, [active])
 
@@ -667,7 +673,13 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageTe
               <div
                 key={i}
                 className="hl"
-                style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}
+                style={{
+                  left: `${r.x * 100}%`,
+                  top: `${r.y * 100}%`,
+                  width: `${r.w * 100}%`,
+                  height: `${r.h * 100}%`,
+                  background: HL_BG[h.color ?? 'yellow']
+                }}
               />
             ))}
           </div>

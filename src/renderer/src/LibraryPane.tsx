@@ -8,6 +8,7 @@ interface Props {
   q: string
   onSetQ: (q: string) => void
   onOpen: (p: Paper) => void
+  onOpenHit?: (p: Paper, hit: DeepHit) => void
   onCycleStatus: (p: Paper) => void
   onAddPapers: () => void
   onNewChat: () => void
@@ -48,6 +49,7 @@ export default function LibraryPane({
   q,
   onSetQ,
   onOpen,
+  onOpenHit,
   onCycleStatus,
   onAddPapers,
   onNewChat,

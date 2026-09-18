@@ -289,9 +289,9 @@ export default function App(): JSX.Element {
   const onSelect = useCallback((text: string, x: number, y: number) => {
     setFloatBar({ x, y, text })
   }, [])
-  const doHighlight = useCallback(() => {
+  const doHighlight = useCallback((color?: string) => {
     setFloatBar(null)
-    void viewerRef.current?.highlightSelection()
+    void viewerRef.current?.highlightSelection(color)
   }, [])
   const doTranslate = useCallback((text: string) => {
     setFloatBar(null)
@@ -621,6 +621,7 @@ export default function App(): JSX.Element {
               q={q}
               onSetQ={setQ}
               onOpen={openPaperFromTree}
+              onOpenHit={(p, h) => jumpTo(p.slug, h.page ?? 1, h.snippet)}
               onCycleStatus={cycleStatus}
               onAddPapers={addPapers}
               onNewChat={newChat}
@@ -769,7 +770,11 @@ export default function App(): JSX.Element {
           style={{ left: Math.min(floatBar.x, window.innerWidth - 210), top: Math.min(floatBar.y + 8, window.innerHeight - 50) }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <button onClick={doHighlight}>高亮</button>
+          <span className="fbdots">
+            <button className="fbdot yellow" title="黄色高亮" onClick={() => doHighlight('yellow')} />
+            <button className="fbdot green" title="绿色高亮" onClick={() => doHighlight('green')} />
+            <button className="fbdot red" title="红色高亮" onClick={() => doHighlight('red')} />
+          </span>
           <button onClick={() => doTranslate(floatBar.text)}>翻译</button>
           <button onClick={() => doExplain(floatBar.text)}>解释</button>
         </div>

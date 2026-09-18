@@ -1253,3 +1253,11 @@ html[data-theme='dark'] .add-btn { background: linear-gradient(135deg, #e0557c, 
 .profile-add { border-radius: 10px; }
 .pv-field { min-width: 200px; }
 .pv-row select { border-radius: 8px; }
+
+/* ---- 浮条多色高亮 ---- */
+.fbdots { display: inline-flex; gap: 4px; align-items: center; margin: 0 2px; }
+.fbdot { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.25); cursor: pointer; }
+.fbdot.yellow { background: #ffd200; }
+.fbdot.green { background: #46c882; }
+.fbdot.red { background: #eb5050; }
+.fbdot:hover { transform: scale(1.15); }

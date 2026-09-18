@@ -52,6 +52,7 @@ export interface Highlight {
   page: number
   rects: HighlightRect[]
   text: string
+  color?: string
 }
 
 export interface ImportOutcome {
@@ -238,9 +239,10 @@ declare global {
       paperDetail: (id: number) => Promise<PaperDetail | null>
       graphData: () => Promise<{ nodes: Array<{ id: number; title: string; category: string; year: number | null; degree: number }>; edges: Array<{ a: number; b: number; w: number }> }>
       appStatus: () => Promise<{ bridge: { running: boolean; port: number; version: string }; papers: number; categories: number; version: string; dataDir: string }>
+      dataOpen: () => Promise<boolean | string>
       onPreviewFile: (cb: (p: ImportPreviewItem) => void) => () => void
       onPreviewProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
-      addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string) => Promise<number>
+      addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string, color?: string) => Promise<number>
       listHighlights: (paperId: number) => Promise<Highlight[]>
       deleteHighlight: (id: number) => Promise<boolean>
       paperMenu: (id: number, x: number, y: number) => void

@@ -70,6 +70,7 @@ const api = {
   paperDetail: (id: number) => ipcRenderer.invoke('papers:detail', id),
   graphData: () => ipcRenderer.invoke('graph:data'),
   appStatus: () => ipcRenderer.invoke('app:status'),
+  dataOpen: () => ipcRenderer.invoke('data:open'),
   onPreviewFile: (cb: (p: unknown) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p)
     ipcRenderer.on('preview:file', h)
@@ -80,8 +81,8 @@ const api = {
     ipcRenderer.on('preview:progress', h)
     return () => ipcRenderer.removeListener('preview:progress', h)
   },
-  addHighlight: (paperId: number, page: number, rects: Array<{ x: number; y: number; w: number; h: number }>, text: string) =>
-    ipcRenderer.invoke('highlights:add', paperId, page, rects, text),
+  addHighlight: (paperId: number, page: number, rects: Array<{ x: number; y: number; w: number; h: number }>, text: string, color?: string) =>
+    ipcRenderer.invoke('highlights:add', paperId, page, rects, text, color),
   listHighlights: (paperId: number) => ipcRenderer.invoke('highlights:list', paperId),
   deleteHighlight: (id: number) => ipcRenderer.invoke('highlights:delete', id),
   paperMenu: (id: number, x: number, y: number) => ipcRenderer.send('papers:menu', id, x, y),

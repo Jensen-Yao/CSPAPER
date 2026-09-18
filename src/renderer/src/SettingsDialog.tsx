@@ -451,6 +451,11 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   {dataDir || '…'}
                   <br />
                   设置、数据库与索引都保存在这里。
+                  <div style={{ marginTop: 8 }}>
+                    <button className="btn ghost" onClick={() => void window.api.dataOpen()}>
+                      打开数据目录
+                    </button>
+                  </div>
                 </div>
                 <div className="section-title" style={{ marginTop: 24 }}>关于</div>
                 <div className="hint" style={{ marginTop: 0 }}>

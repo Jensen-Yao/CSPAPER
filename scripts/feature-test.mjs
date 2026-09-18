@@ -81,6 +81,16 @@ try {
     await page.waitForFunction(() => (document.querySelector('.dst-text')?.textContent?.length ?? 0) > 4, null, { timeout: 40000 })
   })
 
+  await step('T27 多色高亮（红）落库渲染', async () => {
+    const box = await page.locator('canvas').first().boundingBox()
+    const x = box.x + box.width * 0.25, y = box.y + box.height * 0.55
+    await page.mouse.move(x, y); await page.mouse.down()
+    for (let i = 1; i <= 8; i++) await page.mouse.move(x + (box.width * 0.35 * i) / 8, y + i * 3)
+    await page.mouse.up()
+    await page.locator('.fbdot.red').click()
+    await page.waitForFunction(() => [...document.querySelectorAll('.hl')].some((e) => (e.style.background || '').includes('235, 80, 80')), null, { timeout: 10000 })
+  })
+
   await step('T6 缩略图导航', async () => {
     await page.locator('button[title="页面缩略图"]').click()
     await page.waitForFunction(() => document.querySelectorAll('.pdf-thumb').length >= 4, null, { timeout: 20000 })
