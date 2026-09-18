@@ -118,6 +118,7 @@ export default function App(): JSX.Element {
   const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview'>('read')
   const [overviewTab, setOverviewTab] = useState<'table' | 'graph'>('table')
   const [pageNo, setPageNo] = useState(1)
+  const [appStatus, setAppStatus] = useState<Awaited<ReturnType<typeof window.api.appStatus>> | null>(null)
   const isMac = /Mac/.test(navigator.platform)
 
   // 命令面板：Ctrl/Cmd + K 全局唤起
@@ -227,7 +228,11 @@ export default function App(): JSX.Element {
       setTimeout(() => setImportInfo(''), 6000)
       void refreshPapers()
     })
-    const timer = setInterval(() => void window.api.indexStatus().then(setIndexedCount), 8000)
+    const timer = setInterval(() => {
+      void window.api.indexStatus().then(setIndexedCount)
+      void window.api.appStatus().then(setAppStatus).catch(() => setAppStatus(null))
+    }, 8000)
+    void window.api.appStatus().then(setAppStatus).catch(() => {})
     return () => {
       off()
       offImp()
@@ -735,8 +740,16 @@ export default function App(): JSX.Element {
       </div>
 
       <div className="statusbar">
-        <span className="ellipsis">{statusLeft}</span>
+        <span className="chip">{appStatus ? `${appStatus.papers} 篇 · ${appStatus.categories} 类` : ''}</span>
+        <span className="ellipsis" style={{ maxWidth: 420 }}>{statusLeft}</span>
         <span style={{ flex: 1 }} />
+        <span
+          className={`chip bridge-chip ${appStatus?.bridge.running ? 'on' : 'off'}`}
+          title={appStatus?.bridge.running ? `本地服务运行中（端口 ${appStatus.bridge.port}）——浏览器/Word 插件可连接` : '本地服务未运行'}
+          onClick={() => void window.api.appStatus()}
+        >
+          {appStatus?.bridge.running ? '● 服务就绪' : '○ 服务离线'}
+        </span>
         <span className="chip" title={llmChip} onClick={() => void refreshLlmChip()}>
           {llmChip || `${settings?.model ?? ''}${settings ? ` · ${PROVIDER_LABEL[settings.provider] ?? ''}` : ''}`}
         </span>

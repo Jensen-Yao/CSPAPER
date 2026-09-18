@@ -38,6 +38,8 @@ function main() {
   fs.rmSync(LIB, { recursive: true, force: true })
   const db = new Database(path.join(DATA_DIR, 'cspaper.db'))
   db.pragma('journal_mode = WAL')
+  // pvec 用 384 维零向量占位 + papers_fts/chunk_v 齐备 → indexNeedsRebuild 为假，启动不再触发全量重建
+  const DUMMY_PVEC = Buffer.from(new Float32Array(384).buffer)
   db.exec(`
     CREATE TABLE IF NOT EXISTS papers(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,16 +132,21 @@ function main() {
   db.prepare("INSERT INTO meta(key,value) VALUES('settings',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
     .run(JSON.stringify(settings))
   db.prepare("INSERT INTO meta(key,value) VALUES('extra_cats','[]') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run([])
+  db.prepare("INSERT INTO meta(key,value) VALUES('chunk_v','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run([])
 
   // ---- 文献行（含小结；路径与磁盘一致，应用扫描时按 path upsert 保留 summary）----
-  const ins = db.prepare(`INSERT INTO papers(slug,title,authors,year,venue,category,path,status,summary,opened_at,indexed,added_at)
+  const insPvec = db.prepare("INSERT INTO papers_fts(rowid,title,authors,venue,slug) VALUES(?,?,?,?,?)")
+  const ins = db.prepare(`INSERT INTO papers(slug,title,authors,year,venue,category,path,status,summary,pvec,indexed,added_at)
     VALUES(?,?,?,?,?,?,?,?,?,?,1,datetime('now','-2 days','-'||?||' minutes'))`)
   const ids = []
   rows.forEach((p, i) => {
     const dir = path.join(LIB, CATEGORY, p.slug)
-    const r = ins.run(p.slug, p.title, p.author, null, '', CATEGORY, path.join(dir, 'paper.pdf'), i === 0 ? 'reading' : i === 1 ? 'read' : 'unread', p.summary, i === 0 ? 1 : null, i)
+    const r = ins.run(p.slug, p.title, p.author, null, '', CATEGORY, path.join(dir, 'paper.pdf'), i === 0 ? 'reading' : i === 1 ? 'read' : 'unread', p.summary, DUMMY_PVEC, i)
     ids.push(Number(r.lastInsertRowid))
   })
+  for (let i = 0; i < rows.length; i++) {
+    insPvec.run(ids[i], rows[i].title, rows[i].author, rows[i].venue ?? '', rows[i].slug)
+  }
 
   // ---- 划词高亮（第一篇第 1 页）----
   db.prepare('INSERT INTO highlights(paper_id,page,rects,text) VALUES(?,?,?,?)').run(

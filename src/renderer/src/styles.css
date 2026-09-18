@@ -1097,3 +1097,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .pd-panel.embedded { width: auto; border-left: none; border: 1px solid var(--line); border-radius: 12px; }
 .pd-embed { padding: 0; }
 .side-tab { padding: 7px 0; flex: 1; text-align: center; }
+
+/* ============ v0.5 状态栏精修 ============ */
+.bridge-chip.on { color: var(--ok); }
+.bridge-chip.off { color: var(--text-dim); }
+.statusbar .chip { transition: color var(--speed) var(--ease); }

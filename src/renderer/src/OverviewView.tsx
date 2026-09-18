@@ -132,14 +132,17 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
   )
 }
 
-// ---------- 知识网络：力导向图（零依赖 canvas 实现） ----------
+
+// ---------- 知识网络：基于文本相似度的力导向图（边 = 语义关联强度，kNN 稀疏化） ----------
 interface GNode {
   id: number
+  title: string
+  category: string
+  degree: number
   x: number
   y: number
   vx: number
   vy: number
-  paper: Paper
   color: string
 }
 interface GEdge {
@@ -151,169 +154,236 @@ interface GEdge {
 function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible: boolean; onOpen: (p: Paper) => void }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
-  const [selected, setSelected] = useState<Paper | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
+  const [ready, setReady] = useState(false)
   const nodesRef = useRef<GNode[]>([])
-  const rafRef = useRef(0)
-
-  const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
-  const catColor = (c: string): string => PALETTE[Math.max(0, cats.indexOf(c)) % PALETTE.length]
-
-  // 构建节点与边：同分类 + 共同作者
-  const build = (): void => {
-    const w = wrapRef.current?.clientWidth ?? 900
-    const h = wrapRef.current?.clientHeight ?? 600
-    nodesRef.current = papers.map((p, i) => ({
-      id: p.id,
-      x: w / 2 + Math.cos((i / Math.max(1, papers.length)) * Math.PI * 2) * w * 0.28,
-      y: h / 2 + Math.sin((i / Math.max(1, papers.length)) * Math.PI * 2) * h * 0.28,
-      vx: 0,
-      vy: 0,
-      paper: p,
-      color: catColor(p.category)
-    }))
-    const byId = new Map(nodesRef.current.map((n) => [n.id, n]))
-    const edges: GEdge[] = []
-    const authorsOf = (p: Paper): Set<string> => new Set(p.authors.split(/[,;，；]/).map((s) => s.trim()).filter(Boolean))
-    for (let i = 0; i < papers.length; i++) {
-      for (let j = i + 1; j < papers.length; j++) {
-        let wgt = 0
-        if (papers[i].category === papers[j].category) wgt += 1
-        const ai = authorsOf(papers[i])
-        const aj = authorsOf(papers[j])
-        if ([...ai].some((a) => aj.has(a) && a)) wgt += 2
-        if (wgt > 0 && byId.has(papers[i].id) && byId.has(papers[j].id)) edges.push({ a: papers[i].id, b: papers[j].id, w: wgt })
-      }
-    }
-    edgesRef.current = edges
-    dimsRef.current = { w, h }
-  }
-
   const edgesRef = useRef<GEdge[]>([])
   const dimsRef = useRef<{ w: number; h: number }>({ w: 900, h: 600 })
-  const selRef = useRef<Paper | null>(null)
-  const hoverRef = useRef<GNode | null>(null)
-
-  useEffect(() => {
-    build()
-    setSelected(null)
-    selRef.current = null
-  }, [papers])
+  const rafRef = useRef(0)
+  const dragRef = useRef<GNode | null>(null)
+  const hoverRef = useRef<number | null>(null)
+  const selRef = useRef<number | null>(null)
+  const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers])
 
   useEffect(() => {
     if (!visible) return
+    void window.api
+      .graphData()
+      .then((g) => {
+        const cats = [...new Set(g.nodes.map((n) => n.category))]
+        const palette = ['#98122e', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
+        const w = wrapRef.current?.clientWidth || 900
+        const h = wrapRef.current?.clientHeight || 600
+        nodesRef.current = g.nodes.map((n, i) => ({
+          ...n,
+          color: palette[Math.max(0, cats.indexOf(n.category)) % palette.length],
+          x: w / 2 + Math.cos((i / Math.max(1, g.nodes.length)) * Math.PI * 2) * w * 0.3,
+          y: h / 2 + Math.sin((i / Math.max(1, g.nodes.length)) * Math.PI * 2) * h * 0.3,
+          vx: 0,
+          vy: 0
+        }))
+        edgesRef.current = g.edges
+        dimsRef.current = { w, h }
+        setReady(true)
+      })
+      .catch(() => {})
+  }, [visible, papers])
+
+  useEffect(() => {
+    if (!visible || !ready) return
     let ticks = 0
-    const step = (): void => {
-      rafRef.current = requestAnimationFrame(step)
-      const nodes = nodesRef.current
-      const edges = edgesRef.current
-      const { w, h } = dimsRef.current
-      if (nodes.length === 0) return
-      // 斥力
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const a = nodes[i], b = nodes[j]
-          let dx = b.x - a.x, dy = b.y - a.y
-          let d2 = dx * dx + dy * dy
-          if (d2 < 1) { dx = 1; dy = 1; d2 = 2 }
-          const f = 2600 / d2
-          const d = Math.sqrt(d2)
-          a.vx -= (dx / d) * f; a.vy -= (dy / d) * f
-          b.vx += (dx / d) * f; b.vy += (dy / d) * f
-        }
-      }
-      // 弹簧
-      for (const e of edges) {
-        const a = nodes.find((n) => n.id === e.a), b = nodes.find((n) => n.id === e.b)
-        if (!a || !b) continue
-        const dx = b.x - a.x, dy = b.y - a.y
-        const d = Math.sqrt(dx * dx + dy * dy) || 1
-        const target = 220 / e.w
-        const f = (d - target) * 0.012 * e.w
-        a.vx += (dx / d) * f; a.vy += (dy / d) * f
-        b.vx -= (dx / d) * f; b.vy -= (dy / d) * f
-      }
-      // 向心 + 阻尼 + 积分
-      for (const n of nodes) {
-        n.vx += (w / 2 - n.x) * 0.004
-        n.vy += (h / 2 - n.y) * 0.004
-        n.vx *= 0.86; n.vy *= 0.86
-        n.x = Math.max(50, Math.min(w - 50, n.x + Math.max(-8, Math.min(8, n.vx))))
-        n.y = Math.max(40, Math.min(h - 50, n.y + Math.max(-8, Math.min(8, n.vy))))
-      }
-      ticks++
-      if (ticks > 1200) return // 收敛后停帧，仍可交互重绘
-      draw()
-    }
     const draw = (): void => {
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext('2d')!
       const dpr = window.devicePixelRatio || 1
       const { w, h } = dimsRef.current
-      canvas.width = w * dpr; canvas.height = h * dpr
-      canvas.style.width = `${w}px`; canvas.style.height = `${h}px`
+      canvas.width = w * dpr
+      canvas.height = h * dpr
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
       const nodes = nodesRef.current
       const byId = new Map(nodes.map((n) => [n.id, n]))
+      const focus = hoverRef.current ?? selRef.current
+      const neighbors = new Set<number>()
+      if (focus != null) {
+        neighbors.add(focus)
+        for (const e of edgesRef.current) {
+          if (e.a === focus) neighbors.add(e.b)
+          if (e.b === focus) neighbors.add(e.a)
+        }
+      }
       for (const e of edgesRef.current) {
-        const a = byId.get(e.a), b = byId.get(e.b)
+        const a = byId.get(e.a)
+        const b = byId.get(e.b)
         if (!a || !b) continue
-        ctx.strokeStyle = 'rgba(120,120,135,0.3)'
-        ctx.lineWidth = 1 + e.w * 0.6
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+        const dim = focus != null && !(e.a === focus || e.b === focus)
+        ctx.strokeStyle = dim ? 'rgba(130,125,140,0.08)' : `rgba(120,120,150,${0.22 + e.w * 0.6})`
+        ctx.lineWidth = 0.8 + e.w * 2.4
+        ctx.beginPath()
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(b.x, b.y)
+        ctx.stroke()
       }
       for (const n of nodes) {
-        const r = selRef.current?.id === n.id ? 13 : hoverRef.current?.id === n.id ? 11 : 8
+        const isSel = selRef.current === n.id
+        const dim = focus != null && !neighbors.has(n.id)
+        ctx.globalAlpha = dim ? 0.2 : 1
+        const r = 7 + Math.min(6, n.degree * 1.6)
         ctx.beginPath()
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
         ctx.fillStyle = n.color
         ctx.fill()
-        if (selRef.current?.id === n.id) {
-          ctx.strokeStyle = n.color; ctx.lineWidth = 2
-          ctx.beginPath(); ctx.arc(n.x, n.y, r + 5, 0, Math.PI * 2); ctx.stroke()
+        if (isSel) {
+          ctx.strokeStyle = n.color
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(n.x, n.y, r + 5, 0, Math.PI * 2)
+          ctx.stroke()
         }
-        if (nodes.length <= 24 || hoverRef.current?.id === n.id || selRef.current?.id === n.id) {
-          ctx.fillStyle = 'rgba(35,32,38,0.82)'
+        ctx.globalAlpha = 1
+        if (nodes.length <= 30 || hoverRef.current === n.id || isSel) {
+          ctx.fillStyle = dim ? 'rgba(140,135,150,0.45)' : 'rgba(35,32,38,0.85)'
           ctx.font = '11px "Microsoft YaHei", sans-serif'
-          const label = n.paper.title.slice(0, 22) + (n.paper.title.length > 22 ? '…' : '')
-          ctx.fillText(label, n.x + r + 5, n.y + 4)
+          ctx.fillText(n.title.slice(0, 24) + (n.title.length > 24 ? '…' : ''), n.x + r + 5, n.y + 4)
         }
       }
     }
+    const step = (): void => {
+      rafRef.current = requestAnimationFrame(step)
+      const nodes = nodesRef.current
+      const { w, h } = dimsRef.current
+      if (nodes.length === 0) return
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i]
+          const b = nodes[j]
+          let dx = b.x - a.x
+          let dy = b.y - a.y
+          let d2 = dx * dx + dy * dy
+          if (d2 < 1) {
+            dx = 1
+            dy = 1
+            d2 = 2
+          }
+          const f = 2800 / d2
+          const d = Math.sqrt(d2)
+          a.vx -= (dx / d) * f
+          a.vy -= (dy / d) * f
+          b.vx += (dx / d) * f
+          b.vy += (dy / d) * f
+        }
+      }
+      for (const e of edgesRef.current) {
+        const a = nodes.find((n) => n.id === e.a)
+        const b = nodes.find((n) => n.id === e.b)
+        if (!a || !b) continue
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const d = Math.sqrt(dx * dx + dy * dy) || 1
+        const target = 230 / e.w
+        const f = (d - target) * 0.012 * e.w
+        a.vx += (dx / d) * f
+        a.vy += (dy / d) * f
+        b.vx -= (dx / d) * f
+        b.vy -= (dy / d) * f
+      }
+      for (const n of nodes) {
+        n.vx += (w / 2 - n.x) * 0.004
+        n.vy += (h / 2 - n.y) * 0.004
+        n.vx *= 0.86
+        n.vy *= 0.86
+        if (dragRef.current && dragRef.current.id === n.id) {
+          n.vx = 0
+          n.vy = 0
+          continue
+        }
+        n.x = Math.max(50, Math.min(w - 50, n.x + Math.max(-8, Math.min(8, n.vx))))
+        n.y = Math.max(40, Math.min(h - 50, n.y + Math.max(-8, Math.min(8, n.vy))))
+      }
+      ticks++
+      if (ticks > 1500) return
+      draw()
+    }
     step()
     const onResize = (): void => {
-      build()
-      draw()
+      dimsRef.current = { w: wrapRef.current?.clientWidth || 900, h: wrapRef.current?.clientHeight || 600 }
     }
     window.addEventListener('resize', onResize)
     return () => {
       cancelAnimationFrame(rafRef.current)
       window.removeEventListener('resize', onResize)
     }
-  }, [visible, papers])
+  }, [visible, ready])
 
-  const pick = (ev: React.MouseEvent): void => {
+  const nodeAt = (mx: number, my: number): GNode | null => {
+    let hit: GNode | null = null
+    for (const n of nodesRef.current) {
+      if ((n.x - mx) ** 2 + (n.y - my) ** 2 < 16 ** 2) hit = n
+    }
+    return hit
+  }
+  const onHover = (ev: React.MouseEvent): void => {
+    if (dragRef.current) return
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
-    const mx = ev.clientX - rect.left
-    const my = ev.clientY - rect.top
-    let hit: GNode | null = null
-    for (const n of nodesRef.current) {
-      if ((n.x - mx) ** 2 + (n.y - my) ** 2 < 15 ** 2) hit = n
-    }
-    hoverRef.current = hit
+    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    hoverRef.current = hit?.id ?? null
+    canvas.style.cursor = hit ? 'pointer' : 'default'
+  }
+  const onDrag = (ev: React.MouseEvent): void => {
+    const hit = dragRef.current
+    if (!hit || !canvasRef.current) return
+    const rect = canvasRef.current.getBoundingClientRect()
+    hit.x = Math.max(40, Math.min(dimsRef.current.w - 40, ev.clientX - rect.left))
+    hit.y = Math.max(30, Math.min(dimsRef.current.h - 30, ev.clientY - rect.top))
+  }
+  const onUp = (): void => {
+    dragRef.current = null
+  }
+  const onDown = (ev: React.MouseEvent): void => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    if (hit) dragRef.current = hit
+  }
+  const onSelect = (ev: React.MouseEvent): void => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
     if (hit) {
-      setSelected(hit.paper)
-      selRef.current = hit.paper
+      selRef.current = hit.id
+      setSelected(hit.id)
+    } else {
+      selRef.current = null
+      setSelected(null)
     }
   }
+
+  const selPaper = selected != null ? paperById.get(selected) ?? null : null
+  const similar = useMemo(() => {
+    if (selected == null) return []
+    return edgesRef.current
+      .filter((e) => e.a === selected || e.b === selected)
+      .map((e) => ({ id: e.a === selected ? e.b : e.a, w: e.w }))
+      .sort((x, y) => y.w - x.w)
+      .map((s) => ({ ...s, paper: paperById.get(s.id) }))
+      .filter((s) => s.paper)
+  }, [selected, papers, paperById])
+
+  const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
+  const palette = ['#98122e', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
+  const catColor = (c: string): string => palette[Math.max(0, cats.indexOf(c)) % palette.length]
 
   return (
     <div className="ov-graph-wrap">
       <div className="ov-graph-head">
-        <span className="hint">圆点=文献（颜色=分类），连线=同类 / 同作者关联。点击节点查看详情。</span>
+        <span className="hint">圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点。</span>
         <span className="ov-legend">
           {cats.map((c) => (
             <span key={c} className="ov-leg">
@@ -324,14 +394,41 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
         </span>
       </div>
       <div className="ov-graph" ref={wrapRef}>
-        <canvas ref={canvasRef} onClick={pick} onMouseMove={pick} />
-        {selected && (
+        <canvas
+          ref={canvasRef}
+          onMouseMove={(e) => {
+            onHover(e)
+            onDrag(e)
+          }}
+          onMouseDown={onDown}
+          onMouseUp={onSelect}
+        />
+        {selPaper && (
           <div className="ov-sel">
-            <div className="ov-sel-title">{selected.title}</div>
+            <div className="ov-sel-title">{selPaper.title}</div>
             <div className="ov-dim">
-              {selected.authors || '—'} · {selected.venue || catLabel(selected.category)} {selected.year ? `· ${selected.year}` : ''}
+              {selPaper.authors || '—'} · {selPaper.venue || catLabel(selPaper.category)} {selPaper.year ? `· ${selPaper.year}` : ''}
             </div>
-            <button className="cmp-mini" onClick={() => onOpen(selected)}>
+            {similar.length > 0 && (
+              <div className="ov-sim">
+                <div className="ov-sim-title">相似文献</div>
+                {similar.map((s) => (
+                  <div
+                    key={s.id}
+                    className="ov-sim-row"
+                    title={`${s.paper!.title}（关联度 ${Math.round(s.w * 100)}%）`}
+                    onClick={() => {
+                      selRef.current = s.id
+                      setSelected(s.id)
+                    }}
+                  >
+                    <span className="ellipsis">{s.paper!.title}</span>
+                    <span className="ov-sim-w">{Math.round(s.w * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="cmp-mini" onClick={() => onOpen(selPaper)}>
               打开阅读
             </button>
           </div>

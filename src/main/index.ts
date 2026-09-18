@@ -11,7 +11,8 @@ import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroI
 import { startBridge } from './bridge'
 import { parseRecords, importRecords, type RecordEntry } from './records'
 import { exportMobilePack, mergeMobileNotes } from './mobilepack'
-import { listCompare, createCompare, deleteCompare, saveCompare, generateCells, summarizePaper, deepSearch, exportCompare, paperDetail, type CompareData } from './insight'
+import { listCompare, createCompare, deleteCompare, saveCompare, generateCells, summarizePaper, deepSearch, exportCompare, paperDetail, knowledgeGraph, type CompareData } from './insight'
+import { bridgeStatus } from './bridge'
 
 let win: BrowserWindow | null = null
 
@@ -254,6 +255,13 @@ function registerIpc(): void {
   ipcMain.handle('compare:generate', (_e, paperId: number, dimensions: string[]) => generateCells(paperId, dimensions, send))
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, win))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
+  ipcMain.handle('graph:data', () => knowledgeGraph())
+  ipcMain.handle('app:status', () => ({
+    bridge: bridgeStatus(),
+    papers: (dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers').get() as { n: number }).n,
+    categories: (dbmod.getDb().prepare("SELECT COUNT(DISTINCT category) AS n FROM papers").get() as { n: number }).n,
+    version: app.getVersion()
+  }))
 
   // 手动归类：右键菜单 / 拖拽都走这里（移动文件夹 + 原地改写 DB，保留行身份）
   ipcMain.handle('papers:move', (_e, id: number, category: string) => {

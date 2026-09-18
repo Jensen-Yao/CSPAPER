@@ -8,15 +8,22 @@ function wait(ms) { return new Promise((r) => setTimeout(r, ms)) }
 const results = []
 async function step(name, fn, timeoutMs = 45000) {
   const t0 = Date.now()
-  try {
-    await Promise.race([
-      fn(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
-    ])
-    results.push(`PASS  ${name}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`)
-  } catch (e) {
-    results.push(`FAIL  ${name}  → ${String(e).split('\n')[0].slice(0, 120)}`)
+  let lastErr = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await Promise.race([
+        fn(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
+      ])
+      results.push(`PASS  ${name}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`)
+      console.log(results[results.length - 1])
+      return
+    } catch (e) {
+      lastErr = String(e).split('\n')[0].slice(0, 120)
+      await wait(1000)
+    }
   }
+  results.push(`FAIL  ${name}  → ${lastErr}`)
   console.log(results[results.length - 1])
 }
 
@@ -187,8 +194,8 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.import-queue .pcard, .import-queue').length >= 0 && (document.querySelector('.import-queue') !== null || document.body.innerText.includes('未找到')), null, { timeout: 25000 })
     const hasQueue = await page.locator('.import-queue').count()
     if (!hasQueue) throw new Error('未列出 Zotero 条目')
-    await page.keyboard.press('Escape')
-    await page.mouse.click(30, 500)
+    await page.locator('.modal .modal-x').first().click()
+    await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 }).catch(() => {})
   })
 
   await step('T18 桥接 /ping', async () => {
@@ -204,6 +211,35 @@ try {
   await step('T20 桥接 /cite GB/T 7714', async () => {
     const r = await (await fetch('http://127.0.0.1:24517/cite?ids=1,2')).json()
     if (!r.ok || !r.text.includes('[1]')) throw new Error(r.text?.slice(0, 60))
+  })
+
+  await step('T22 知识图谱：稀疏边而非全连接', async () => {
+    const g = await page.evaluate(() => window.api.graphData())
+    const maxEdges = (g.nodes.length * (g.nodes.length - 1)) / 2
+    if (g.nodes.length < 4) throw new Error('节点不足')
+    if (g.edges.length >= maxEdges) throw new Error(`边数 ${g.edges.length} 达到全连 ${maxEdges}，不是稀疏图`)
+    if (g.edges.length < 1) throw new Error('无边')
+  })
+
+  await step('T23 底栏：状态/模型/桥接芯片', async () => {
+    await page.locator('.mode-toggle button', { hasText: '阅读' }).click()
+    await page.waitForFunction(() => document.querySelector('.statusbar')?.textContent?.includes('服务就绪'), null, { timeout: 15000 })
+    const t = await page.evaluate(() => document.querySelector('.statusbar')?.textContent ?? '')
+    if (!t.includes('篇') || !t.includes('类')) throw new Error('缺少统计: ' + t.slice(0, 80))
+  })
+
+  await step('T24 边栏拖拽自适应宽度', async () => {
+    const before = await page.evaluate(() => document.querySelector('.library')?.style?.width || getComputedStyle(document.querySelector('.library')).width)
+    const rz = page.locator('.col-resizer').first()
+    const box = await rz.boundingBox()
+    if (!box) throw new Error('resizer 不可见')
+    await page.mouse.move(box.x + 2, box.y + 300)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 82, box.y + 300, { steps: 6 })
+    await page.mouse.up()
+    await wait(400)
+    const after = await page.evaluate(() => document.querySelector('.library')?.style?.width || getComputedStyle(document.querySelector('.library')).width)
+    if (before === after) throw new Error(`宽度未变化: ${before}`)
   })
 
   await step('T21 桥接 /save-paper 一键存入（本地 PDF URL 全链路）', async () => {

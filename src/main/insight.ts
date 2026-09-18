@@ -371,3 +371,101 @@ async function pump(send: (ev: string, p: unknown) => void): Promise<void> {
   }
   sumRunning = false
 }
+
+// ---------- 知识网络：基于文本相似度的稀疏关联图 ----------
+// 相似度 = 标题(×3) + AI 小结(×2) + 正文块(×1) 的词频向量余弦值；
+// 中文按二字组切词，英文按单词切词；每个节点只保留最相似的 k 条边，避免"全连"。
+export interface GraphNode {
+  id: number
+  title: string
+  category: string
+  year: number | null
+  degree: number
+}
+export interface GraphEdge {
+  a: number
+  b: number
+  w: number
+}
+
+const tokenize = (text: string): string[] => {
+  const t = (text || '').toLowerCase()
+  const terms: string[] = []
+  for (const w of t.match(/[a-z0-9][a-z0-9-]{1,}/g) ?? []) terms.push(w)
+  const cjk = t.replace(/[^\u4e00-\u9fff]/g, '')
+  for (let i = 0; i < cjk.length - 1; i++) terms.push(cjk.slice(i, i + 2))
+  return terms
+}
+
+const tfVector = (terms: string[]): Map<string, number> => {
+  const v = new Map<string, number>()
+  for (const t of terms) v.set(t, (v.get(t) ?? 0) + 1)
+  return v
+}
+
+const cosine = (a: Map<string, number>, b: Map<string, number>): number => {
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (const [, x] of a) na += x * x
+  for (const [, x] of b) nb += x * x
+  if (!na || !nb) return 0
+  for (const [t, x] of a) {
+    const y = b.get(t)
+    if (y) dot += x * y
+  }
+  return dot / Math.sqrt(na * nb)
+}
+
+export function knowledgeGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const db = getDb()
+  const rows = db
+    .prepare('SELECT id, title, authors, summary, category, year, path FROM papers')
+    .all() as Array<{ id: number; title: string; authors: string; summary: string | null; category: string; year: number | null; path: string }>
+  const chunkStmt = db.prepare('SELECT text FROM chunks WHERE paper_id = ? LIMIT 40')
+
+  // 词频向量
+  const vectors = new Map<number, Map<string, number>>()
+  const metas = rows.map((r) => {
+    let chunkText = ''
+    try {
+      chunkText = (chunkStmt.all(r.id) as Array<{ text: string }>).map((c) => c.text).join(' ').slice(0, 4000)
+    } catch {
+      chunkText = ''
+    }
+    const v = tfVector([
+      ...tokenize(r.title),
+      ...tokenize(r.title),
+      ...tokenize(r.title),
+      ...tokenize(r.summary ?? ''),
+      ...tokenize(r.summary ?? ''),
+      ...tokenize(chunkText)
+    ])
+    vectors.set(r.id, v)
+    return { id: r.id, title: r.title, category: r.category, year: r.year }
+  })
+
+  // 两两相似度
+  const sims: Array<{ a: number; b: number; w: number }> = []
+  for (let i = 0; i < metas.length; i++) {
+    for (let j = i + 1; j < metas.length; j++) {
+      const w = cosine(vectors.get(metas[i].id)!, vectors.get(metas[j].id)!)
+      if (w >= 0.08) sims.push({ a: metas[i].id, b: metas[j].id, w })
+    }
+  }
+  sims.sort((x, y) => y.w - x.w)
+
+  // kNN 稀疏化：每节点最多保留 3 条最强边
+  const K = 3
+  const degree = new Map<number, number>()
+  const kept: GraphEdge[] = []
+  for (const s of sims) {
+    if ((degree.get(s.a) ?? 0) >= K || (degree.get(s.b) ?? 0) >= K) continue
+    kept.push({ a: s.a, b: s.b, w: Math.round(s.w * 100) / 100 })
+    degree.set(s.a, (degree.get(s.a) ?? 0) + 1)
+    degree.set(s.b, (degree.get(s.b) ?? 0) + 1)
+  }
+
+  const nodes: GraphNode[] = metas.map((m) => ({ ...m, degree: degree.get(m.id) ?? 0 }))
+  return { nodes, edges: kept }
+}

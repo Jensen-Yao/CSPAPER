@@ -68,6 +68,8 @@ const api = {
   compareGenerate: (paperId: number, dimensions: string[]) => ipcRenderer.invoke('compare:generate', paperId, dimensions),
   compareExport: (id: number, format: 'md' | 'csv') => ipcRenderer.invoke('compare:export', id, format),
   paperDetail: (id: number) => ipcRenderer.invoke('papers:detail', id),
+  graphData: () => ipcRenderer.invoke('graph:data'),
+  appStatus: () => ipcRenderer.invoke('app:status'),
   onPreviewFile: (cb: (p: unknown) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p)
     ipcRenderer.on('preview:file', h)
