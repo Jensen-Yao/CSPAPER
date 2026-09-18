@@ -237,7 +237,7 @@ declare global {
       compareExport: (id: number, format: 'md' | 'csv') => Promise<void>
       paperDetail: (id: number) => Promise<PaperDetail | null>
       graphData: () => Promise<{ nodes: Array<{ id: number; title: string; category: string; year: number | null; degree: number }>; edges: Array<{ a: number; b: number; w: number }> }>
-      appStatus: () => Promise<{ bridge: { running: boolean; port: number; version: string }; papers: number; categories: number; version: string }>
+      appStatus: () => Promise<{ bridge: { running: boolean; port: number; version: string }; papers: number; categories: number; version: string; dataDir: string }>
       onPreviewFile: (cb: (p: ImportPreviewItem) => void) => () => void
       onPreviewProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string) => Promise<number>

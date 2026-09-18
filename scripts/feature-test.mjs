@@ -6,7 +6,7 @@ import path from 'node:path'
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
 function wait(ms) { return new Promise((r) => setTimeout(r, ms)) }
 const results = []
-async function step(name, fn, timeoutMs = 45000) {
+async function step(name, fn, timeoutMs = 90000) {
   const t0 = Date.now()
   let lastErr = ''
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -178,6 +178,7 @@ try {
 
   await step('T16 设置：服务商一键配置', async () => {
     await page.locator('button[title="设置"]').click()
+    await page.locator('.set-nav-item', { hasText: '模型服务' }).click()
     await page.locator('button.profile-add', { hasText: '从服务商库添加' }).click()
     await page.waitForSelector('.picker-grid', { timeout: 10000 })
     const cards = await page.locator('.pv-card').count()

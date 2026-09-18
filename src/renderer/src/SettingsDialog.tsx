@@ -24,12 +24,14 @@ function workspaceName(p: string): string {
 type Sec = 'appear' | 'lib' | 'model' | 'embed' | 'index'
 
 const NAV: Array<{ id: Sec; icon: string; label: string }> = [
-  { id: 'appear', icon: '🎨', label: '外观' },
-  { id: 'lib', icon: '📚', label: '文献库' },
+  { id: 'appear', icon: '🎨', label: '外观与翻译' },
+  { id: 'lib', icon: '📚', label: '文献库与数据' },
   { id: 'model', icon: '🤖', label: '模型服务' },
   { id: 'embed', icon: '🧬', label: '向量嵌入' },
-  { id: 'index', icon: '🗂', label: '索引' }
+  { id: 'index', icon: '🗂', label: '索引与关于' }
 ]
+
+const THINKING_LABEL: Record<string, string> = { default: '默认', off: '关闭', low: '低', medium: '中', high: '高' }
 
 export default function SettingsDialog({ settings, indexed, indexInfo, onSave, onRescanned, onClose }: Props): JSX.Element {
   const [form, setForm] = useState<Settings>(settings)
@@ -50,7 +52,9 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const [showPicker, setShowPicker] = useState(false)
   const [pickerKw, setPickerKw] = useState('')
   const [bridgeOn, setBridgeOn] = useState(false)
+  const [bridgePort, setBridgePort] = useState(24517)
   const [ver, setVer] = useState('')
+  const [dataDir, setDataDir] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [llmTest, setLlmTest] = useState('')
@@ -72,7 +76,15 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     return () => window.removeEventListener('keydown', h)
   }, [])
   useEffect(() => {
-    void window.api.appStatus().then((s) => { setBridgeOn(s.bridge.running); setVer(s.version) }).catch(() => {})
+    void window.api
+      .appStatus()
+      .then((s) => {
+        setBridgeOn(s.bridge.running)
+        setBridgePort(s.bridge.port)
+        setVer(s.version)
+        setDataDir(s.dataDir)
+      })
+      .catch(() => {})
   }, [])
 
   const set = (patch: Partial<Settings>): void => setForm((f) => ({ ...f, ...patch }))
@@ -145,7 +157,6 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     void save()
   }
 
-  // 一键添加服务商
   const addFromPreset = (preset: ProviderPreset): void => {
     setProfiles((list) => {
       const next = [...list, { provider: preset.id, apiBase: preset.base, apiKey: '', models: [...preset.models] }]
@@ -163,6 +174,18 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       <div className="theme-label">{label}</div>
     </div>
   )
+
+  const exportMobile = async (): Promise<void> => {
+    const r = await window.api.exportMobilePack()
+    if (r) setMsg(`已导出 ${r.papers} 篇 · ${Math.round(r.bytes / 1024)} KB`)
+  }
+  const mergeMobile = async (): Promise<void> => {
+    const r = await window.api.mergeMobileNotes()
+    if (r) {
+      setMsg(`已合并：标注 ${r.mergedHighlights} 条 · 状态 ${r.mergedStatus} 项`)
+      onRescanned()
+    }
+  }
 
   return (
     <div className="modal-mask" onMouseDown={closeAndSave}>
@@ -197,12 +220,14 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   {themeCard('light', '浅色', <div className="tt tt-light"><div className="tt-side" /><div className="tt-main" /></div>)}
                   {themeCard('dark', '深色', <div className="tt tt-dark"><div className="tt-side" /><div className="tt-main" /></div>)}
                 </div>
-                <div className="field-row" style={{ marginTop: 10 }}>
+                <div className="section-title" style={{ marginTop: 22 }}>翻译</div>
+                <div className="field-row">
                   <div className="field grow">
                     <label>翻译目标语言</label>
                     <input value={form.translateTarget} onChange={(e) => set({ translateTarget: e.target.value })} />
                   </div>
                 </div>
+                <div className="hint">未配置大模型时，划词与全文翻译自动走免费通道；配置后自动升级为术语消歧的学术翻译。</div>
               </div>
             )}
 
@@ -219,8 +244,27 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                     更改…
                   </button>
                 </div>
+                <div className="section-title" style={{ marginTop: 24 }}>移动端</div>
+                <div className="ws-row">
+                  <div style={{ flex: 1 }}>
+                    <div className="ws-name">导出 .cspack 数据包</div>
+                    <div className="hint">手机 APK 打开即读：PDF、分类、状态、高亮全带走。</div>
+                  </div>
+                  <button className="btn ghost" onClick={() => void exportMobile()}>
+                    导出…
+                  </button>
+                </div>
+                <div className="ws-row">
+                  <div style={{ flex: 1 }}>
+                    <div className="ws-name">合并手机端阅读数据</div>
+                    <div className="hint">把手机上的划词标注与阅读状态合并回桌面端。</div>
+                  </div>
+                  <button className="btn ghost" onClick={() => void mergeMobile()}>
+                    合并…
+                  </button>
+                </div>
                 <div className="hint" style={{ marginTop: 12 }}>
-                  💡 已有 Zotero 文献库？用顶部菜单「文件 → 从 Zotero 导入」一键迁移。
+                  💡 已有 Zotero 文献库？「文件 → 从 Zotero 导入」一键迁移；知网题录用「文件 → 导入题录文件」。
                 </div>
               </div>
             )}
@@ -330,6 +374,22 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                     空白配置
                   </button>
                 </div>
+                <div className="section-title" style={{ marginTop: 22 }}>推理</div>
+                <div className="field-row">
+                  <div className="field grow">
+                    <label>思考深度（支持的服务商生效）</label>
+                    <select
+                      value={form.thinkingLevel ?? 'default'}
+                      onChange={(e) => set({ thinkingLevel: e.target.value as Settings['thinkingLevel'] })}
+                    >
+                      {Object.entries(THINKING_LABEL).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="test-row">
                   <button className="btn ghost" onClick={() => void testLlm()} disabled={busy}>
                     测试连接
@@ -385,6 +445,38 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   <button className="btn ghost" onClick={rebuild} disabled={busy}>
                     重建全库索引
                   </button>
+                </div>
+                <div className="section-title" style={{ marginTop: 24 }}>数据目录</div>
+                <div className="hint" style={{ marginTop: 0 }}>
+                  {dataDir || '…'}
+                  <br />
+                  设置、数据库与索引都保存在这里。
+                </div>
+                <div className="section-title" style={{ marginTop: 24 }}>关于</div>
+                <div className="hint" style={{ marginTop: 0 }}>
+                  CSPAPER v{ver || '0.5.0'} · 本地服务端口 {bridgePort}
+                  <br />
+                  <a
+                    href="https://github.com/Jensen-Yao/CSPAPER"
+                    style={{ color: 'var(--accent)', cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      window.api.openExternal('https://github.com/Jensen-Yao/CSPAPER')
+                    }}
+                  >
+                    GitHub 仓库 ↗
+                  </a>
+                  {' · '}
+                  <a
+                    href="http://127.0.0.1:24517/cite-ui"
+                    style={{ color: 'var(--accent)', cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      window.api.openExternal('http://127.0.0.1:24517/cite-ui')
+                    }}
+                  >
+                    引文助手 ↗
+                  </a>
                 </div>
               </div>
             )}
@@ -458,8 +550,4 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       </div>
     </div>
   )
-}
-
-function appOnline(): boolean {
-  return true
 }

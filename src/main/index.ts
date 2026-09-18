@@ -260,7 +260,8 @@ function registerIpc(): void {
     bridge: bridgeStatus(),
     papers: (dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers').get() as { n: number }).n,
     categories: (dbmod.getDb().prepare("SELECT COUNT(DISTINCT category) AS n FROM papers").get() as { n: number }).n,
-    version: app.getVersion()
+    version: app.getVersion(),
+    dataDir: app.getPath('userData')
   }))
 
   // 手动归类：右键菜单 / 拖拽都走这里（移动文件夹 + 原地改写 DB，保留行身份）
