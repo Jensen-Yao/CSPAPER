@@ -21,6 +21,16 @@ function workspaceName(p: string): string {
   return parts[parts.length - 1] ?? p
 }
 
+type Sec = 'appear' | 'lib' | 'model' | 'embed' | 'index'
+
+const NAV: Array<{ id: Sec; icon: string; label: string }> = [
+  { id: 'appear', icon: '🎨', label: '外观' },
+  { id: 'lib', icon: '📚', label: '文献库' },
+  { id: 'model', icon: '🤖', label: '模型服务' },
+  { id: 'embed', icon: '🧬', label: '向量嵌入' },
+  { id: 'index', icon: '🗂', label: '索引' }
+]
+
 export default function SettingsDialog({ settings, indexed, indexInfo, onSave, onRescanned, onClose }: Props): JSX.Element {
   const [form, setForm] = useState<Settings>(settings)
   const [profiles, setProfiles] = useState<NonNullable<Settings['profiles']>>(
@@ -36,13 +46,15 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
             }
           ]
   )
+  const [sec, setSec] = useState<Sec>('appear')
+  const [showPicker, setShowPicker] = useState(false)
+  const [pickerKw, setPickerKw] = useState('')
+  const [bridgeOn, setBridgeOn] = useState(false)
+  const [ver, setVer] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [llmTest, setLlmTest] = useState('')
   const [embedTest, setEmbedTest] = useState('')
-  // 服务商选择器（一键配置）
-  const [showPicker, setShowPicker] = useState(false)
-  const [pickerKw, setPickerKw] = useState('')
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
@@ -51,7 +63,6 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     }, 300)
   }
 
-  // Esc 监听只注册一次，但必须拿到最新表单：用 ref 中转，避免 stale closure 把旧值写回去
   const saveRef = useRef<() => Promise<void>>(async () => {})
   useEffect(() => {
     const h = (e: KeyboardEvent): void => {
@@ -60,26 +71,12 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [])
+  useEffect(() => {
+    void window.api.appStatus().then((s) => { setBridgeOn(s.bridge.running); setVer(s.version) }).catch(() => {})
+  }, [])
 
   const set = (patch: Partial<Settings>): void => setForm((f) => ({ ...f, ...patch }))
 
-  // 一键添加服务商：预填 API Base 与推荐模型并设为激活配置，用户只需粘贴 Key
-  const addFromPreset = (preset: ProviderPreset): void => {
-    setProfiles((list) => {
-      const next = [...list, { provider: preset.id, apiBase: preset.base, apiKey: '', models: [...preset.models] }]
-      saveProfiles(next)
-      return next
-    })
-    set({
-      provider: preset.id,
-      apiBase: preset.base,
-      model: preset.models[0] ?? form.model
-    })
-    setShowPicker(false)
-    setPickerKw('')
-  }
-
-  // 主题即点即换（保存立即生效，无预览对话框状态残留）
   const pickTheme = async (theme: Settings['theme']): Promise<void> => {
     set({ theme })
     await onSave({ theme })
@@ -90,7 +87,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     if (!p) return
     setBusy(true)
     setMsg('切换工作区并扫描…')
-    set({ libraryPath: p }) // 同步进表单，避免点「保存」时把旧路径写回去
+    set({ libraryPath: p })
     const s = await onSave({ libraryPath: p })
     const r = await window.api.scanLibrary(s.libraryPath)
     setMsg(`工作区：${workspaceName(p)}（${r.total} 篇）`)
@@ -98,8 +95,6 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     setBusy(false)
   }
 
-  // 直测当前编辑值（激活配置卡片里的 key/base/model），不依赖已保存的全局配置：
-  // 旧逻辑先保存再用全局配置测试，编辑中的 key 还没同步过去 → 正确的 key 也会测失败
   const testLlm = async (): Promise<void> => {
     setLlmTest('测试中…')
     const active = profiles.find((p) => p.models.includes(form.model)) ?? profiles[0]
@@ -111,7 +106,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
           model: active.models.includes(form.model) ? form.model : (active.models[0] ?? form.model)
         }
       : { provider: form.provider, apiBase: form.apiBase, apiKey: form.apiKey, model: form.model }
-    await onSave(form) // 同步保存，关闭路径行为不变
+    await onSave(form)
     const r = await window.api.testLLM(over)
     if (r.ok) {
       const bal = r.balance ? `，余额 ${r.balance.currency === 'CNY' ? '¥' : r.balance.currency + ' '}${r.balance.amount}` : ''
@@ -137,7 +132,6 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   }
 
   const save = async (): Promise<void> => {
-    // 当前使用的模型属于哪个配置，就把那个供应商的信息同步为激活配置
     const active = profiles.find((p) => p.models.includes(form.model)) ?? profiles[0]
     await onSave({
       ...form,
@@ -147,10 +141,20 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     onClose()
   }
   saveRef.current = save
-
-  // ✕ / 点击遮罩 / Esc：一律保存后关闭
   const closeAndSave = (): void => {
     void save()
+  }
+
+  // 一键添加服务商
+  const addFromPreset = (preset: ProviderPreset): void => {
+    setProfiles((list) => {
+      const next = [...list, { provider: preset.id, apiBase: preset.base, apiKey: '', models: [...preset.models] }]
+      saveProfiles(next)
+      return next
+    })
+    set({ provider: preset.id, apiBase: preset.base, model: preset.models[0] ?? form.model })
+    setShowPicker(false)
+    setPickerKw('')
   }
 
   const themeCard = (id: Settings['theme'], label: string, preview: JSX.Element): JSX.Element => (
@@ -162,231 +166,241 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
 
   return (
     <div className="modal-mask" onMouseDown={closeAndSave}>
-      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>设置</h2>
-          <button className="modal-x" title="关闭（自动保存）" onClick={closeAndSave}>
-            ✕
-          </button>
-        </div>
-        <div className="modal-scroll">
-
-        <div className="section">
-          <div className="section-title">外观</div>
-          <div className="theme-row">
-            {themeCard(
-              'system',
-              '跟随系统',
-              <div className="tt tt-split">
-                <div className="tt-side" />
-                <div className="tt-main" />
-              </div>
-            )}
-            {themeCard(
-              'light',
-              '浅色',
-              <div className="tt tt-light">
-                <div className="tt-side" />
-                <div className="tt-main" />
-              </div>
-            )}
-            {themeCard(
-              'dark',
-              '深色',
-              <div className="tt tt-dark">
-                <div className="tt-side" />
-                <div className="tt-main" />
-              </div>
-            )}
-          </div>
-          <div className="field-row" style={{ marginTop: 10 }}>
-            <div className="field grow">
-              <label>翻译目标语言</label>
-              <input value={form.translateTarget} onChange={(e) => set({ translateTarget: e.target.value })} />
-            </div>
+      <div className="modal set-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="set-side">
+          <div className="set-brand">设置</div>
+          {NAV.map((n) => (
+            <button key={n.id} className={`set-nav-item ${sec === n.id ? 'on' : ''}`} onClick={() => setSec(n.id)}>
+              <span className="ic">{n.icon}</span>
+              {n.label}
+            </button>
+          ))}
+          <div className="set-side-foot">
+            <span className={`set-dot ${bridgeOn ? 'on' : ''}`} title="本地服务（浏览器/Word 插件连接用）" />
+            v{ver || '0.5.0'}
           </div>
         </div>
 
-        <div className="section">
-          <div className="section-title">工作区</div>
-          <div className="ws-row">
-            <div className="ws-icon">📁</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="ws-name">{workspaceName(form.libraryPath)}</div>
-              <div className="hint">导入、归类、索引全自动。</div>
-            </div>
-            <button className="btn ghost" onClick={pickWorkspace} disabled={busy}>
-              更改…
+        <div className="set-main">
+          <div className="modal-head">
+            <h2>{NAV.find((n) => n.id === sec)?.label ?? '设置'}</h2>
+            <button className="modal-x" title="关闭（自动保存）" onClick={closeAndSave}>
+              ✕
             </button>
           </div>
-        </div>
-
-        <div className="section">
-          <div className="section-title">模型与服务商（对话界面可切换）</div>
-          {profiles.map((pf, i) => {
-            const isActive = pf.models.includes(form.model)
-            const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
-            const upd = (patch: Partial<{ provider: string; apiBase: string; apiKey: string; models: string[] }>): void =>
-              setProfiles((list) => {
-                const next = list.map((x, idx) => (idx === i ? { ...x, ...patch } : x))
-                saveProfiles(next)
-                return next
-              })
-            return (
-              <div className={`profile-card ${isActive ? 'active' : ''}`} key={i}>
-                <div className="field-row">
-                  <div className="field pv-field">
-                    <label>服务商</label>
-                    <div className="pv-row">
-                      <div className="pv-avatar" style={{ background: preset?.color ?? '#64748b' }}>{preset?.logo ?? '⚙'}</div>
-                      <select
-                        value={guessProvider(pf.apiBase)}
-                        onChange={(e) => {
-                          const hit = ALL_PROVIDERS.find((x) => x.id === e.target.value)!
-                          upd(hit.id === 'custom' ? { provider: 'custom' } : { provider: hit.id, apiBase: hit.base, models: hit.models.length ? pf.models : hit.models })
-                        }}
-                      >
-                        {ALL_PROVIDERS.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+          <div className="modal-scroll">
+            {sec === 'appear' && (
+              <div className="section">
+                <div className="section-title">主题</div>
+                <div className="theme-row">
+                  {themeCard('system', '跟随系统', <div className="tt tt-split"><div className="tt-side" /><div className="tt-main" /></div>)}
+                  {themeCard('light', '浅色', <div className="tt tt-light"><div className="tt-side" /><div className="tt-main" /></div>)}
+                  {themeCard('dark', '深色', <div className="tt tt-dark"><div className="tt-side" /><div className="tt-main" /></div>)}
+                </div>
+                <div className="field-row" style={{ marginTop: 10 }}>
                   <div className="field grow">
-                    <label>API Base</label>
-                    <input value={pf.apiBase} onChange={(e) => upd({ apiBase: e.target.value })} />
+                    <label>翻译目标语言</label>
+                    <input value={form.translateTarget} onChange={(e) => set({ translateTarget: e.target.value })} />
                   </div>
                 </div>
-                <div className="field">
-                  <label>API Key</label>
-                  <input type="password" value={pf.apiKey} onChange={(e) => upd({ apiKey: e.target.value })} placeholder="sk-…" />
+              </div>
+            )}
+
+            {sec === 'lib' && (
+              <div className="section">
+                <div className="section-title">工作区</div>
+                <div className="ws-row">
+                  <div className="ws-icon">📁</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-name">{workspaceName(form.libraryPath)}</div>
+                    <div className="hint">导入、归类、索引全自动；iCloud / OneDrive 同步自动重扫。</div>
+                  </div>
+                  <button className="btn ghost" onClick={pickWorkspace} disabled={busy}>
+                    更改…
+                  </button>
                 </div>
-                <div className="field">
-                  <label>模型（逗号分隔）</label>
-                  <input
-                    value={pf.models.join(', ')}
-                    onChange={(e) =>
-                      upd({
-                        models: e.target.value
-                          .split(/[,，]/)
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      })
-                    }
-                    placeholder="deepseek-chat, deepseek-reasoner"
-                  />
+                <div className="hint" style={{ marginTop: 12 }}>
+                  💡 已有 Zotero 文献库？用顶部菜单「文件 → 从 Zotero 导入」一键迁移。
                 </div>
-                <div className="profile-foot">
-                  {isActive ? (
-                    <span className="active-tag">使用中</span>
-                  ) : (
-                    <span
-                      className="profile-link"
-                      onClick={() => set({ provider: pf.provider, apiBase: pf.apiBase, apiKey: pf.apiKey, model: pf.models[0] ?? form.model })}
-                    >
-                      启用此配置
-                    </span>
-                  )}
-                  <span style={{ flex: 1 }} />
-                  {profiles.length > 1 && (
-                    <button className="profile-del" onClick={() =>
+              </div>
+            )}
+
+            {sec === 'model' && (
+              <div className="section">
+                <div className="section-title">模型与服务商（对话界面可切换）</div>
+                {profiles.map((pf, i) => {
+                  const isActive = pf.models.includes(form.model)
+                  const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
+                  const upd = (patch: Partial<{ provider: string; apiBase: string; apiKey: string; models: string[] }>): void =>
+                    setProfiles((list) => {
+                      const next = list.map((x, idx) => (idx === i ? { ...x, ...patch } : x))
+                      saveProfiles(next)
+                      return next
+                    })
+                  return (
+                    <div className={`profile-card ${isActive ? 'active' : ''}`} key={i}>
+                      <div className="field-row">
+                        <div className="field pv-field">
+                          <label>服务商</label>
+                          <div className="pv-row">
+                            <div className="pv-avatar" style={{ background: preset?.color ?? '#64748b' }}>{preset?.logo ?? '⚙'}</div>
+                            <select
+                              value={guessProvider(pf.apiBase)}
+                              onChange={(e) => {
+                                const hit = ALL_PROVIDERS.find((x) => x.id === e.target.value)!
+                                upd(hit.id === 'custom' ? { provider: 'custom' } : { provider: hit.id, apiBase: hit.base, models: hit.models.length ? pf.models : hit.models })
+                              }}
+                            >
+                              {ALL_PROVIDERS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="field grow">
+                          <label>API Base</label>
+                          <input value={pf.apiBase} onChange={(e) => upd({ apiBase: e.target.value })} />
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label>API Key</label>
+                        <input type="password" value={pf.apiKey} onChange={(e) => upd({ apiKey: e.target.value })} placeholder="sk-…" />
+                      </div>
+                      <div className="field">
+                        <label>模型（逗号分隔）</label>
+                        <input
+                          value={pf.models.join(', ')}
+                          onChange={(e) =>
+                            upd({
+                              models: e.target.value
+                                .split(/[,，]/)
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                            })
+                          }
+                          placeholder="deepseek-chat, deepseek-reasoner"
+                        />
+                      </div>
+                      <div className="profile-foot">
+                        {isActive ? (
+                          <span className="active-tag">使用中</span>
+                        ) : (
+                          <span
+                            className="profile-link"
+                            onClick={() => set({ provider: pf.provider, apiBase: pf.apiBase, apiKey: pf.apiKey, model: pf.models[0] ?? form.model })}
+                          >
+                            启用此配置
+                          </span>
+                        )}
+                        <span style={{ flex: 1 }} />
+                        {profiles.length > 1 && (
+                          <button
+                            className="profile-del"
+                            onClick={() =>
+                              setProfiles((list) => {
+                                const next = list.filter((_, idx) => idx !== i)
+                                saveProfiles(next)
+                                return next
+                              })
+                            }
+                          >
+                            删除
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="profile-add-row">
+                  <button className="profile-add" onClick={() => setShowPicker(true)}>
+                    ＋ 从服务商库添加（自动填好接口与模型）
+                  </button>
+                  <button
+                    className="profile-add ghost"
+                    onClick={() =>
                       setProfiles((list) => {
-                        const next = list.filter((_, idx) => idx !== i)
+                        const next = [...list, { provider: 'custom', apiBase: '', apiKey: '', models: [] }]
                         saveProfiles(next)
                         return next
                       })
-                    }>
-                      删除
-                    </button>
-                  )}
+                    }
+                  >
+                    空白配置
+                  </button>
+                </div>
+                <div className="test-row">
+                  <button className="btn ghost" onClick={() => void testLlm()} disabled={busy}>
+                    测试连接
+                  </button>
+                  <span className="test-result">{llmTest}</span>
                 </div>
               </div>
-            )
-          })}
-          <div className="profile-add-row">
-            <button className="profile-add" onClick={() => setShowPicker(true)}>
-              ＋ 从服务商库添加（自动填好接口与模型）
-            </button>
-            <button
-              className="profile-add ghost"
-              onClick={() =>
-                setProfiles((list) => {
-                  const next = [...list, { provider: 'custom', apiBase: '', apiKey: '', models: [] }]
-                  saveProfiles(next)
-                  return next
-                })
-              }
-            >
-              空白配置
-            </button>
-          </div>
-          <div className="test-row">
-            <button className="btn ghost" onClick={() => void testLlm()} disabled={busy}>
-              测试连接
-            </button>
-            <span className="test-result">{llmTest}</span>
-          </div>
-        </div>
+            )}
 
-        <div className="section">
-          <div className="section-title">向量嵌入</div>
-          <div className="field-row">
-            <div className="field grow">
-              <label>嵌入来源</label>
-              <select value={form.embedProvider} onChange={(e) => set({ embedProvider: e.target.value as Settings['embedProvider'] })}>
-                <option value="local">本地 e5-small</option>
-                <option value="ollama">Ollama</option>
-                <option value="zhipu">智谱 embedding-3</option>
-              </select>
-            </div>
-            {form.embedProvider === 'ollama' && (
-              <div className="field grow">
-                <label>Ollama 模型</label>
-                <input value={form.ollamaEmbedModel} onChange={(e) => set({ ollamaEmbedModel: e.target.value })} placeholder="bge-m3" />
+            {sec === 'embed' && (
+              <div className="section">
+                <div className="section-title">向量嵌入</div>
+                <div className="field-row">
+                  <div className="field grow">
+                    <label>嵌入来源</label>
+                    <select value={form.embedProvider} onChange={(e) => set({ embedProvider: e.target.value as Settings['embedProvider'] })}>
+                      <option value="local">本地 e5-small</option>
+                      <option value="ollama">Ollama</option>
+                      <option value="zhipu">智谱 embedding-3</option>
+                    </select>
+                  </div>
+                  {form.embedProvider === 'ollama' && (
+                    <div className="field grow">
+                      <label>Ollama 模型</label>
+                      <input value={form.ollamaEmbedModel} onChange={(e) => set({ ollamaEmbedModel: e.target.value })} placeholder="bge-m3" />
+                    </div>
+                  )}
+                </div>
+                {form.embedProvider === 'ollama' && (
+                  <div className="field">
+                    <label>Ollama 服务地址</label>
+                    <input value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} placeholder="http://127.0.0.1:11434" />
+                    <div className="hint">需先安装并运行 Ollama，且 ollama pull 对应嵌入模型。</div>
+                  </div>
+                )}
+                <div className="test-row">
+                  <button className="btn ghost" onClick={() => void testEmbed()} disabled={busy}>
+                    测试嵌入
+                  </button>
+                  <span className="test-result">{embedTest}</span>
+                </div>
+              </div>
+            )}
+
+            {sec === 'index' && (
+              <div className="section">
+                <div className="section-title">索引</div>
+                <div className="hint" style={{ marginTop: 0 }}>
+                  已索引 {indexed.indexed}/{indexed.papers} 篇 · {indexed.chunks} 个文本块
+                  {indexInfo ? ` · 正在处理 ${indexInfo.current ?? ''} (${indexInfo.done}/${indexInfo.total})` : ''}
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn ghost" onClick={rebuild} disabled={busy}>
+                    重建全库索引
+                  </button>
+                </div>
               </div>
             )}
           </div>
-          {form.embedProvider === 'ollama' && (
-            <div className="field">
-              <label>Ollama 服务地址</label>
-              <input value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} placeholder="http://127.0.0.1:11434" />
-              <div className="hint">需先安装并运行 Ollama，且 ollama pull 对应嵌入模型。</div>
-            </div>
-          )}
-          <div className="test-row">
-            <button className="btn ghost" onClick={() => void testEmbed()} disabled={busy}>
-              测试嵌入
-            </button>
-            <span className="test-result">{embedTest}</span>
-          </div>
-        </div>
 
-        <div className="section">
-          <div className="section-title">索引</div>
-          <div className="hint" style={{ marginTop: 0 }}>
-            已索引 {indexed.indexed}/{indexed.papers} 篇 · {indexed.chunks} 个文本块
-            {indexInfo ? ` · 正在处理 ${indexInfo.current ?? ''} (${indexInfo.done}/${indexInfo.total})` : ''}
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button className="btn ghost" onClick={rebuild} disabled={busy}>
-              重建全库索引
+          <div className="modal-actions">
+            <span className="progress-line" style={{ flex: 1 }}>
+              {msg}
+            </span>
+            <button className="btn ghost" onClick={onClose}>
+              取消
+            </button>
+            <button className="btn" onClick={save}>
+              保存
             </button>
           </div>
-        </div>
-
-        <div className="modal-actions">
-          <span className="progress-line" style={{ flex: 1 }}>
-            {msg}
-          </span>
-          <button className="btn ghost" onClick={onClose}>
-            取消
-          </button>
-          <button className="btn" onClick={save}>
-            保存
-          </button>
-        </div>
         </div>
 
         {showPicker && (
@@ -444,4 +458,8 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       </div>
     </div>
   )
+}
+
+function appOnline(): boolean {
+  return true
 }

@@ -61,7 +61,6 @@ function createWindow(): void {
     minWidth: 1080,
     minHeight: 640,
     backgroundColor: '#16171a',
-    roundedCorners: false,
     title: 'CSPAPER',
     titleBarStyle: process.platform === 'linux' ? 'default' : 'hidden',
     ...(process.platform === 'win32'
@@ -82,19 +81,6 @@ function createWindow(): void {
   }
   // 窗口聚焦时重扫（节流 60s）：软件常驻后台时，云盘同步落地的新文献回到窗口就能看到
   win.on('focus', () => maybeRescan('focus', 60_000))
-  // Windows 无边框窗口最大化时的经典黑边问题：窗口会超出可见工作区，
-  // 显式把边界钳回工作区（保留四周不留黑框）
-  if (process.platform === 'win32') {
-    const clampToWorkArea = (): void => {
-      try {
-        const display = require('electron').screen.getDisplayMatching(win!.getBounds())
-        win!.setBounds(display.workArea)
-      } catch {
-        /* 忽略 */
-      }
-    }
-    win.on('maximize', clampToWorkArea)
-  }
 }
 
 app.setName('CSPAPER')

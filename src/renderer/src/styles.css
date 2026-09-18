@@ -1228,3 +1228,28 @@ html[data-theme='dark'] .add-btn { background: linear-gradient(135deg, #e0557c, 
 .searchbox { background: var(--bg); border: 1px solid var(--border-lit); }
 .searchbox::placeholder { color: var(--text-dim); }
 .func-row .mini-btn { border-style: solid; color: var(--text); background: var(--bg); }
+
+/* ============ v0.5 设置页：双栏导航布局 ============ */
+.set-modal { width: 780px; max-width: 96vw; height: 640px; max-height: 88vh; padding: 0; display: flex; flex-direction: row !important; align-items: stretch; overflow: hidden; }
+.set-side { width: 168px; flex: none; background: var(--bg2); border-right: 1px solid var(--border); padding: 16px 10px; display: flex; flex-direction: column; gap: 3px; }
+.set-brand { font-size: 15px; font-weight: 750; letter-spacing: 0.5px; padding: 2px 10px 14px; }
+.set-nav-item {
+  display: flex; align-items: center; gap: 9px; border: none; background: transparent;
+  color: var(--text-dim); font-size: 13px; padding: 9px 12px; border-radius: 9px; cursor: pointer;
+  text-align: left; transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+.set-nav-item:hover { background: var(--bg3); color: var(--text); }
+.set-nav-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.set-nav-item .ic { font-size: 14px; width: 18px; text-align: center; }
+.set-side-foot { margin-top: auto; display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-dim); padding: 0 10px; }
+.set-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bg4); display: inline-block; }
+.set-dot.on { background: var(--ok); box-shadow: 0 0 6px rgba(46, 158, 99, 0.6); }
+.set-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.set-main .modal-scroll { flex: 1; padding: 18px 24px 22px; }
+.set-main .section { margin-bottom: 26px; }
+.set-main .modal-actions { border-top: 1px solid var(--border); padding: 12px 24px; }
+.set-main .section-title { font-size: 13.5px; font-weight: 700; margin-bottom: 12px; }
+.profile-card { border-radius: 12px; padding: 14px 16px; }
+.profile-add { border-radius: 10px; }
+.pv-field { min-width: 200px; }
+.pv-row select { border-radius: 8px; }
