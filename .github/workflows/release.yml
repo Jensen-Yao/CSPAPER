@@ -1,0 +1,45 @@
+name: Release
+
+# 推送 v* 标签时自动构建安装包并发布到 GitHub Releases（如：git tag v0.1.0 && git push --tags）
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 重编译原生模块（better-sqlite3 适配 Electron）
+        run: npm run rebuild
+
+      - name: 构建并发布（Windows x64 NSIS）
+        if: matrix.os == 'windows-latest'
+        run: npm run dist:win -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并发布（macOS dmg arm64/x64）
+        if: matrix.os == 'macos-latest'
+        run: npm run dist:mac -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
