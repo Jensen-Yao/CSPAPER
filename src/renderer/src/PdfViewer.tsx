@@ -292,6 +292,36 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     }
   }, [numPages, onPageContext, onPageChange])
 
+  // 缩放后把当前页锚回视野（页面宽度按比例变化，阅读位置不丢）
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const sc = scrollRef.current
+      const el = pageRefs.current.get(curPageRef.current)
+      if (!sc || !el) return
+      const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop
+      if (el.getBoundingClientRect().bottom < sc.getBoundingClientRect().top + 60 || top > sc.scrollTop + sc.clientHeight) {
+        sc.scrollTo({ top: Math.max(0, top - 30), behavior: 'auto' })
+      }
+    }, 120)
+    return () => clearTimeout(t)
+  }, [scale])
+
+  // 面板拖宽/收窄后自动重排：跟随容器宽度重算适配缩放（保留手动缩放倍率）
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc || !doc) return
+    let prevW = sc.clientWidth
+    const ro = new ResizeObserver(() => {
+      const w = sc.clientWidth
+      if (w > 150 && baseVwRef.current && Math.abs(w - prevW) > 2) {
+        prevW = w
+        setBaseScale(Math.max(0.5, Math.min(2.2, (w - 56) / baseVwRef.current)))
+      }
+    })
+    ro.observe(sc)
+    return () => ro.disconnect()
+  }, [doc])
+
   const onMouseUp = useCallback(
     (e: React.MouseEvent) => {
       const sel = window.getSelection()

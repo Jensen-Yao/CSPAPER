@@ -136,6 +136,7 @@ const $ = (id) => document.getElementById(id)
 let LIB = null, ZIPBUF = null, ZIPFILES = null
 let CURRENT = null, DOC = null, PAGE_COUNT = 0, zoomK = 1
 const NOTES_KEY = 'cspaper.mobile.notes'
+const bilCache = new Map() // 全文对照译文缓存：`${slug}:${num}` → 段落对
 const AI_KEY = 'cspaper.mobile.ai'
 const notes = (() => { try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || { highlights: [], statuses: {}, summaries: {} } } catch { return { highlights: [], statuses: {}, summaries: {} } } })()
 const saveNotes = () => localStorage.setItem(NOTES_KEY, JSON.stringify(notes))
@@ -353,30 +354,40 @@ async function renderAll() {
   }
 }
 
-// 全文对照：页内切块逐段双语（每页只译一次）
+// 全文对照：页内切块逐段双语；译文按页缓存，缩放/重渲染不重复请求
 async function fillBilingual(wrap, num, text) {
   if (wrap._bilDone) return
   wrap._bilDone = true
   const txt = (text ?? wrap._text ?? '').trim()
   if (!txt) return
+  const key = `${CURRENT.slug}:${num}`
+  let pairs = bilCache.get(key)
+  if (!pairs) {
+    const sentences = txt.replace(/[ \t]+/g, ' ').split(/(?<=[.!?。！？；;])\s*/)
+    pairs = []
+    let cur = ''
+    for (const sn of sentences) {
+      if (cur && cur.length + sn.length > 500) { pairs.push([cur.trim(), '']); cur = sn } else cur += (cur ? ' ' : '') + sn
+    }
+    if (cur.trim()) pairs.push([cur.trim(), ''])
+    pairs = pairs.slice(0, 16)
+    bilCache.set(key, pairs)
+  }
   const host = document.createElement('div')
   host.className = 'bil-host'
   wrap.after(host)
-  const sentences = txt.replace(/[ \t]+/g, ' ').split(/(?<=[.!?。！？；;])\s*/)
-  const blocks = []
-  let cur = ''
-  for (const sn of sentences) {
-    if (cur && cur.length + sn.length > 500) { blocks.push(cur.trim()); cur = sn } else cur += (cur ? ' ' : '') + sn
-  }
-  if (cur.trim()) blocks.push(cur.trim())
-  for (const b of blocks.slice(0, 16)) {
+  for (const pair of pairs) {
     const el = document.createElement('div'); el.className = 'bil'
-    const srcEl = document.createElement('div'); srcEl.className = 'src'; srcEl.textContent = b
-    const dstEl = document.createElement('div'); dstEl.className = 'dst'; dstEl.textContent = '…'
+    const srcEl = document.createElement('div'); srcEl.className = 'src'; srcEl.textContent = pair[0]
+    const dstEl = document.createElement('div'); dstEl.className = 'dst'; dstEl.textContent = pair[1] || '…'
     el.append(srcEl, dstEl)
     host.append(el)
-    try { dstEl.textContent = await translateText(b) }
-    catch (e) { dstEl.textContent = '⚠ ' + String(e).slice(0, 80) }
+    if (!pair[1]) {
+      try {
+        pair[1] = await translateText(pair[0])
+        dstEl.textContent = pair[1]
+      } catch (e) { dstEl.textContent = '⚠ ' + String(e).slice(0, 80) }
+    }
   }
 }
 
@@ -558,6 +569,7 @@ $('exportBtn').addEventListener('click', () => {
 
 async function openPack(file) {
   toast('正在读取数据包…')
+  bilCache.clear()
   ZIPBUF = await file.arrayBuffer()
   ZIPFILES = await readZip(ZIPBUF)
   const libRaw = sliceFile(ZIPBUF, ZIPFILES['library.json'])

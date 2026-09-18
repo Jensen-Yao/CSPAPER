@@ -110,6 +110,25 @@ try {
     }, null, { timeout: 60000 })
   })
 
+  await step('T25 缩放交互（画布尺寸实际变化）', async () => {
+    const w1 = await page.evaluate(() => document.querySelector('.page-wrap canvas')?.style.width ?? '')
+    await page.locator('.seg[title="缩放"] button', { hasText: '+' }).click()
+    await wait(900)
+    const w2 = await page.evaluate(() => document.querySelector('.page-wrap canvas')?.style.width ?? '')
+    if (!w1 || w1 === w2) throw new Error(`缩放未生效 ${w1}→${w2}`)
+  })
+
+  await step('T26 面板/窗口尺寸变化后 PDF 自适应重排', async () => {
+    await page.setViewportSize({ width: 1500, height: 940 })
+    await wait(1200)
+    const w1 = await page.evaluate(() => document.querySelector('.page-wrap canvas')?.style.width ?? '')
+    await page.setViewportSize({ width: 1180, height: 940 })
+    await wait(1800)
+    const w2 = await page.evaluate(() => document.querySelector('.page-wrap canvas')?.style.width ?? '')
+    await page.setViewportSize({ width: 1500, height: 940 })
+    if (!w1 || w1 === w2) throw new Error(`自适应重排未生效 ${w1}→${w2}`)
+  })
+
   await step('T11 对比表渲染（预置要点+页码角标）', async () => {
     await page.locator('.mode-toggle button', { hasText: '对比' }).click()
     await page.waitForSelector('.cmp-table', { timeout: 15000 })
