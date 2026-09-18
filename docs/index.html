@@ -725,15 +725,18 @@ html[data-theme='dark'] .demo-banner { background: linear-gradient(90deg, #6d0a2
   html[data-theme='dark'] .card p { color:#9d98a1; }
 </style>
 <section class="feat" id="features">
-  <div class="kicker">WHATSNEW · v0.3</div>
+  <div class="kicker">WHATSNEW · v0.4</div>
   <h2>不止是阅读器 —— 一套完整的文献工作流</h2>
-  <div class="sub">0.3 版把 CSPAPER 变成围绕文献库的工作台：浏览器里一键收藏，手机上随时阅读，写作时一键插引文。全部本地、无需注册、开箱即用。</div>
+  <div class="sub">从浏览器里一键收藏，到手机上随时阅读，写作时一键插引文，多篇论文 AI 横向对比。全部本地、无需注册、开箱即用。</div>
   <div class="grid">
+    <div class="card"><div class="ic">📊</div><h3>AI 对比表格</h3><p>多篇文献按维度横向对比，AI 提取要点（研究问题 / 研究成果…，可自定义维度），每条要点附页码角标、点击跳回原文验证，支持导出 Markdown / CSV。</p><span class="tag">v0.4 · 侧栏「对比」模式</span></div>
+    <div class="card"><div class="ic">🗂</div><h3>文献卡片墙 + AI 小结</h3><p>库首页按月分组的封面卡片墙：PDF 首页缩略图、作者出处一览；每篇一键生成 150 字 AI 小结，整库要点一目了然。</p><span class="tag">v0.4 · 打开即见</span></div>
+    <div class="card"><div class="ic">📖</div><h3>全文翻译 · 逐段对照</h3><p>当前页按段落切成中英双语对照，逐段流式翻译，支持「跟随翻页」自动连译；不配 API Key 也能走免费通道。</p><span class="tag">v0.4 · 侧栏「全文」标签</span></div>
     <div class="card"><div class="ic">🧩</div><h3>浏览器插件</h3><p>Chrome / Edge 安装 Connector，在 arXiv、期刊页、PDF 链接上右键「保存到 CSPAPER」，PDF 自动下载入库；期刊页面自动识别标题与作者。</p><span class="tag">extension/ · 开发者模式加载</span></div>
     <div class="card"><div class="ic">📱</div><h3>Android 端</h3><p>桌面端「导出移动端数据包」，手机 APK 打开即读：分类、阅读状态、划词高亮完整迁移；手机上的批注一键合并回电脑。</p><span class="tag">android-app/ · APK</span></div>
     <div class="card"><div class="ic">📝</div><h3>Word / WPS 插引文</h3><p>搜索文献库，在光标处插入 [n] 引用，文末一键生成 GB/T 7714-2015 参考文献列表；支持 BibTeX 导出给 LaTeX 用户。</p><span class="tag">Word 加载项 + 引文助手</span></div>
     <div class="card"><div class="ic">🇨🇳</div><h3>CNKI 题录导入</h3><p>知网批量勾选文献导出题录（RIS / EndNote / 自定义格式），导入自动生成题录页：可检索、可引用，拿到 PDF 随时替换全文。</p><span class="tag">文件 → 导入题录文件</span></div>
-    <div class="card"><div class="ic">🌐</div><h3>免 Key 划词翻译</h3><p>不配置任何 API Key 也能划词即译（内置免费翻译通道）；配置大模型后自动升级为带术语消歧、附术语对照的学术翻译。</p><span class="tag">开箱即用</span></div>
+    <div class="card"><div class="ic">🔍</div><h3>深度搜索</h3><p>搜标题之外，还能搜正文与划词笔记关键词，直接显示命中片段与页码；本地 FTS + 向量混合检索，越库越大越好用。</p><span class="tag">v0.4 · 侧栏搜索框</span></div>
     <div class="card"><div class="ic">🔄</div><h3>Zotero 无缝迁移</h3><p>自动找到 Zotero 数据目录（Zotero 开着也能读），文献、PDF 附件、分类结构一键迁入；按 Zotero 条目自动去重，中文分类无障碍。</p><span class="tag">文件 → 从 Zotero 导入</span></div>
   </div>
 </section>

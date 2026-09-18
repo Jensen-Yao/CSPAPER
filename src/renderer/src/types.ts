@@ -12,6 +12,7 @@ export interface Paper {
   indexed: number
   added_at: string
   opened_at?: string | null
+  summary?: string
 }
 
 // 多服务商配置（设置页可维护多套，对话界面切换模型时自动激活所属配置）
@@ -131,6 +132,35 @@ export interface MobileMergeResult {
   skipped: number
 }
 
+// AI 对比表格
+export interface CompareCell {
+  t: string
+  p: number | null
+}
+
+export interface CompareData {
+  paperIds: number[]
+  dimensions: string[]
+  cells: Record<string, Record<string, CompareCell[]>>
+}
+
+export interface CompareTable {
+  id: number
+  title: string
+  data: CompareData
+  created_at: string
+}
+
+// 深度搜索命中（正文 / 划词笔记）
+export interface DeepHit {
+  id: number
+  slug: string
+  title: string
+  snippet: string
+  page: number | null
+  from: 'content' | 'note'
+}
+
 export interface SourceRef {
   n: number
   slug: string
@@ -178,6 +208,14 @@ declare global {
       mergeMobileNotes: () => Promise<MobileMergeResult | null>
       onMobileProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       onAppNotice: (cb: (p: { title: string; detail: string }) => void) => () => void
+      deepSearch: (q: string) => Promise<DeepHit[]>
+      summarizePaper: (id: number) => Promise<string>
+      compareList: () => Promise<CompareTable[]>
+      compareCreate: (title?: string) => Promise<CompareTable>
+      compareDelete: (id: number) => Promise<boolean>
+      compareSave: (id: number, data: CompareData) => Promise<CompareData>
+      compareGenerate: (paperId: number, dimensions: string[]) => Promise<Record<string, CompareCell[]>>
+      compareExport: (id: number, format: 'md' | 'csv') => Promise<void>
       onPreviewFile: (cb: (p: ImportPreviewItem) => void) => () => void
       onPreviewProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string) => Promise<number>

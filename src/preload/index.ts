@@ -57,6 +57,16 @@ const api = {
     ipcRenderer.on('app:notice', h)
     return () => ipcRenderer.removeListener('app:notice', h)
   },
+  // 深度搜索（正文 + 笔记）
+  deepSearch: (q: string) => ipcRenderer.invoke('search:deep', q),
+  // AI 文献卡片小结 / AI 对比表格
+  summarizePaper: (id: number) => ipcRenderer.invoke('papers:summarize', id),
+  compareList: () => ipcRenderer.invoke('compare:list'),
+  compareCreate: (title?: string) => ipcRenderer.invoke('compare:create', title),
+  compareDelete: (id: number) => ipcRenderer.invoke('compare:delete', id),
+  compareSave: (id: number, data: unknown) => ipcRenderer.invoke('compare:save', id, data),
+  compareGenerate: (paperId: number, dimensions: string[]) => ipcRenderer.invoke('compare:generate', paperId, dimensions),
+  compareExport: (id: number, format: 'md' | 'csv') => ipcRenderer.invoke('compare:export', id, format),
   onPreviewFile: (cb: (p: unknown) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p)
     ipcRenderer.on('preview:file', h)

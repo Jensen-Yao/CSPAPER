@@ -23,6 +23,8 @@ interface Props {
   pendingJump: { slug: string; page: number; snippet?: string; probe?: string } | null
   onJumped: () => void
   onPageContext: (text: string) => void
+  // 当前页码变化（全文翻译的页码指示用）
+  onPageChange?: (n: number) => void
   onSelect: (text: string, x: number, y: number) => void
   onDeleteHighlight: (id: number) => void
   // 面板常驻但 chat 模式下隐藏：隐藏时全局缩放快捷键不生效（让位给引用面板）
@@ -34,7 +36,7 @@ interface PageTextMap {
 }
 
 const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
-  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onSelect, onDeleteHighlight, visible },
+  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onSelect, onDeleteHighlight, visible },
   ref
 ): JSX.Element {
   const active = tabs.find((t) => t.paper.id === activeId) ?? null
@@ -160,6 +162,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
       setCurPage(n)
       curPageRef.current = n
       onPageContext(textCache.current[n] ?? '')
+      onPageChange?.(n)
     },
     [onPageContext]
   )
@@ -250,6 +253,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
           setCurPage(hitPage)
           curPageRef.current = hitPage
           onPageContext(textCache.current[hitPage] ?? '')
+          onPageChange?.(hitPage)
           if (hit) flashHit(el, hit)
           onJumped()
         })()
@@ -272,10 +276,11 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
         setCurPage(n)
         curPageRef.current = n
         onPageContext(textCache.current[n] ?? '')
+        onPageChange?.(n)
         return
       }
     }
-  }, [numPages, onPageContext])
+  }, [numPages, onPageContext, onPageChange])
 
   const onMouseUp = useCallback(
     (e: React.MouseEvent) => {

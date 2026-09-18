@@ -10,6 +10,8 @@ import RefViewer from './RefViewer'
 import ImportDialog from './ImportDialog'
 import ZoteroImportDialog from './ZoteroImportDialog'
 import RecordsDialog from './RecordsDialog'
+import LibraryHome from './LibraryHome'
+import CompareView from './CompareView'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
 
@@ -112,7 +114,8 @@ export default function App(): JSX.Element {
   const [llmChip, setLlmChip] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [mode, setMode] = useState<'read' | 'chat'>('read')
+  const [mode, setMode] = useState<'read' | 'chat' | 'compare'>('read')
+  const [pageNo, setPageNo] = useState(1)
   const isMac = /Mac/.test(navigator.platform)
 
   // 命令面板：Ctrl/Cmd + K 全局唤起
@@ -618,23 +621,13 @@ export default function App(): JSX.Element {
           {/* 阅读区：模式切换只隐藏不卸载，保留标签页与滚动状态 */}
           <div className={`main-win ${mode === 'read' ? '' : 'pane-hidden'}`}>
             {tabs.length === 0 ? (
-              <div className="start-pane">
-                <div className="workspace-empty">
-                  <div className="big">📚</div>
-                  <div className="headline">CSPAPER</div>
-                  <div className="tip">从左侧选择论文开始阅读；对话模式可与全库文献直接对话</div>
-                  {papers.length === 0 && (
-                    <div className="empty-actions">
-                      <button className="add-btn" onClick={() => void pickLibraryNow()}>
-                        选择文献库文件夹
-                      </button>
-                      <button className="add-btn ghost" onClick={addPapers}>
-                        导入 PDF 文献
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <LibraryHome
+                papers={papers}
+                activeId={activeId}
+                onOpen={openPaperFromTree}
+                onAddPapers={addPapers}
+                onOpenRecords={() => setRecordsOpen(true)}
+              />
             ) : (
               <PdfViewer
                 ref={viewerRef}
@@ -651,6 +644,7 @@ export default function App(): JSX.Element {
                 onSelect={onSelect}
                 onDeleteHighlight={onDeleteHighlight}
                 visible={mode === 'read'}
+                onPageChange={setPageNo}
               />
             )}
             {showSide && (
@@ -671,6 +665,7 @@ export default function App(): JSX.Element {
                 width={sideWidth}
                 paper={activePaper}
                 pageContext={pageCtx}
+                pageNum={pageNo}
                 onJump={jumpTo}
                 models={models}
                 model={model}
@@ -715,6 +710,10 @@ export default function App(): JSX.Element {
                 <RefViewer paper={refView.paper} page={refView.page} snippet={refView.snippet} probe={refView.probe} width={refWidth} onClose={() => setRefView(null)} />
               </>
             )}
+          </div>
+          {/* 对比区：AI 多文献横向对比表格 */}
+          <div className={`cmp-host ${mode === 'compare' ? '' : 'pane-hidden'}`}>
+            <CompareView papers={papers} onJump={openCite} />
           </div>
         </div>
       </div>

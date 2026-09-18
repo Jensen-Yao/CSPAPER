@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { renderRich, type Jump } from './rich'
 import { ModelPill, ThinkingPill } from './ChatControls'
 import type { ChatMsg, Paper, SourceRef } from './types'
@@ -13,6 +13,7 @@ export interface SideControl {
 interface Props {
   paper: Paper | null
   pageContext: string
+  pageNum: number
   onJump: Jump
   models: string[]
   model: string
@@ -30,11 +31,35 @@ interface Translation {
   out: string
 }
 
+interface BilBlock {
+  src: string
+  out: string
+}
+
+// 把整页文本切成适合逐段翻译的块（句边切分，防止句子被拦腰截断）
+function splitBlocks(text: string): string[] {
+  const clean = text.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim()
+  if (!clean) return []
+  const sentences = clean.split(/(?<=[.!?。！？；;])\s*/)
+  const blocks: string[] = []
+  let cur = ''
+  for (const s of sentences) {
+    if (cur && cur.length + s.length > 650) {
+      blocks.push(cur.trim())
+      cur = s
+    } else {
+      cur += (cur ? ' ' : '') + s
+    }
+  }
+  if (cur.trim()) blocks.push(cur.trim())
+  return blocks.slice(0, 24)
+}
+
 const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
-  { paper, pageContext, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs },
+  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs },
   ref
 ): JSX.Element {
-  const [tab, setTab] = useState<'chat' | 'translate'>('chat')
+  const [tab, setTab] = useState<'chat' | 'translate' | 'full'>('chat')
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -44,6 +69,43 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const scrollRef = useRef<HTMLDivElement>(null)
   const ctxRef = useRef('')
   const curRef = useRef<Translation | null>(null)
+  // 全文翻译（逐段双语）
+  const [bil, setBil] = useState<BilBlock[]>([])
+  const [bilPage, setBilPage] = useState(0)
+  const [bilRunning, setBilRunning] = useState(false)
+  const [bilAuto, setBilAuto] = useState(false)
+  const bilCancel = useRef(false)
+  const bilPageDone = useRef(new Set<number>())
+
+  const translatePageFull = (text: string, pageNo: number): void => {
+    const blocks = splitBlocks(text)
+    if (blocks.length === 0) {
+      setBil([])
+      return
+    }
+    setBilPage(pageNo)
+    bilPageDone.current.add(pageNo)
+    setBil(blocks.map((b) => ({ src: b, out: '' })))
+    bilCancel.current = false
+    setBilRunning(true)
+    void (async () => {
+      for (let i = 0; i < blocks.length; i++) {
+        if (bilCancel.current) break
+        const idx = i
+        await new Promise<void>((resolve) => {
+          window.api.stream(
+            { mode: 'translate', text: blocks[idx], context: '' },
+            {
+              onDelta: (d) =>
+                setBil((bs) => bs.map((b, j) => (j === idx ? { ...b, out: b.out + d } : b))),
+              onEnd: () => resolve()
+            }
+          )
+        })
+      }
+      setBilRunning(false)
+    })()
+  }
 
   const scrollBottom = () => setTimeout(() => scrollRef.current?.scrollTo({ top: 1e9, behavior: 'smooth' }), 50)
 
@@ -99,6 +161,13 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   }))
 
   const ctxTranslation = ctxOn && current?.out ? current : null
+
+  // 全文翻译：跟随翻页时自动翻译新页
+  useEffect(() => {
+    if (tab === 'full' && bilAuto && !bilRunning && pageContext && !bilPageDone.current.has(pageNum)) {
+      translatePageFull(pageContext, pageNum)
+    }
+  }, [tab, pageNum, bilAuto, pageContext, bilRunning])
 
   // 引用跳转带上「该轮的问题 + 芯片所在回答的局部上下文」：
   // 整篇问答模式没有 snippet，靠它们做关键词定位到页内段落
@@ -162,6 +231,13 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
         <div className={`side-tab ${tab === 'translate' ? 'active' : ''}`} onClick={() => setTab('translate')}>
           翻译
         </div>
+        <div
+          className={`side-tab ${tab === 'full' ? 'active' : ''}`}
+          onClick={() => setTab('full')}
+          title="全文翻译：当前页逐段中英对照"
+        >
+          全文
+        </div>
         <button className="side-new-chat" title="新对话：清空问答记录与上下文" onClick={reset}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 21c-4.4 0-8-3.1-8-7 0-2.2 1.2-4.2 3-5.5V4l3.2 1.8c.6-.1 1.2-.2 1.8-.2 4.4 0 8 3.1 8 7s-3.6 7-8 7z" />
@@ -178,7 +254,53 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
           </button>
         </div>
       </div>
-      {tab === 'chat' ? (
+      {tab === 'full' ? (
+        <div className="bil-wrap">
+          <div className="bil-bar">
+            <span className="bil-page">第 {pageNum} 页</span>
+            <label className={`ctx-toggle ${bilAuto ? 'on' : ''}`} title="翻到新页时自动翻译">
+              <input type="checkbox" checked={bilAuto} onChange={(e) => setBilAuto(e.target.checked)} style={{ display: 'none' }} />
+              跟随翻页
+            </label>
+            <span style={{ flex: 1 }} />
+            {bilRunning ? (
+              <button
+                className="ctx-toggle"
+                onClick={() => {
+                  bilCancel.current = true
+                }}
+              >
+                停止
+              </button>
+            ) : (
+              <button
+                className="ctx-toggle on"
+                disabled={!pageContext}
+                onClick={() => translatePageFull(pageContext, pageNum)}
+                title="把当前页逐段翻译为中英对照"
+              >
+                翻译本页
+              </button>
+            )}
+          </div>
+          <div className="chat-scroll bil-scroll" ref={scrollRef}>
+            {!pageContext && <div className="bil-tip">打开论文后才能翻译当前页。</div>}
+            {pageContext && bil.length === 0 && bilPage !== pageNum && (
+              <div className="bil-tip">点「翻译本页」，当前页会按段落切成中英对照；勾选「跟随翻页」可自动连翻连译。</div>
+            )}
+            {bil.map((b, i) => (
+              <div key={i} className="bil-pair">
+                <div className="bil-src">{b.src}</div>
+                <div className="bil-dst">
+                  {b.out || (bilRunning ? '…' : '')}
+                  {b.out && <span className="bil-cursor"> </span>}
+                </div>
+              </div>
+            ))}
+            {bil.length > 0 && !bilRunning && <div className="bil-tip">本页翻译完成 · 共 {bil.length} 段</div>}
+          </div>
+        </div>
+      ) : tab === 'chat' ? (
         <>
           <div className="chat-scroll" ref={scrollRef}>
             {msgs.length === 0 && (

@@ -108,6 +108,14 @@ export function initDb(): void {
   const cols = (db.prepare('PRAGMA table_info(papers)').all() as Array<{ name: string }>).map((c) => c.name)
   if (!cols.includes('pvec')) db.exec('ALTER TABLE papers ADD COLUMN pvec BLOB')
   if (!cols.includes('opened_at')) db.exec('ALTER TABLE papers ADD COLUMN opened_at TEXT')
+  if (!cols.includes('summary')) db.exec('ALTER TABLE papers ADD COLUMN summary TEXT')
+  // AI 文献卡片小结 / 对比表格
+  db.exec(`CREATE TABLE IF NOT EXISTS compare_tables(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    data TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now'))
+  );`)
   // 整篇级全文索引：标题/作者/出处可被 BM25 直接命中（块索引只含正文，标题查不到）
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
     title, authors, venue, slug, tokenize='trigram'

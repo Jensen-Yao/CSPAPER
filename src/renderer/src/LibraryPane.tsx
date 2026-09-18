@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Paper } from './types'
+import type { DeepHit, Paper } from './types'
 
 interface Props {
   papers: Paper[]
@@ -18,8 +18,8 @@ interface Props {
   canBack: boolean
   canFwd: boolean
   onOpenPalette: () => void
-  mode: 'read' | 'chat'
-  onModeChange: (m: 'read' | 'chat') => void
+  mode: 'read' | 'chat' | 'compare'
+  onModeChange: (m: 'read' | 'chat' | 'compare') => void
   width: number
   onPapersChanged: () => void
 }
@@ -95,6 +95,22 @@ export default function LibraryPane({
   const kw = q.trim().toLowerCase()
   const match = (p: Paper): boolean => !kw || p.title.toLowerCase().includes(kw) || p.authors.toLowerCase().includes(kw) || p.slug.includes(kw)
   const searching = kw.length > 0
+
+  // 深度搜索：标题命中之外，再搜正文与划词笔记，展示命中片段
+  const [deep, setDeep] = useState<DeepHit[]>([])
+  useEffect(() => {
+    if (!searching || kw.length < 2) {
+      setDeep([])
+      return
+    }
+    const t = setTimeout(() => {
+      void window.api
+        .deepSearch(kw)
+        .then((hits) => setDeep(hits.filter((h) => !papers.some((p) => p.id === h.id && match(p)))))
+        .catch(() => setDeep([]))
+    }, 350)
+    return () => clearTimeout(t)
+  }, [kw, searching, papers])
 
   // 拖拽移动文献：拖到分类头放下
   const [dragCat, setDragCat] = useState<string | null>(null)
@@ -246,6 +262,13 @@ export default function LibraryPane({
             </svg>
             对话
           </button>
+          <button className={mode === 'compare' ? 'on' : ''} onClick={() => onModeChange('compare')} title="多篇文献横向对比（AI 提取要点 + 页码出处）">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M3 10h18M9 4v16M15 4v16" />
+            </svg>
+            对比
+          </button>
         </div>
         <div className="nav-row">
           {navBtn('back')}
@@ -318,6 +341,28 @@ export default function LibraryPane({
             <>
               <div className="lib-section">搜索结果 · {papers.filter(match).length}</div>
               {papers.filter(match).map((p) => paperRow(p))}
+              {deep.length > 0 && (
+                <>
+                  <div className="lib-section">正文 / 笔记匹配 · {deep.length}</div>
+                  {deep.map((h) => {
+                    const p = papers.find((x) => x.id === h.id)
+                    return (
+                      <div
+                        key={`${h.id}-${h.page}-${h.from}`}
+                        className="paper-item deep"
+                        onClick={() => p && onOpen(p)}
+                        title={h.snippet}
+                      >
+                        <div className="t">{p?.title ?? h.title}</div>
+                        <div className="deep-snip">
+                          {h.from === 'note' ? '🖍' : '📄'} {h.page ? `p.${h.page} · ` : ''}
+                          {h.snippet}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
             </>
           ) : view === 'recent' ? (
             <>

@@ -11,6 +11,7 @@ import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroI
 import { startBridge } from './bridge'
 import { parseRecords, importRecords, type RecordEntry } from './records'
 import { exportMobilePack, mergeMobileNotes } from './mobilepack'
+import { listCompare, createCompare, deleteCompare, saveCompare, generateCells, summarizePaper, deepSearch, exportCompare, type CompareData } from './insight'
 
 let win: BrowserWindow | null = null
 
@@ -240,6 +241,18 @@ function registerIpc(): void {
     send('papers:changed', { ids: [] })
     return result
   })
+
+  // 深度搜索：正文（FTS）+ 划词笔记
+  ipcMain.handle('search:deep', (_e, q: string) => deepSearch(q))
+
+  // AI 文献卡片小结 / AI 对比表格（可追溯引用）
+  ipcMain.handle('papers:summarize', (_e, id: number) => summarizePaper(id))
+  ipcMain.handle('compare:list', () => listCompare())
+  ipcMain.handle('compare:create', (_e, title?: string) => createCompare(title))
+  ipcMain.handle('compare:delete', (_e, id: number) => deleteCompare(id))
+  ipcMain.handle('compare:save', (_e, id: number, data: CompareData) => saveCompare(id, data))
+  ipcMain.handle('compare:generate', (_e, paperId: number, dimensions: string[]) => generateCells(paperId, dimensions, send))
+  ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, win))
 
   // 手动归类：右键菜单 / 拖拽都走这里（移动文件夹 + 原地改写 DB，保留行身份）
   ipcMain.handle('papers:move', (_e, id: number, category: string) => {
