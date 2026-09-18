@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { renderRich, type Jump } from './rich'
 import { ModelPill, ThinkingPill } from './ChatControls'
+import PaperDetailPanel from './PaperDetailPanel'
 import type { ChatMsg, Paper, SourceRef } from './types'
 
 export interface SideControl {
@@ -8,6 +9,7 @@ export interface SideControl {
   explain: (text: string, context: string) => void
   quote: (text: string) => void
   reset: () => void
+  openFulltext: () => void
 }
 
 interface Props {
@@ -24,6 +26,8 @@ interface Props {
   // 对话字号（问答/翻译/对话共用）
   fs: number
   onFs: (delta: number) => void
+  // 删除高亮（同步阅读器图层）
+  onDeleteHighlight: (id: number) => void
 }
 
 interface Translation {
@@ -56,10 +60,10 @@ function splitBlocks(text: string): string[] {
 }
 
 const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
-  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs },
+  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs, onDeleteHighlight },
   ref
 ): JSX.Element {
-  const [tab, setTab] = useState<'chat' | 'translate' | 'full'>('chat')
+  const [tab, setTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'info'>('chat')
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -76,6 +80,13 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const [bilAuto, setBilAuto] = useState(false)
   const bilCancel = useRef(false)
   const bilPageDone = useRef(new Set<number>())
+  // 最新值的 ref 镜像（供 imperative 方法读取）
+  const bilRunRef = useRef(false)
+  bilRunRef.current = bilRunning
+  const pcRef = useRef('')
+  pcRef.current = pageContext
+  const pnRef = useRef(0)
+  pnRef.current = pageNum
 
   const translatePageFull = (text: string, pageNo: number): void => {
     const blocks = splitBlocks(text)
@@ -157,8 +168,28 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
       setTab('chat')
       setInput((v) => (v ? v + '\n' : '') + `关于这段内容：「${text.slice(0, 300)}」\n`)
     },
-    reset
+    reset,
+    openFulltext() {
+      setTab('full')
+      if (pcRef.current && !bilRunRef.current && bilPage !== pnRef.current) translatePageFull(pcRef.current, pnRef.current)
+    }
   }))
+
+  // 标注列表（切到该标签或换文献时加载）
+  const [notes, setNotes] = useState<Array<{ id: number; page: number; text: string }> | null>(null)
+  useEffect(() => {
+    if (tab !== 'notes' || !paper) return
+    setNotes(null)
+    void window.api
+      .listHighlights(paper.id)
+      .then((hs) => setNotes(hs.map((h) => ({ id: h.id, page: h.page, text: h.text }))))
+      .catch(() => setNotes([]))
+  }, [tab, paper?.id])
+  const delNote = async (id: number): Promise<void> => {
+    await window.api.deleteHighlight(id)
+    setNotes((ns) => (ns ?? []).filter((n) => n.id !== id))
+    onDeleteHighlight(id)
+  }
 
   const ctxTranslation = ctxOn && current?.out ? current : null
 
@@ -238,6 +269,12 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
         >
           全文
         </div>
+        <div className={`side-tab ${tab === 'notes' ? 'active' : ''}`} onClick={() => setTab('notes')} title="本篇划词标注">
+          标注
+        </div>
+        <div className={`side-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => setTab('info')} title="文献详情">
+          详情
+        </div>
         <button className="side-new-chat" title="新对话：清空问答记录与上下文" onClick={reset}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 21c-4.4 0-8-3.1-8-7 0-2.2 1.2-4.2 3-5.5V4l3.2 1.8c.6-.1 1.2-.2 1.8-.2 4.4 0 8 3.1 8 7s-3.6 7-8 7z" />
@@ -254,7 +291,34 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
           </button>
         </div>
       </div>
-      {tab === 'full' ? (
+      {tab === 'notes' ? (
+        <div className="chat-scroll">
+          {!paper && <div className="bil-tip">打开论文后查看本篇划词标注。</div>}
+          {paper && notes === null && <div className="bil-tip">加载中…</div>}
+          {paper && notes?.length === 0 && <div className="bil-tip">还没有划词标注。在 PDF 里选中文字点「高亮」即可保存；点条目下「删除」可移除。</div>}
+          {notes?.map((n) => (
+            <div key={n.id} className="bil-pair">
+              <div className="bil-src" style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span className="pd-note-page">p.{n.page}</span>
+                <span className="ellipsis" style={{ flex: 1 }}>
+                  {n.text.slice(0, 90)}
+                </span>
+                <button className="cmp-mini danger" onClick={() => void delNote(n.id)}>
+                  删除
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : tab === 'info' ? (
+        <div className="chat-scroll pd-embed">
+          {paper ? (
+            <PaperDetailPanel paper={paper} embedded onSummarized={() => {}} />
+          ) : (
+            <div className="bil-tip">打开论文后查看文献详情（信息 / AI 洞察 / 摘要 / 附件）。</div>
+          )}
+        </div>
+      ) : tab === 'full' ? (
         <div className="bil-wrap">
           <div className="bil-bar">
             <span className="bil-page">第 {pageNum} 页</span>

@@ -12,6 +12,7 @@ import ZoteroImportDialog from './ZoteroImportDialog'
 import RecordsDialog from './RecordsDialog'
 import LibraryHome from './LibraryHome'
 import CompareView from './CompareView'
+import OverviewView from './OverviewView'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
 
@@ -114,7 +115,8 @@ export default function App(): JSX.Element {
   const [llmChip, setLlmChip] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [mode, setMode] = useState<'read' | 'chat' | 'compare'>('read')
+  const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview'>('read')
+  const [overviewTab, setOverviewTab] = useState<'table' | 'graph'>('table')
   const [pageNo, setPageNo] = useState(1)
   const isMac = /Mac/.test(navigator.platform)
 
@@ -503,6 +505,7 @@ export default function App(): JSX.Element {
             setIndexedCount(await window.api.indexStatus())
           })()
         }}
+        onZoteroImport={() => setZoteroOpen(true)}
       />
     )
   }
@@ -540,6 +543,13 @@ export default function App(): JSX.Element {
         { label: '重置对话字号', hint: '13px', action: resetFs },
         { sep: true, label: '' },
         { label: '重新加载', hint: isMac ? '⌘ R' : 'Ctrl R', action: () => location.reload() }
+      ] as MenuItem[]
+    },
+    {
+      name: '纵览',
+      items: [
+        { label: '文献表格', hint: 'Zotero 式总表', action: () => { setMode('overview'); setOverviewTab('table') } },
+        { label: '知识网络', hint: '关联图谱', action: () => { setMode('overview'); setOverviewTab('graph') } }
       ] as MenuItem[]
     },
     {
@@ -645,6 +655,7 @@ export default function App(): JSX.Element {
                 onDeleteHighlight={onDeleteHighlight}
                 visible={mode === 'read'}
                 onPageChange={setPageNo}
+                onOpenFulltext={() => sideControl.current?.openFulltext()}
               />
             )}
             {showSide && (
@@ -667,6 +678,7 @@ export default function App(): JSX.Element {
                 pageContext={pageCtx}
                 pageNum={pageNo}
                 onJump={jumpTo}
+                onDeleteHighlight={onDeleteHighlight}
                 models={models}
                 model={model}
                 thinking={thinking}
@@ -714,6 +726,10 @@ export default function App(): JSX.Element {
           {/* 对比区：AI 多文献横向对比表格 */}
           <div className={`cmp-host ${mode === 'compare' ? '' : 'pane-hidden'}`}>
             <CompareView papers={papers} onJump={openCite} />
+          </div>
+          {/* 纵览区：文献总表 + 知识网络 */}
+          <div className={`ov-host ${mode === 'overview' ? '' : 'pane-hidden'}`}>
+            <OverviewView papers={papers} visible={mode === 'overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} />
           </div>
         </div>
       </div>

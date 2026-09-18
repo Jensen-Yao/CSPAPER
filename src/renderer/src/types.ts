@@ -141,6 +141,7 @@ export interface CompareCell {
 export interface CompareData {
   paperIds: number[]
   dimensions: string[]
+  fields?: string[]
   cells: Record<string, Record<string, CompareCell[]>>
 }
 
@@ -149,6 +150,23 @@ export interface CompareTable {
   title: string
   data: CompareData
   created_at: string
+}
+
+// 卡片详情栏（信息 / 摘要 / 笔记 / 附件）
+export interface PaperDetail {
+  id: number
+  slug: string
+  title: string
+  authors: string
+  year: number | null
+  venue: string
+  category: string
+  status: string
+  added_at: string
+  summary: string | null
+  abstract: string
+  files: string[]
+  notesCount: number
 }
 
 // 深度搜索命中（正文 / 划词笔记）
@@ -216,6 +234,7 @@ declare global {
       compareSave: (id: number, data: CompareData) => Promise<CompareData>
       compareGenerate: (paperId: number, dimensions: string[]) => Promise<Record<string, CompareCell[]>>
       compareExport: (id: number, format: 'md' | 'csv') => Promise<void>
+      paperDetail: (id: number) => Promise<PaperDetail | null>
       onPreviewFile: (cb: (p: ImportPreviewItem) => void) => () => void
       onPreviewProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string) => Promise<number>

@@ -3,6 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { Paper } from './types'
 import { catLabel } from './LibraryPane'
+import PaperDetailPanel from './PaperDetailPanel'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -49,7 +50,7 @@ function Thumb({ paper }: { paper: Paper }): JSX.Element {
         }).promise
         const page = await d.getPage(1)
         const base = page.getViewport({ scale: 1 })
-        const scale = Math.min(1.2, 560 / base.width) // 2x for retina display then CSS scale back
+        const scale = Math.min(1.2, 560 / base.width) // 2x 渲染抗模糊，CSS 缩回
         const vp = page.getViewport({ scale })
         const canvas = document.createElement('canvas')
         canvas.width = Math.floor(vp.width)
@@ -60,7 +61,7 @@ function Thumb({ paper }: { paper: Paper }): JSX.Element {
         setSrc(url)
         void d.destroy()
       } catch {
-        /* PDF cannot be read (for example, an entry placeholder failed), leave the placeholder empty */
+        /* PDF 无法读取（题录占位损坏等），保留占位图 */
       }
     })()
   }
@@ -72,7 +73,7 @@ function Thumb({ paper }: { paper: Paper }): JSX.Element {
   )
 }
 
-// AI summary block: shows the cached one, otherwise provides one-click generation
+// AI 小结区块：有缓存直接展示，否则一键生成
 function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s: string) => void }): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [val, setVal] = useState(paper.summary ?? '')
@@ -95,9 +96,9 @@ function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s:
   if (!val) {
     return (
       <div className="card-sum">
-        <span className="sum-label">AI summary</span>
+        <span className="sum-label">AI 小结</span>
         <button className="sum-gen" disabled={busy} onClick={() => void gen()}>
-          {busy ? 'Generating…' : 'Generate summary'}
+          {busy ? '生成中…' : '生成小结'}
         </button>
         {err && <span className="sum-err">{err}</span>}
       </div>
@@ -105,25 +106,25 @@ function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s:
   }
   return (
     <div className="card-sum">
-      <span className="sum-label">AI summary</span>
+      <span className="sum-label">AI 小结</span>
       <div className="sum-text">{val}</div>
     </div>
   )
 }
 
 export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onOpenRecords }: Props): JSX.Element {
-  // Group by import month (same as the reference product's "2026年3月" style), newest month first
+  // 按导入月份分组（最新月份在前）
   const groups = useMemo(() => {
     const m = new Map<string, Paper[]>()
     for (const p of papers) {
       const d = new Date((p.added_at || '').replace(' ', 'T') + 'Z')
-      const key = isNaN(d.getTime()) ? 'Earlier' : `${d.getFullYear()} year ${d.getMonth() + 1} month`
+      const key = isNaN(d.getTime()) ? '更早' : `${d.getFullYear()}年${d.getMonth() + 1}月`
       if (!m.has(key)) m.set(key, [])
       m.get(key)!.push(p)
     }
     return [...m.entries()].sort((a, b) => {
-      if (a[0] === 'Earlier') return 1
-      if (b[0] === 'Earlier') return -1
+      if (a[0] === '更早') return 1
+      if (b[0] === '更早') return -1
       return b[0].localeCompare(a[0])
     })
   }, [papers])
@@ -133,45 +134,58 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
     if (p) (p as Paper & { summary?: string }).summary = s
   }
 
+  // 单击选中 → 右侧详情栏；双击 / 「打开阅读」进入阅读器
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const selected = papers.find((p) => p.id === selectedId) ?? null
+
   return (
-    <div className="libhome">
-      <div className="libhome-bar">
-        <span className="libhome-count">{papers.length} papers in library</span>
-        <span style={{ flex: 1 }} />
-        <button className="btn ghost" onClick={onOpenRecords} title="Import titles exported in bulk from CNKI / Wanfang, etc.">
-          Import titles…
-        </button>
-        <button className="btn" onClick={onAddPapers} title="Import PDF, auto categorize with AI; can also drag into the window">
-          ⬆ Upload literature
-        </button>
-      </div>
-      {papers.length === 0 && (
-        <div className="libhome-empty">
-          <div className="big">📚</div>
-          <div className="headline">Import the first paper into the library</div>
-          <div className="tip">Support dragging in a PDF / entire folder; can also import Zotero library, CNKI titles, or save directly from the browser.</div>
+    <div className="libhome-outer">
+      <div className="libhome">
+        <div className="libhome-bar">
+          <span className="libhome-title">文献库</span>
+          <span className="libhome-count">{papers.length} 篇</span>
+          <span style={{ flex: 1 }} />
+          <button className="btn ghost" onClick={onOpenRecords} title="导入从 CNKI / 万方等批量导出的题录文件">
+            导入题录…
+          </button>
+          <button className="btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
+            ⬆ 上传文献
+          </button>
         </div>
-      )}
-      {groups.map(([month, list]) => (
-        <div key={month}>
-          <div className="libhome-month">🗓 {month}</div>
-          <div className="libhome-grid">
-            {list.map((p) => (
-              <div
-                key={p.id}
-                className={`pcard ${p.id === activeId ? 'active' : ''}`}
-                onClick={() => onOpen(p)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  window.api.paperMenu(p.id, e.clientX, e.clientY)
-                }}
-                title={`${catLabel(p.category)} · ${p.status}`}
-              >
+        {papers.length === 0 && (
+          <div className="libhome-empty">
+            <div className="big">📚</div>
+            <div className="headline">导入第一篇文献入库</div>
+            <div className="tip">
+              支持拖入 PDF / 整个文件夹；也可以从 Zotero 迁移、导入知网题录，或用浏览器插件一键收藏。
+              首次使用可先 <button className="libhome-link" onClick={() => void pickLibrary()}>选择文献库文件夹</button>。
+            </div>
+          </div>
+        )}
+        {groups.map(([month, list]) => (
+          <div key={month}>
+            <div className="libhome-month">
+              🗓 {month}
+              <span className="libhome-month-n">{list.length} 篇</span>
+            </div>
+            <div className="libhome-grid">
+              {list.map((p) => (
+                <div
+                  key={p.id}
+                  className={`pcard ${p.id === selectedId ? 'active' : ''}`}
+                  onClick={() => setSelectedId(p.id)}
+                  onDoubleClick={() => onOpen(p)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    window.api.paperMenu(p.id, e.clientX, e.clientY)
+                  }}
+                  title="单击查看详情，双击进入阅读"
+                >
                 <Thumb paper={p} />
                 <div className="pcard-body">
                   <div className="pcard-title">{p.title}</div>
                   <div className="pcard-meta">
-                    {p.authors && <div className="pcard-authors">Authors: {p.authors.split(/[,;，；]/)[0]}{' et al.'}</div>}
+                    {p.authors && <div className="pcard-authors">作者：{p.authors.split(/[,;，；]/)[0]} 等</div>}
                     <div className="pcard-venue">
                       {p.venue || catLabel(p.category)}
                       {p.year ? ` · ${p.year}` : ''}
@@ -183,7 +197,25 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
             ))}
           </div>
         </div>
-      ))}
+        ))}
+      </div>
+      {selected && (
+        <PaperDetailPanel
+          paper={selected}
+          onClose={() => setSelectedId(null)}
+          onOpen={(p) => {
+            setSelectedId(null)
+            onOpen(p)
+          }}
+          onSummarized={refresh}
+        />
+      )}
     </div>
   )
+}
+
+// 空库引导里直接选库文件夹（延迟 import 避免环依赖：App 已把该方法作为 prop 传入的场景）
+async function pickLibrary(): Promise<void> {
+  await window.api.pickLibrary()
+  location.reload()
 }

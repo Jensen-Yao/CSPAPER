@@ -18,8 +18,8 @@ interface Props {
   canBack: boolean
   canFwd: boolean
   onOpenPalette: () => void
-  mode: 'read' | 'chat' | 'compare'
-  onModeChange: (m: 'read' | 'chat' | 'compare') => void
+  mode: 'read' | 'chat' | 'compare' | 'overview'
+  onModeChange: (m: 'read' | 'chat' | 'compare' | 'overview') => void
   width: number
   onPapersChanged: () => void
 }
@@ -268,6 +268,15 @@ export default function LibraryPane({
               <path d="M3 10h18M9 4v16M15 4v16" />
             </svg>
             对比
+          </button>
+          <button className={mode === 'overview' ? 'on' : ''} onClick={() => onModeChange('overview')} title="文献总表与知识网络">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="6" cy="6" r="2.6" />
+              <circle cx="18" cy="7" r="2.6" />
+              <circle cx="12" cy="17" r="2.6" />
+              <path d="M7.8 7.6L10.5 15M16.6 9l-3.2 6M8.6 6.4l6.8 .4" />
+            </svg>
+            纵览
           </button>
         </div>
         <div className="nav-row">

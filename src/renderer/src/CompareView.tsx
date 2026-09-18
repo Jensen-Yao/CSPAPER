@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CompareData, CompareTable, Paper } from './types'
+import { BASE_FIELDS, AI_DIMENSION_PRESETS } from './dimensions'
 
 interface Props {
   papers: Paper[]
   onJump: (slug: string, page: number) => void
 }
 
-// AI 对比表格：多篇文献 × 多维度横向对比，AI 提取要点并附页码出处（点击跳回原文）
+const fieldVal = (f: string, p: Paper): string => {
+  switch (f) {
+    case '标题': return p.title
+    case '作者': return p.authors || '—'
+    case '期刊名称': return p.venue || '—'
+    case '发表年份': return p.year != null ? String(p.year) : '—'
+    case '分类': return p.category || '—'
+    default: return '—'
+  }
+}
+
+// AI 对比表格：多篇文献 × 多维度横向对比
+//  - 基础字段列直接提取（无需 AI）；分析维度由 AI 读原文提取要点并附页码出处
 export default function CompareView({ papers, onJump }: Props): JSX.Element {
   const [tables, setTables] = useState<CompareTable[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
@@ -14,8 +27,11 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
   const [err, setErr] = useState('')
   const [showAddPaper, setShowAddPaper] = useState(false)
   const [showAddDim, setShowAddDim] = useState(false)
-  const [newDim, setNewDim] = useState('')
+  const [dimSource, setDimSource] = useState<'builtin' | 'custom'>('builtin')
   const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [checkedFields, setCheckedFields] = useState<Set<string>>(new Set())
+  const [checkedDims, setCheckedDims] = useState<Set<string>>(new Set())
+  const [customDim, setCustomDim] = useState('')
   const [genAllBusy, setGenAllBusy] = useState(false)
 
   useEffect(() => {
@@ -37,6 +53,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
 
   const active = tables.find((t) => t.id === activeId) ?? null
   const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers])
+  const fields = active?.data.fields ?? ['作者', '期刊名称']
 
   const mutate = (fn: (d: CompareData) => CompareData): void => {
     if (!active) return
@@ -73,11 +90,20 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
       return { ...d, paperIds: d.paperIds.filter((x) => x !== pid), cells }
     })
   }
-  const addDimension = (): void => {
-    const name = newDim.trim()
-    if (!name || !active || active.data.dimensions.includes(name)) return
-    mutate((d) => ({ ...d, dimensions: [...d.dimensions, name] }))
-    setNewDim('')
+
+  const confirmAddDims = (): void => {
+    if (!active) return
+    const newFields = [...checkedFields].filter((f) => !fields.includes(f))
+    const newDims = [...checkedDims].filter((d) => !active.data.dimensions.includes(d))
+    const custom = customDim.trim()
+    mutate((d) => ({
+      ...d,
+      fields: [...d.fields ?? [], ...newFields],
+      dimensions: [...d.dimensions, ...newDims, ...(custom && !d.dimensions.includes(custom) ? [custom] : [])]
+    }))
+    setCheckedFields(new Set())
+    setCheckedDims(new Set())
+    setCustomDim('')
     setShowAddDim(false)
   }
 
@@ -136,6 +162,11 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
             <span className="cmp-missing">文献已删除</span>
           )}
         </td>
+        {fields.filter((f) => f !== '标题').map((f) => (
+          <td key={f} className="cmp-meta">
+            {p ? fieldVal(f, p) : '—'}
+          </td>
+        ))}
         {(active?.data.dimensions ?? []).map((dim) => (
           <td key={dim} className="cmp-cell">
             {(cells[dim] ?? []).length === 0 ? (
@@ -159,8 +190,6 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
             )}
           </td>
         ))}
-        <td className="cmp-meta">{p?.authors || '—'}</td>
-        <td className="cmp-meta">{p?.venue || '—'}</td>
       </tr>
     )
   }
@@ -204,7 +233,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
         <button className="cmp-btn" onClick={() => { setPicked(new Set()); setShowAddPaper(true) }}>
           ⊕ 添加文献
         </button>
-        <button className="cmp-btn" onClick={() => setShowAddDim(true)}>
+        <button className="cmp-btn" onClick={() => { setDimSource('builtin'); setShowAddDim(true) }}>
           ＋ 添加维度
         </button>
         <button className="cmp-btn primary" disabled={genAllBusy || active.data.paperIds.length === 0} onClick={() => void generateMissing()} title="对所有还没提取过要点的文献跑一遍 AI">
@@ -226,7 +255,8 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
           <div className="big">📊</div>
           <div className="headline">多篇文献横向对比</div>
           <div className="tip">
-            点「⊕ 添加文献」选入 2 篇以上论文，AI 会按维度提取要点（研究问题 / 研究成果…），每条要点附页码出处，点击角标跳回原文验证。可随时添加自己的分析维度，导出 Markdown / CSV。
+            点「⊕ 添加文献」选入 2 篇以上论文：基础字段（作者 / 期刊…）直接提取，分析维度由 AI 读原文提取要点，
+            每条要点附页码出处，点击角标跳回原文验证。
           </div>
         </div>
       ) : (
@@ -236,11 +266,16 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
               <tr>
                 <th className="cmp-idx">#</th>
                 <th className="cmp-title">标题</th>
-                {active.data.dimensions.map((d) => (
-                  <th key={d}>{d}</th>
+                {fields.filter((f) => f !== '标题').map((f) => (
+                  <th key={f} className="cmp-field-col" title="基础字段 · 直接提取">
+                    {f}
+                  </th>
                 ))}
-                <th>作者</th>
-                <th>期刊</th>
+                {active.data.dimensions.map((d) => (
+                  <th key={d} title="AI 维度 · 读原文提取要点">
+                    {d}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -302,32 +337,111 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
 
       {showAddDim && (
         <div className="modal-mask" onMouseDown={() => setShowAddDim(false)}>
-          <div className="modal modal-pad" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="modal modal-pad" style={{ width: 560 }} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <h2>添加分析维度</h2>
+              <h2>添加维度</h2>
               <button className="modal-x" onClick={() => setShowAddDim(false)}>
                 ✕
               </button>
             </div>
-            <div className="field">
-              <label>维度名（如：研究方法、数据集、局限性）</label>
-              <input
-                autoFocus
-                value={newDim}
-                onChange={(e) => setNewDim(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addDimension()
-                }}
-              />
-              <div className="hint">添加后点每行的「↻ 生成」或「⚡ 生成缺失维度」，AI 会按新维度提取要点。</div>
+            <div className="dim-body">
+              <div className="dim-sub">从预设维度中选择，快速添加常用学术维度</div>
+              <div className="dim-src-row">
+                <button className={`dim-src ${dimSource === 'builtin' ? 'on' : ''}`} onClick={() => setDimSource('builtin')}>
+                  <b>🗂 内置维度</b>
+                  <span>基础字段直接提取，分析维度由 AI 生成</span>
+                </button>
+                <button className={`dim-src ${dimSource === 'custom' ? 'on' : ''}`} onClick={() => setDimSource('custom')}>
+                  <b>✨ 自定义维度</b>
+                  <span>命名该维度，让 AI 按你的口径提取</span>
+                </button>
+              </div>
+
+              {dimSource === 'builtin' ? (
+                <div className="dim-scroll">
+                  <div className="dim-group-title">基础信息 · 直接提取（{BASE_FIELDS.length}）</div>
+                  <div className="dim-grid">
+                    {BASE_FIELDS.map((f) => {
+                      const exists = fields.includes(f.id)
+                      const checked = checkedFields.has(f.id)
+                      return (
+                        <button
+                          key={f.id}
+                          className={`dim-card ${checked || exists ? 'on' : ''} ${exists ? 'exists' : ''}`}
+                          disabled={exists}
+                          title={exists ? '已添加' : f.desc}
+                          onClick={() =>
+                            setCheckedFields((s) => {
+                              const n = new Set(s)
+                              if (n.has(f.id)) n.delete(f.id)
+                              else n.add(f.id)
+                              return n
+                            })
+                          }
+                        >
+                          <span className="dim-name">{f.id}</span>
+                          <span className="dim-desc">{f.desc}</span>
+                          <span className="dim-check">{exists ? '✓ 已添加' : checked ? '✓' : ''}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="dim-group-title">分析维度 · AI 提取（{AI_DIMENSION_PRESETS.length}）</div>
+                  <div className="dim-grid">
+                    {AI_DIMENSION_PRESETS.map((d) => {
+                      const exists = active.data.dimensions.includes(d.name)
+                      const checked = checkedDims.has(d.name)
+                      return (
+                        <button
+                          key={d.name}
+                          className={`dim-card ${checked || exists ? 'on' : ''} ${exists ? 'exists' : ''}`}
+                          disabled={exists}
+                          title={exists ? '已添加' : d.desc}
+                          onClick={() =>
+                            setCheckedDims((s) => {
+                              const n = new Set(s)
+                              if (n.has(d.name)) n.delete(d.name)
+                              else n.add(d.name)
+                              return n
+                            })
+                          }
+                        >
+                          <span className="dim-name">{d.name}</span>
+                          <span className="dim-desc">{d.desc}</span>
+                          <span className="dim-check">{exists ? '✓ 已添加' : checked ? '✓' : ''}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="dim-custom">
+                  <div className="field">
+                    <label>维度名称</label>
+                    <input
+                      autoFocus
+                      placeholder="如：实验数据集、硬件平台、成本分析…"
+                      value={customDim}
+                      onChange={(e) => setCustomDim(e.target.value)}
+                    />
+                    <div className="hint">确认后点每行的「↻ 生成」，AI 会按该维度读原文提取要点（附页码出处）。</div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-actions">
-              <span style={{ flex: 1 }} />
+              <span className="hint" style={{ flex: 1 }}>
+                已选择 {checkedFields.size + checkedDims.size + (dimSource === 'custom' && customDim.trim() ? 1 : 0)} 个维度
+              </span>
               <button className="btn ghost" onClick={() => setShowAddDim(false)}>
                 取消
               </button>
-              <button className="btn" disabled={!newDim.trim()} onClick={addDimension}>
-                添加
+              <button
+                className="btn"
+                disabled={checkedFields.size + checkedDims.size === 0 && !(dimSource === 'custom' && customDim.trim())}
+                onClick={confirmAddDims}
+              >
+                确认添加
               </button>
             </div>
           </div>

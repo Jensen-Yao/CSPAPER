@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Settings } from './types'
+import { ALL_PROVIDERS, PROVIDER_GROUPS, type ProviderPreset } from './providers'
 
 interface Props {
   settings: Settings
@@ -10,17 +11,8 @@ interface Props {
   onClose: () => void
 }
 
-const PRESETS: Array<{ id: string; label: string; base: string; model: string }> = [
-  { id: 'zhipu', label: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5-air' },
-  { id: 'deepseek', label: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  { id: 'qwen', label: '通义千问 Qwen', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { id: 'moonshot', label: 'Kimi 月之暗面', base: 'https://api.moonshot.cn/v1', model: 'kimi-k2-0711-preview' },
-  { id: 'openai', label: 'OpenAI', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  { id: 'custom', label: '自定义 / 其他兼容服务', base: '', model: '' }
-]
-
 function guessProvider(apiBase: string): string {
-  const hit = PRESETS.find((p) => p.id !== 'custom' && apiBase.startsWith(p.base))
+  const hit = ALL_PROVIDERS.filter((p) => p.base).find((p) => apiBase.startsWith(p.base))
   return hit?.id ?? 'custom'
 }
 
@@ -48,6 +40,9 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const [busy, setBusy] = useState(false)
   const [llmTest, setLlmTest] = useState('')
   const [embedTest, setEmbedTest] = useState('')
+  // 服务商选择器（一键配置）
+  const [showPicker, setShowPicker] = useState(false)
+  const [pickerKw, setPickerKw] = useState('')
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
@@ -67,6 +62,22 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   }, [])
 
   const set = (patch: Partial<Settings>): void => setForm((f) => ({ ...f, ...patch }))
+
+  // 一键添加服务商：预填 API Base 与推荐模型并设为激活配置，用户只需粘贴 Key
+  const addFromPreset = (preset: ProviderPreset): void => {
+    setProfiles((list) => {
+      const next = [...list, { provider: preset.id, apiBase: preset.base, apiKey: '', models: [...preset.models] }]
+      saveProfiles(next)
+      return next
+    })
+    set({
+      provider: preset.id,
+      apiBase: preset.base,
+      model: preset.models[0] ?? form.model
+    })
+    setShowPicker(false)
+    setPickerKw('')
+  }
 
   // 主题即点即换（保存立即生效，无预览对话框状态残留）
   const pickTheme = async (theme: Settings['theme']): Promise<void> => {
@@ -214,6 +225,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
           <div className="section-title">模型与服务商（对话界面可切换）</div>
           {profiles.map((pf, i) => {
             const isActive = pf.models.includes(form.model)
+            const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
             const upd = (patch: Partial<{ provider: string; apiBase: string; apiKey: string; models: string[] }>): void =>
               setProfiles((list) => {
                 const next = list.map((x, idx) => (idx === i ? { ...x, ...patch } : x))
@@ -223,21 +235,24 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
             return (
               <div className={`profile-card ${isActive ? 'active' : ''}`} key={i}>
                 <div className="field-row">
-                  <div className="field">
+                  <div className="field pv-field">
                     <label>服务商</label>
-                    <select
-                      value={pf.provider === 'custom' ? 'custom' : guessProvider(pf.apiBase)}
-                      onChange={(e) => {
-                        const preset = PRESETS.find((x) => x.id === e.target.value)!
-                        upd(preset.id === 'custom' ? { provider: 'custom' } : { provider: preset.id, apiBase: preset.base })
-                      }}
-                    >
-                      {PRESETS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="pv-row">
+                      <div className="pv-avatar" style={{ background: preset?.color ?? '#64748b' }}>{preset?.logo ?? '⚙'}</div>
+                      <select
+                        value={guessProvider(pf.apiBase)}
+                        onChange={(e) => {
+                          const hit = ALL_PROVIDERS.find((x) => x.id === e.target.value)!
+                          upd(hit.id === 'custom' ? { provider: 'custom' } : { provider: hit.id, apiBase: hit.base, models: hit.models.length ? pf.models : hit.models })
+                        }}
+                      >
+                        {ALL_PROVIDERS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div className="field grow">
                     <label>API Base</label>
@@ -290,18 +305,23 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               </div>
             )
           })}
-          <button
-            className="profile-add"
-            onClick={() =>
-              setProfiles((list) => {
-                const next = [...list, { provider: 'zhipu', apiBase: PRESETS[0].base, apiKey: '', models: [] }]
-                saveProfiles(next)
-                return next
-              })
-            }
-          >
-            + 添加服务商配置
-          </button>
+          <div className="profile-add-row">
+            <button className="profile-add" onClick={() => setShowPicker(true)}>
+              ＋ 从服务商库添加（自动填好接口与模型）
+            </button>
+            <button
+              className="profile-add ghost"
+              onClick={() =>
+                setProfiles((list) => {
+                  const next = [...list, { provider: 'custom', apiBase: '', apiKey: '', models: [] }]
+                  saveProfiles(next)
+                  return next
+                })
+              }
+            >
+              空白配置
+            </button>
+          </div>
           <div className="test-row">
             <button className="btn ghost" onClick={() => void testLlm()} disabled={busy}>
               测试连接
@@ -368,6 +388,59 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
           </button>
         </div>
         </div>
+
+        {showPicker && (
+          <div className="modal-mask picker-mask" onMouseDown={() => setShowPicker(false)}>
+            <div className="modal picker" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <h2>添加服务商</h2>
+                <button className="modal-x" title="关闭" onClick={() => setShowPicker(false)}>
+                  ✕
+                </button>
+              </div>
+              <div className="picker-search">
+                <input autoFocus placeholder="搜索服务商…" value={pickerKw} onChange={(e) => setPickerKw(e.target.value)} />
+              </div>
+              <div className="picker-scroll">
+                {PROVIDER_GROUPS.map((g) => {
+                  const kw = pickerKw.trim().toLowerCase()
+                  const items = g.items.filter((p) => !kw || p.name.toLowerCase().includes(kw) || p.base.includes(kw))
+                  if (items.length === 0) return null
+                  return (
+                    <div key={g.title} className="picker-group">
+                      <div className="picker-group-title">{g.title}</div>
+                      <div className="picker-grid">
+                        {items.map((p) => {
+                          const added = profiles.some((x) => x.provider === p.id)
+                          return (
+                            <button
+                              key={p.id}
+                              className={`pv-card ${added ? 'added' : ''}`}
+                              onClick={() => addFromPreset(p)}
+                              title={p.note ?? p.base}
+                            >
+                              <div className="pv-avatar lg" style={{ background: p.color }}>
+                                {p.logo}
+                              </div>
+                              <div className="pv-name">
+                                {p.name}
+                                {added && <span className="pv-added">已添加</span>}
+                              </div>
+                              <div className="pv-sub">{p.models.length ? `${p.models.length} 个推荐模型` : p.base || '自定义接口'}</div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="picker-foot hint">
+                点击任意服务商即自动填好 API Base 与推荐模型并设为使用中，粘贴 API Key 即可。全部走 OpenAI 兼容协议（含 Google / Ollama 官方兼容层）。
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

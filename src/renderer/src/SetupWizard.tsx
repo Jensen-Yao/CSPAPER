@@ -15,15 +15,19 @@ const STEPS = ['文献库', 'LLM 配置', '嵌入模型']
 interface Props {
   initial: Settings
   onDone: () => void
+  /** 向导完成后触发（用户在第 1 步选择了 Zotero 迁移） */
+  onZoteroImport?: () => void
 }
 
-export default function SetupWizard({ initial, onDone }: Props): JSX.Element {
+export default function SetupWizard({ initial, onDone, onZoteroImport }: Props): JSX.Element {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<Settings>(initial)
   const [libMsg, setLibMsg] = useState('')
   const [llmTest, setLlmTest] = useState('')
   const [embedTest, setEmbedTest] = useState('')
   const [busy, setBusy] = useState(false)
+  const [zoteroPending, setZoteroPending] = useState(false)
+  const [zoteroMsg, setZoteroMsg] = useState('')
 
   const set = (patch: Partial<Settings>): void => setForm((f) => ({ ...f, ...patch }))
 
@@ -68,6 +72,7 @@ export default function SetupWizard({ initial, onDone }: Props): JSX.Element {
     setBusy(true)
     await window.api.saveSettings({ ...form, setupDone: true })
     onDone()
+    if (zoteroPending) onZoteroImport?.()
   }
 
   const canNext = step === 0 ? !!form.libraryPath : true
@@ -101,6 +106,27 @@ export default function SetupWizard({ initial, onDone }: Props): JSX.Element {
                 <button className="btn ghost" onClick={() => void useDefault()} disabled={busy}>
                   使用默认位置
                 </button>
+              </div>
+              <div className="wizard-zotero">
+                <span>已有 Zotero 文献库？</span>
+                <button
+                  className="libhome-link"
+                  disabled={busy}
+                  onClick={() => {
+                    void window.api.zoteroDetect().then((d) => {
+                      void useDefault()
+                      if (d.dataDir) {
+                        setZoteroPending(true)
+                        setZoteroMsg('✓ 已找到 Zotero 文献库，完成向导后自动开始迁移')
+                      } else {
+                        setZoteroMsg('未自动找到 Zotero 数据目录；完成向导后可在「文件 → 从 Zotero 导入」手动选择。')
+                      }
+                    })
+                  }}
+                >
+                  从 Zotero 一键迁移
+                </button>
+                {zoteroMsg && <div className="wizard-msg">{zoteroMsg}</div>}
               </div>
               {libMsg && <div className="wizard-msg">{libMsg}</div>}
             </>

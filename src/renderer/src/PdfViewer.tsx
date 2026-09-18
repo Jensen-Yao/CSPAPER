@@ -25,6 +25,8 @@ interface Props {
   onPageContext: (text: string) => void
   // 当前页码变化（全文翻译的页码指示用）
   onPageChange?: (n: number) => void
+  // 工具栏「全文翻译」按钮：打开侧栏全文对照
+  onOpenFulltext?: () => void
   onSelect: (text: string, x: number, y: number) => void
   onDeleteHighlight: (id: number) => void
   // 面板常驻但 chat 模式下隐藏：隐藏时全局缩放快捷键不生效（让位给引用面板）
@@ -36,7 +38,7 @@ interface PageTextMap {
 }
 
 const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
-  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onSelect, onDeleteHighlight, visible },
+  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, visible },
   ref
 ): JSX.Element {
   const active = tabs.find((t) => t.paper.id === activeId) ?? null
@@ -53,6 +55,9 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
   const [baseScale, setBaseScale] = useState(1)
   const [curPage, setCurPage] = useState(1)
   const [numPages, setNumPages] = useState(0)
+  // 侧边导航：页面缩略图 / 文档目录
+  const [navi, setNavi] = useState<'none' | 'thumbs' | 'toc'>('none')
+  const [outline, setOutline] = useState<Array<{ title: string; page: number; depth: number }>>([])
 
   // 挂载滚动容器：Ctrl+滚轮缩放；不再在 resize 时重缩放/回跳（保持阅读位置）
   const attachScrollEl = useCallback((el: HTMLDivElement | null) => {
@@ -92,6 +97,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     setNumPages(0)
     setError('')
     setHls([])
+    setOutline([])
     textCache.current = {}
     if (!active) return
     let cancelled = false
@@ -136,6 +142,10 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
         setCurPage(1)
         scrollRef.current?.scrollTo({ top: 0 })
         curPageRef.current = 1
+        // 文档目录（书签）
+        void buildOutline(d).then((o) => {
+          if (!cancelled) setOutline(o)
+        })
       } catch (e) {
         setError(String(e))
       }
@@ -334,6 +344,14 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
         ))}
       </div>
       <div className="viewer-toolbar">
+        <div className="seg" title="侧边导航">
+          <button className={navi === 'thumbs' ? 'on' : ''} onClick={() => setNavi((n) => (n === 'thumbs' ? 'none' : 'thumbs'))} title="页面缩略图">
+            ▦
+          </button>
+          <button className={navi === 'toc' ? 'on' : ''} onClick={() => setNavi((n) => (n === 'toc' ? 'none' : 'toc'))} title="目录 / 书签">
+            ☰
+          </button>
+        </div>
         <span className="slug" title={active.paper.title}>
           <b>{active.paper.title}</b>
         </span>
@@ -360,8 +378,35 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
           <button onClick={() => setZoom(1)} title="适应宽度">{Math.round(scale * 100)}%</button>
           <button onClick={() => setZoom((z) => Math.min(3, z + 0.15))}>+</button>
         </div>
+        <button className="ft-btn" title="全文翻译：当前页逐段中英对照（免 Key 可用）" onClick={() => onOpenFulltext?.()}>
+          译 全文翻译
+        </button>
       </div>
-      <div className="viewer-scroll" ref={attachScrollEl} onMouseUp={onMouseUp} onScroll={onScroll}>
+      <div className="pdf-main">
+        {navi !== 'none' && (
+          <div className="pdf-navi">
+            {navi === 'thumbs' ? (
+              Array.from({ length: numPages }, (_, i) => <ThumbPage key={i + 1} doc={doc} num={i + 1} cur={curPage} onJump={goToPage} />)
+            ) : outline.length > 0 ? (
+              outline.map((o, i) => (
+                <button
+                  key={i}
+                  className={`pdf-toc-item ${o.page === curPage ? 'on' : ''}`}
+                  style={{ paddingLeft: 10 + o.depth * 12 }}
+                  disabled={!o.page}
+                  title={o.title}
+                  onClick={() => o.page && goToPage(o.page)}
+                >
+                  <span className="ellipsis">{o.title}</span>
+                  {o.page ? <span className="pdf-toc-p">{o.page}</span> : null}
+                </button>
+              ))
+            ) : (
+              <div className="pdf-navi-empty">本文档没有目录信息</div>
+            )}
+          </div>
+        )}
+        <div className="viewer-scroll" ref={attachScrollEl} onMouseUp={onMouseUp} onScroll={onScroll}>
         {error && <div className="empty-viewer">PDF 打开失败：{error}</div>}
         {doc &&
           Array.from({ length: numPages }, (_, i) => (
@@ -383,10 +428,84 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
               }}
             />
           ))}
+        </div>
       </div>
     </div>
   )
 })
+
+// 解析文档目录（书签）为平铺列表（带层级），dest 解析为页码
+async function buildOutline(d: any): Promise<Array<{ title: string; page: number; depth: number }>> {
+  try {
+    const ol = await d.getOutline()
+    if (!ol?.length) return []
+    const out: Array<{ title: string; page: number; depth: number }> = []
+    const walk = async (items: any[], depth: number): Promise<void> => {
+      for (const it of items) {
+        let page = 0
+        try {
+          const dest = typeof it.dest === 'string' ? await d.getDestination(it.dest) : it.dest
+          if (dest?.length) page = (await d.getPageIndex(dest[0])) + 1
+        } catch {
+          page = 0
+        }
+        out.push({ title: it.title || '(无标题)', page, depth })
+        if (it.items?.length && depth < 2) await walk(it.items, depth + 1)
+      }
+    }
+    await walk(ol, 0)
+    return out
+  } catch {
+    return []
+  }
+}
+
+// 页面缩略图（懒渲染）
+function ThumbPage({ doc, num, cur, onJump }: { doc: any; num: number; cur: number; onJump: (n: number) => void }): JSX.Element {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [visible, setVisible] = useState(num <= 4)
+  const done = useRef(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver((entries) => entries.forEach((en) => en.isIntersecting && setVisible(true)), {
+      root: el.closest('.pdf-navi'),
+      rootMargin: '300px 0px'
+    })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!visible || done.current || !doc) return
+    done.current = true
+    void (async () => {
+      try {
+        const page = await doc.getPage(num)
+        const base = page.getViewport({ scale: 1 })
+        const vp = page.getViewport({ scale: 120 / base.width })
+        const cv = canvasRef.current!
+        const dpr = 2
+        cv.width = Math.floor(vp.width * dpr)
+        cv.height = Math.floor(vp.height * dpr)
+        cv.style.width = '120px'
+        cv.style.height = `${Math.floor((vp.height / vp.width) * 120)}px`
+        await page.render({ canvasContext: cv.getContext('2d')!, viewport: vp, transform: [dpr, 0, 0, dpr, 0, 0] } as any).promise
+      } catch {
+        /* 缩略图失败静默 */
+      }
+    })()
+  }, [visible, doc, num])
+
+  return (
+    <div ref={ref} className={`pdf-thumb ${cur === num ? 'on' : ''}`} onClick={() => onJump(num)} title={`第 ${num} 页`}>
+      <canvas ref={canvasRef} />
+      <span>{num}</span>
+    </div>
+  )
+}
 
 interface PageViewProps {
   doc: any
@@ -448,24 +567,34 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageTe
       taskRef.current = renderTask
       await renderTask.promise
       if (cancelled) return
-      // 文本层（划词的关键）
-      const container = textRef.current!
-      container.innerHTML = ''
-      container.style.setProperty('--scale-factor', String(viewport.scale))
-      const tl = new (pdfjsLib as any).TextLayer({
-        textContentSource: page.streamTextContent({ includeMarkedContent: false, disableNormalization: true }),
-        container,
-        viewport
-      })
-      await tl.render()
+      // 先提取文本（全文翻译/上下文依赖它），再渲染选择层——两步解耦，
+      // 选择层出问题不影响文本功能
+      try {
+        const tc = await page.getTextContent()
+        const txt = (tc.items as Array<{ str: string; hasEOL?: boolean }>)
+          .map((it) => it.str + (it.hasEOL ? '\n' : ''))
+          .join('')
+          .replace(/[ \t]+\n/g, '\n')
+        renderedFor.current = scale
+        onPageText(num, txt)
+      } catch (e) {
+        if (!String(e).toLowerCase().includes('cancel')) console.error(`[page ${num}] text extract failed:`, e)
+      }
       if (cancelled) return
-      const tc = await page.getTextContent()
-      const txt = (tc.items as Array<{ str: string; hasEOL?: boolean }>)
-        .map((it) => it.str + (it.hasEOL ? '\n' : ''))
-        .join('')
-        .replace(/[ \t]+\n/g, '\n')
-      renderedFor.current = scale
-      onPageText(num, txt)
+      // 选择层（划词的关键）
+      try {
+        const container = textRef.current!
+        container.innerHTML = ''
+        container.style.setProperty('--scale-factor', String(viewport.scale))
+        const tl = new (pdfjsLib as any).TextLayer({
+          textContentSource: page.streamTextContent({ includeMarkedContent: false, disableNormalization: true }),
+          container,
+          viewport
+        })
+        await tl.render()
+      } catch (e) {
+        if (!String(e).toLowerCase().includes('cancel')) console.error(`[page ${num}] text layer failed:`, e)
+      }
       } catch (e) {
         if (!String(e).toLowerCase().includes('cancel')) {
           console.error(`[page ${num}] render failed:`, e)

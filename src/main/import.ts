@@ -4,6 +4,7 @@ import { shell } from 'electron'
 import { getDb, getSettings, scanLibrary, setExtraCats, getExtraCats } from './db'
 import { extractPages } from './ingest'
 import { chatStream } from './llm'
+import { enqueueSummaries } from './insight'
 
 export interface ImportOutcome {
   file: string
@@ -319,6 +320,14 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
   }
   send('import:progress', { done: files.length, total: files.length, current: '' })
   scanLibrary(s.libraryPath)
+  // 导入即分析：配置了 API Key 时，后台排队为新文献生成 AI 小结
+  if (s.apiKey) {
+    const ids = outcomes
+      .filter((o) => o.ok && o.slug)
+      .map((o) => (getDb().prepare('SELECT id FROM papers WHERE slug=?').get(o.slug!) as { id: number } | undefined)?.id)
+      .filter((x): x is number => x != null)
+    if (ids.length) enqueueSummaries(ids, send)
+  }
   return outcomes
 }
 

@@ -1,5 +1,6 @@
 // AI 洞察：文献卡片小结、多篇对比表格（可追溯引用）、深度搜索、对比表导出
 import fs from 'node:fs'
+import path from 'node:path'
 import { dialog, BrowserWindow } from 'electron'
 import { getDb } from './db'
 import { chatStream } from './llm'
@@ -13,6 +14,7 @@ export interface CompareCell {
 export interface CompareData {
   paperIds: number[]
   dimensions: string[]
+  fields?: string[] // 基础字段列（直接提取，无需 AI）
   cells: Record<string, Record<string, CompareCell[]>>
 }
 
@@ -24,12 +26,14 @@ export interface CompareTable {
 }
 
 const DEFAULT_DIMENSIONS = ['研究问题', '研究成果']
+const DEFAULT_FIELDS = ['作者', '期刊名称']
 
 const parseData = (raw: string): CompareData => {
   const d = JSON.parse(raw || '{}') as Partial<CompareData>
   return {
     paperIds: Array.isArray(d.paperIds) ? d.paperIds : [],
     dimensions: Array.isArray(d.dimensions) && d.dimensions.length ? d.dimensions : [...DEFAULT_DIMENSIONS],
+    fields: Array.isArray(d.fields) ? d.fields : [...DEFAULT_FIELDS],
     cells: d.cells && typeof d.cells === 'object' ? d.cells : {}
   }
 }
@@ -222,8 +226,7 @@ export function deepSearch(q: string): DeepHit[] {
 }
 
 // ---------- 对比表导出：Markdown / CSV（Excel 直接打开） ----------
-function buildMarkdown(title: string, paperRows: Array<Record<string, string>>, dimensions: string[]): string {
-  const cols = ['标题', ...dimensions, '作者', '期刊']
+function buildMarkdown(title: string, paperRows: Array<Record<string, string>>, cols: string[]): string {
   const esc = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, '<br>')
   const lines = [
     `# ${title}`,
@@ -238,8 +241,7 @@ function buildMarkdown(title: string, paperRows: Array<Record<string, string>>, 
   return lines.join('\n')
 }
 
-function buildCsv(paperRows: Array<Record<string, string>>, dimensions: string[]): string {
-  const cols = ['标题', ...dimensions, '作者', '期刊']
+function buildCsv(paperRows: Array<Record<string, string>>, cols: string[]): string {
   const esc = (s: string): string => `"${(s ?? '').replace(/"/g, '""')}"`
   const lines = [cols.map(esc).join(',')]
   for (const row of paperRows) lines.push(cols.map((c) => esc(row[c] ?? '')).join(','))
@@ -258,18 +260,27 @@ export async function exportCompare(
     | undefined
   if (!table || !win) return
   const data = parseData(table.data)
+  const fields = data.fields ?? ['作者', '期刊名称']
+  const cols = ['标题', ...fields.filter((f) => f !== '标题'), ...data.dimensions]
+  const fieldVal = (f: string, p: { title: string; authors: string; year: number | null; venue: string; category: string }): string => {
+    switch (f) {
+      case '标题': return p.title
+      case '作者': return p.authors
+      case '期刊名称': return p.venue
+      case '发表年份': return p.year != null ? String(p.year) : ''
+      case '分类': return p.category
+      default: return ''
+    }
+  }
   const paperRows: Array<Record<string, string>> = []
   for (const pid of data.paperIds) {
-    const p = db.prepare('SELECT id, slug, title, authors, venue FROM papers WHERE id=?').get(pid) as
-      | { id: number; slug: string; title: string; authors: string; venue: string }
+    const p = db.prepare('SELECT id, slug, title, authors, year, venue, category FROM papers WHERE id=?').get(pid) as
+      | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string }
       | undefined
     if (!p) continue
     const cells = data.cells[String(pid)] ?? {}
-    const row: Record<string, string> = {
-      标题: p.title,
-      作者: p.authors,
-      期刊: p.venue
-    }
+    const row: Record<string, string> = {}
+    for (const f of cols) row[f] = f === '标题' ? p.title : fieldVal(f, p)
     for (const dim of data.dimensions) {
       row[dim] = (cells[dim] ?? []).map((c) => (c.p ? `• ${c.t} [p.${c.p}]` : `• ${c.t}`)).join('\n')
     }
@@ -284,8 +295,79 @@ export async function exportCompare(
   if (r.canceled || !r.filePath) return
   const content =
     format === 'md'
-      ? buildMarkdown(table.title, paperRows, data.dimensions)
-      : buildCsv(paperRows, data.dimensions)
+      ? buildMarkdown(table.title, paperRows, cols)
+      : buildCsv(paperRows, cols)
   fs.writeFileSync(r.filePath, content, 'utf8')
   dialog.showMessageBox(win, { message: '对比表已导出', detail: r.filePath })
+}
+
+// ---------- 文献详情（卡片详情栏）：元数据 + 摘要抽取 + 附件清单 ----------
+export interface PaperDetail {
+  id: number
+  slug: string
+  title: string
+  authors: string
+  year: number | null
+  venue: string
+  category: string
+  status: string
+  added_at: string
+  summary: string | null
+  abstract: string
+  files: string[]
+  notesCount: number
+}
+
+export async function paperDetail(id: number): Promise<PaperDetail | null> {
+  const db = getDb()
+  const row = db
+    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path FROM papers WHERE id=?')
+    .get(id) as
+    | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string; status: string; added_at: string; summary: string | null; path: string }
+    | undefined
+  if (!row) return null
+  const dir = path.dirname(row.path)
+  let files: string[] = []
+  try {
+    files = fs.readdirSync(dir).filter((f) => !f.startsWith('.'))
+  } catch {
+    files = []
+  }
+  let abstract = ''
+  try {
+    const pages = await extractPagesCached(row.path)
+    const first = (pages[0] ?? '').replace(/\s+/g, ' ').trim()
+    const m = first.match(/(摘\s*要|Abstract)[:：]?\s*(.{80,700})/i)
+    abstract = m ? m[2].trim() : first.slice(0, 400)
+  } catch {
+    abstract = ''
+  }
+  const notesCount = (db.prepare('SELECT COUNT(*) AS n FROM highlights WHERE paper_id=?').get(id) as { n: number }).n
+  return { ...row, abstract, files, notesCount }
+}
+
+// ---------- 导入后自动小结队列（配置了 API Key 时） ----------
+const sumQueue: number[] = []
+let sumRunning = false
+
+export function enqueueSummaries(ids: number[], send: (ev: string, p: unknown) => void): void {
+  sumQueue.push(...ids.filter((id) => !sumQueue.includes(id)))
+  void pump(send)
+}
+
+async function pump(send: (ev: string, p: unknown) => void): Promise<void> {
+  if (sumRunning) return
+  sumRunning = true
+  while (sumQueue.length > 0) {
+    const id = sumQueue.shift()!
+    try {
+      await summarizePaper(id)
+      send('summary:done', { id })
+      send('papers:changed', { ids: [id] })
+    } catch {
+      sumQueue.length = 0 // 无 Key / 连续失败：放弃整队，避免反复报错
+      break
+    }
+  }
+  sumRunning = false
 }
