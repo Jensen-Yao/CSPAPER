@@ -8,6 +8,7 @@ import CommandPalette from './CommandPalette'
 import ChatView from './ChatView'
 import RefViewer from './RefViewer'
 import ImportDialog from './ImportDialog'
+import ZoteroImportDialog from './ZoteroImportDialog'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
 
@@ -97,6 +98,7 @@ export default function App(): JSX.Element {
   const [importInfo, setImportInfo] = useState('')
   const [cats, setCats] = useState<string[]>([])
   const [importFiles, setImportFiles] = useState<string[] | null>(null)
+  const [zoteroOpen, setZoteroOpen] = useState(false)
   const [importSeq, setImportSeq] = useState(0)
   const [importBusy, setImportBusy] = useState(false)
   const [chatReset, setChatReset] = useState(0)
@@ -498,6 +500,7 @@ export default function App(): JSX.Element {
       name: '文件',
       items: [
         { label: '导入 PDF 文献…', hint: '拖入窗口也可以', action: addPapers },
+        { label: '从 Zotero 导入…', hint: '迁移文献库', action: () => setZoteroOpen(true) },
         { label: '选择文献库文件夹…', action: () => void pickLibraryNow() },
         { label: '重建全库索引', action: () => void window.api.rebuildIndex() },
         { sep: true, label: '' },
@@ -735,6 +738,7 @@ export default function App(): JSX.Element {
           onFinished={(outcomes) => void importDone(outcomes)}
         />
       )}
+      {zoteroOpen && <ZoteroImportDialog initialCats={cats} onClose={() => setZoteroOpen(false)} onFinished={() => void refreshPapers()} />}
       {paletteOpen && (
         <CommandPalette
           papers={papers}
@@ -742,6 +746,7 @@ export default function App(): JSX.Element {
           onOpenPaper={openPaperFromTree}
           commands={[
             { id: 'add', label: '导入 PDF 文献…', hint: '文件', run: addPapers },
+            { id: 'zotero', label: '从 Zotero 导入…', hint: '文件', run: () => setZoteroOpen(true) },
             { id: 'picklib', label: '选择文献库文件夹…', hint: '文件', run: () => void pickLibraryNow() },
             { id: 'reindex', label: '重建全库索引', hint: '文件', run: () => void window.api.rebuildIndex() },
             { id: 'settings', label: '打开设置…', hint: '界面', run: () => setShowSettings(true) },

@@ -75,6 +75,33 @@ export interface ImportPreviewItem {
   error?: string
 }
 
+// Zotero 库条目预览（导入弹窗队列行）
+export interface ZoteroPaper {
+  key: string
+  itemType: string
+  title: string
+  authors: string
+  year: number | null
+  venue: string
+  collections: string[]
+  pdf: string
+}
+
+export interface ZoteroPreviewResult {
+  dataDir: string
+  items: ZoteroPaper[]
+  error?: string
+}
+
+export interface ZoteroOutcome {
+  key: string
+  title: string
+  ok: boolean
+  category?: string
+  skipped?: boolean
+  error?: string
+}
+
 export interface SourceRef {
   n: number
   slug: string
@@ -108,6 +135,12 @@ declare global {
       pickImport: () => Promise<string[]>
       importPapers: (items: Array<{ path: string; category?: string }>) => Promise<{ outcomes: ImportOutcome[]; scan: { added: number; updated: number; total: number } }>
       previewImport: (paths: string[]) => Promise<ImportPreviewItem[]>
+      zoteroDetect: () => Promise<{ dataDir: string | null; candidates: string[] }>
+      zoteroPickDir: () => Promise<string | null>
+      zoteroPreview: (dataDir?: string) => Promise<ZoteroPreviewResult>
+      zoteroImport: (items: Array<{ key: string; category?: string }>) => Promise<ZoteroOutcome[]>
+      onZoteroProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
+      onZoteroFile: (cb: (o: ZoteroOutcome) => void) => () => void
       onPreviewFile: (cb: (p: ImportPreviewItem) => void) => () => void
       onPreviewProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string) => Promise<number>

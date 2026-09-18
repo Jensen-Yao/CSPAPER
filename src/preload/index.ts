@@ -16,6 +16,21 @@ const api = {
   pickImport: () => ipcRenderer.invoke('papers:pick-import'),
   importPapers: (items: Array<{ path: string; category?: string }>) => ipcRenderer.invoke('papers:import', items),
   previewImport: (paths: string[]) => ipcRenderer.invoke('papers:preview-import', paths),
+  // Zotero 文献库导入
+  zoteroDetect: () => ipcRenderer.invoke('zotero:detect'),
+  zoteroPickDir: () => ipcRenderer.invoke('zotero:pick-dir'),
+  zoteroPreview: (dataDir?: string) => ipcRenderer.invoke('zotero:preview', dataDir),
+  zoteroImport: (items: Array<{ key: string; category?: string }>) => ipcRenderer.invoke('zotero:import', items),
+  onZoteroProgress: (cb: (p: { done: number; total: number; current: string }) => void) => {
+    const h = (_e: unknown, p: { done: number; total: number; current: string }) => cb(p)
+    ipcRenderer.on('zotero:progress', h)
+    return () => ipcRenderer.removeListener('zotero:progress', h)
+  },
+  onZoteroFile: (cb: (o: unknown) => void) => {
+    const h = (_e: unknown, o: unknown) => cb(o)
+    ipcRenderer.on('zotero:file', h)
+    return () => ipcRenderer.removeListener('zotero:file', h)
+  },
   onPreviewFile: (cb: (p: unknown) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p)
     ipcRenderer.on('preview:file', h)

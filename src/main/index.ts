@@ -4,8 +4,10 @@ import fs from 'node:fs'
 import * as dbmod from './db'
 import { buildIndex, isIndexRunning, indexNeedsRebuild, hybridSearch, extractPagesCached } from './ingest'
 import { chatStream, translateMessages, explainMessages, ragMessages, paperFullMessages, testLLM, type ChatMessage } from './llm'
-import { importPapers, previewImport, movePaperToCategory, createCategory, deleteCategory, deletePaper, renamePaper } from './import'
+import { freeTranslate } from './free-translate'
+import { importPapers, previewImport, movePaperToCategory, createCategory, deleteCategory, deletePaper, renamePaper, sanitizeCategoryName } from './import'
 import { embed } from './embed'
+import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroImportItem } from './zotero'
 
 let win: BrowserWindow | null = null
 
@@ -188,6 +190,15 @@ function registerIpc(): void {
     return r
   })
 
+  // Zotero 文献库迁移：探测数据目录 → 预览（只读副本，Zotero 开着也能读）→ 选择导入
+  ipcMain.handle('zotero:detect', () => detectZoteroDataDir())
+  ipcMain.handle('zotero:pick-dir', async () => {
+    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], message: '选择 Zotero 数据目录（内含 zotero.sqlite）' })
+    return r.canceled ? null : r.filePaths[0]
+  })
+  ipcMain.handle('zotero:preview', (_e, dataDir?: string) => previewZoteroForUi(dataDir))
+  ipcMain.handle('zotero:import', (_e, items: ZoteroImportItem[]) => importFromZotero(items, send))
+
   // 手动归类：右键菜单 / 拖拽都走这里（移动文件夹 + 原地改写 DB，保留行身份）
   ipcMain.handle('papers:move', (_e, id: number, category: string) => {
     const libPapers = path.join(dbmod.getSettings().libraryPath, 'papers')
@@ -210,8 +221,8 @@ function registerIpc(): void {
 
   // 右键菜单：导出 / 分享 / 移动归类
   ipcMain.on('papers:menu', (_e, id: number, x: number, y: number) => {
-    const p = dbmod.getDb().prepare('SELECT id, slug, title, year, path, category FROM papers WHERE id=?').get(id) as
-      | { id: number; slug: string; title: string; year: number | null; path: string; category: string }
+    const p = dbmod.getDb().prepare('SELECT id, slug, title, authors, year, venue, path, category FROM papers WHERE id=?').get(id) as
+      | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; path: string; category: string }
       | undefined
     if (!p || !win) return
     const libPapers = path.join(dbmod.getSettings().libraryPath, 'papers')
@@ -237,6 +248,15 @@ function registerIpc(): void {
       {
         label: '复制引用',
         click: () => clipboard.writeText(`${p.title} (${p.year ?? 'n.d.'})`)
+      },
+      { type: 'separator' },
+      {
+        label: '导出标注笔记 (Markdown)…',
+        click: () => void exportNotes(p, 'md')
+      },
+      {
+        label: '导出标注笔记 (Word)…',
+        click: () => void exportNotes(p, 'doc')
       },
       { type: 'separator' },
       {
@@ -386,12 +406,9 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('category:rename', (_e, from: string, to: string) => {
-    const toSlug = String(to)
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-    if (!toSlug) throw new Error('名称无效（仅限小写字母/数字/连字符）')
+    // 分类名允许中文（与新建/移动归类同一套清洗规则），只做文件系统安全清洗
+    const toSlug = sanitizeCategoryName(String(to))
+    if (!toSlug) throw new Error('名称无效')
     const lib = dbmod.getSettings().libraryPath
     const papersDir = path.join(lib, 'papers')
     const base = fs.existsSync(papersDir) ? papersDir : lib
@@ -431,6 +448,75 @@ function registerIpc(): void {
     const r = dbmod.scanLibrary(lib)
     return { renamed: toSlug, scan: r }
   })
+
+  // 导出标注笔记：把划词高亮按页整理成 Markdown 或 Word(.doc，HTML 格式) 文档
+  async function exportNotes(
+    p: { id: number; title: string; authors: string; year: number | null; venue: string; slug: string },
+    format: 'md' | 'doc'
+  ): Promise<void> {
+    if (!win) return
+    const hs = dbmod.getDb().prepare('SELECT page, text FROM highlights WHERE paper_id=? ORDER BY page, id').all(p.id) as Array<{
+      page: number
+      text: string
+    }>
+    if (hs.length === 0) {
+      dialog.showMessageBox(win, {
+        message: `《${p.title.slice(0, 60) || p.slug}》还没有划词标注`,
+        detail: '先在阅读器里选中文字点「高亮」，再来导出笔记。'
+      })
+      return
+    }
+    const base = `${p.title.slice(0, 60) || p.slug}-笔记`
+    let savedPath = ''
+    if (format === 'md') {
+      const r = await dialog.showSaveDialog(win, { defaultPath: `${base}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+      if (r.canceled || !r.filePath) return
+      savedPath = r.filePath
+      const lines: string[] = [
+        `# 《${p.title}》阅读笔记`,
+        '',
+        `- **作者:** ${p.authors || '（见原文）'}`,
+        `- **发表:** ${p.venue || p.year || ''}`,
+        `- **导出时间:** ${new Date().toLocaleString('zh-CN')}`,
+        `- **标注数量:** ${hs.length}`,
+        '',
+        '## 划词标注',
+        ''
+      ]
+      let page = 0
+      for (const h of hs) {
+        if (h.page !== page) {
+          page = h.page
+          lines.push('', `### 第 ${page} 页`, '')
+        }
+        lines.push(`> ${h.text.replace(/\n/g, '\n> ')}`, '')
+      }
+      fs.writeFileSync(r.filePath, lines.join('\n'), 'utf8')
+    } else {
+      const r = await dialog.showSaveDialog(win, { defaultPath: `${base}.doc`, filters: [{ name: 'Word 文档', extensions: ['doc'] }] })
+      if (r.canceled || !r.filePath) return
+      savedPath = r.filePath
+      const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const body: string[] = []
+      let page = 0
+      for (const h of hs) {
+        if (h.page !== page) {
+          page = h.page
+          body.push(`<h3>第 ${page} 页</h3>`)
+        }
+        body.push(`<blockquote><p>${esc(h.text).replace(/\n/g, '<br>')}</p></blockquote>`)
+      }
+      const html =
+        `<html><head><meta charset="utf-8"><title>${esc(p.title)}</title>` +
+        `<style>body{font-family:"Microsoft YaHei",sans-serif;line-height:1.7}blockquote{border-left:3px solid #4a90d9;margin:8px 0;padding:4px 12px;background:#f5f8fc}</style>` +
+        `</head><body><h1>《${esc(p.title)}》阅读笔记</h1>` +
+        `<p><b>作者：</b>${esc(p.authors || '（见原文）')}　<b>发表：</b>${esc(p.venue || String(p.year ?? ''))}<br>` +
+        `<b>导出时间：</b>${new Date().toLocaleString('zh-CN')}　<b>标注：</b>${hs.length} 条</p>` +
+        `<h2>划词标注</h2>${body.join('\n')}</body></html>`
+      fs.writeFileSync(r.filePath, html, 'utf8')
+    }
+    dialog.showMessageBox(win, { message: '标注笔记已导出', detail: savedPath })
+  }
 
   async function exportCategory(cat: string): Promise<void> {
     const db = dbmod.getDb()
@@ -501,7 +587,20 @@ function registerIpc(): void {
       try {
         let msgs: ChatMessage[]
         let sources: import('./ingest').RetrievedChunk[] = []
-        if (args.mode === 'translate') msgs = translateMessages(args.text!, args.context ?? '', dbmod.getSettings().translateTarget)
+        if (args.mode === 'translate') {
+          const s = dbmod.getSettings()
+          // 免 Key 开箱即用：未配置 API Key 时划词翻译走免费通道，不要求用户先配模型
+          if (!s.apiKey || !s.apiKey.trim()) {
+            try {
+              send(`llm:delta:${args.reqId}`, await freeTranslate(args.text!, s.translateTarget))
+            } catch (err) {
+              send(`llm:delta:${args.reqId}`, `⚠️ ${String(err)}`)
+            }
+            send(`llm:end:${args.reqId}`, null)
+            return
+          }
+          msgs = translateMessages(args.text!, args.context ?? '', s.translateTarget)
+        }
         else if (args.mode === 'explain') msgs = explainMessages(args.text!, args.context ?? '')
         else if (args.mode === 'rag') {
           if (args.scopePaperId) {

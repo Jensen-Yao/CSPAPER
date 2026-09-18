@@ -24,10 +24,11 @@ function titleFromFilename(p: string): { base: string; year: number | null } {
 }
 
 function slugify(s: string): string {
+  // 保留 CJK（中文论文标题也能生成可读 slug），仅替换文件系统不安全字符
   return (
     s
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/[^a-z0-9\u4e00-\u9fff\u3040-\u30ff\u3400-\u4dbf]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 48) || 'paper'
   )
@@ -86,7 +87,7 @@ export function sanitizeCategoryName(name: string): string {
 
 const eqName = (a: string, b: string): boolean => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
 
-function nextCategoryDir(libPapers: string, name: string): string {
+export function nextCategoryDir(libPapers: string, name: string): string {
   const nums = fs
     .readdirSync(libPapers)
     .map((d) => parseInt(d.match(/^(\d+)-/)?.[1] ?? '0'))
