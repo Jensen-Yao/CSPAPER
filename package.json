@@ -5,7 +5,7 @@
   "main": "out/main/index.js",
   "productName": "CSPAPER",
   "author": "Jensen-Yao",
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "Apache-2.0",
   "homepage": "https://github.com/Jensen-Yao/CSPAPER#readme",
   "repository": "github:Jensen-Yao/CSPAPER",
   "scripts": {

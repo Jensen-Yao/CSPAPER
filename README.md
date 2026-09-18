@@ -9,7 +9,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Jensen-Yao/CSPAPER?style=flat-square&color=a6093d)](https://github.com/Jensen-Yao/CSPAPER/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square)](https://github.com/Jensen-Yao/CSPAPER/releases)
-[![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial-a6093d?style=flat-square)](./LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-a6093d?style=flat-square)](./LICENSE)
 [![Built with ZCode](https://img.shields.io/badge/%E6%9E%84%E5%BB%BA%E4%BA%8E-ZCode%20%E5%85%A8%E7%A8%8B%E7%BC%96%E5%86%99-a6093d?style=flat-square)](#-这个项目由-zcode-全程编写)
 
 [![在线体验](https://img.shields.io/badge/%F0%9F%96%B1%EF%B8%8F%20%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-%E7%BD%91%E9%A1%B5%E6%BC%94%E7%A4%BA%E7%89%88-a6093d?style=for-the-badge)](https://Jensen-Yao.github.io/CSPAPER/)
