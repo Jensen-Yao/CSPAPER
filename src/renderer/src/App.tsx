@@ -748,7 +748,7 @@ export default function App(): JSX.Element {
           </div>
           {/* 纵览区：文献总表 + 知识网络 */}
           <div className={`ov-host ${mode === 'overview' ? '' : 'pane-hidden'}`}>
-            <OverviewView papers={papers} visible={mode === 'overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} />
+            <OverviewView papers={papers} visible={mode === 'overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} onRefresh={refreshPapers} />
           </div>
         </div>
       </div>

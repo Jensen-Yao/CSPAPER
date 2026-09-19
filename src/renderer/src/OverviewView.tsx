@@ -8,6 +8,7 @@ interface Props {
   tab: 'table' | 'graph'
   onTabChange: (t: 'table' | 'graph') => void
   onOpen: (p: Paper) => void
+  onRefresh: () => void
 }
 
 type SortKey = 'title' | 'authors' | 'year' | 'venue' | 'category' | 'status'
@@ -24,14 +25,40 @@ const COLS: Array<{ key: SortKey; label: string; w: string }> = [
 const PALETTE = ['#98122e', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
 
 // 纵览：Zotero 式文献总表 + 知识网络（同类/同作者/共现关联的力导向图）
-export default function OverviewView({ papers, visible, tab, onTabChange, onOpen }: Props): JSX.Element {
+export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh }: Props): JSX.Element {
   const [sortKey, setSortKey] = useState<SortKey>('title')
   const [asc, setAsc] = useState(true)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [files, setFiles] = useState<Record<number, string[]>>({})
+  const [catFilter, setCatFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [checked, setChecked] = useState<Set<number>>(new Set())
+  const [batchCat, setBatchCat] = useState('')
+  const [batchBusy, setBatchBusy] = useState(false)
+
+  const filtered = useMemo(() => {
+    const cf = catFilter, sf = statusFilter
+    if (!cf && !sf) return papers
+    return papers.filter((p) => (!cf || p.category === cf) && (!sf || p.status === sf))
+  }, [papers, catFilter, statusFilter])
+
+  const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
+
+  // 批量移动分类：逐篇调用 movePaper（主进程内部改路径并保持高亮/状态）
+  const applyBatchMove = async (): Promise<void> => {
+    if (!batchCat || checked.size === 0) return
+    setBatchBusy(true)
+    try {
+      for (const id of checked) await window.api.movePaper(id, batchCat)
+      setChecked(new Set())
+      onRefresh()
+    } finally {
+      setBatchBusy(false)
+    }
+  }
 
   const sorted = useMemo(() => {
-    const arr = [...papers]
+    const arr = [...filtered]
     arr.sort((a, b) => {
       const va = (a[sortKey] ?? '') as string | number | null
       const vb = (b[sortKey] ?? '') as string | number | null
@@ -39,7 +66,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
       return asc ? cmp : -cmp
     })
     return arr
-  }, [papers, sortKey, asc])
+  }, [filtered, sortKey, asc])
 
   const toggleRow = async (p: Paper): Promise<void> => {
     if (expanded === p.id) return setExpanded(null)
@@ -66,11 +93,55 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
         <span className="ov-count">{papers.length} 篇</span>
       </div>
       {tab === 'table' ? (
-        <div className="ov-table-wrap">
+        <>
+          <div className="ov-filters">
+            <span className="ov-flabel">筛选</span>
+            <select className="ov-filter" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+              <option value="">全部分类</option>
+              {cats.map((c) => (
+                <option key={c} value={c}>
+                  {catLabel(c)}
+                </option>
+              ))}
+            </select>
+            <select className="ov-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">全部状态</option>
+              <option value="unread">未读</option>
+              <option value="reading">在读</option>
+              <option value="read">已读</option>
+            </select>
+            <span style={{ flex: 1 }} />
+            {checked.size > 0 && (
+              <>
+                <span className="ov-batch-label">已选 {checked.size} 篇</span>
+                <select className="ov-filter" value={batchCat} onChange={(e) => setBatchCat(e.target.value)}>
+                  <option value="">移动到分类…</option>
+                  {cats.map((c) => (
+                    <option key={c} value={c}>
+                      {catLabel(c)}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn ghost" disabled={!batchCat || batchBusy} onClick={() => void applyBatchMove()}>
+                  应用
+                </button>
+                <button className="btn ghost" onClick={() => setChecked(new Set())}>
+                  取消选择
+                </button>
+              </>
+            )}
+          </div>
+          <div className="ov-table-wrap">
           <table className="ov-table">
             <thead>
               <tr>
-                <th style={{ width: 26 }} />
+                <th style={{ width: 34 }}>
+                  <input
+                    type="checkbox"
+                    checked={sorted.length > 0 && sorted.every((p) => checked.has(p.id))}
+                    onChange={(e) => setChecked(e.target.checked ? new Set(sorted.map((p) => p.id)) : new Set())}
+                  />
+                </th>
                 {COLS.map((c) => (
                   <th key={c.key} style={{ width: c.w }} className="sortable" onClick={() => (sortKey === c.key ? setAsc(!asc) : (setSortKey(c.key), setAsc(true)))}>
                     {c.label}
@@ -83,7 +154,21 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               {sorted.map((p) => (
                 <>
                   <tr key={p.id} onClick={() => void toggleRow(p)} title="点击展开附件与信息；双击打开阅读" onDoubleClick={() => onOpen(p)}>
-                    <td className="ov-chev">{expanded === p.id ? '⌄' : '›'}</td>
+                    <td className="ov-check">
+                      <input
+                        type="checkbox"
+                        checked={checked.has(p.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          setChecked((prev) => {
+                            const n = new Set(prev)
+                            if (e.target.checked) n.add(p.id)
+                            else n.delete(p.id)
+                            return n
+                          })
+                        }
+                      />
+                    </td>
                     <td className="ov-title">{p.title}</td>
                     <td>{p.authors || '—'}</td>
                     <td>{p.year ?? '—'}</td>
@@ -124,7 +209,8 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       ) : (
         <KnowledgeGraph papers={papers} visible={visible} onOpen={onOpen} />
       )}
