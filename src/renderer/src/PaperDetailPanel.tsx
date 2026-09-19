@@ -281,7 +281,10 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         {extra}
         <span className={`pd-chev ${open[id] ? 'open' : ''}`}>⌄</span>
       </button>
-      {open[id] && <div className="pd-sec-body">{body}</div>}
+      {/* 常驻渲染 + grid-rows 过渡：展开/收起平滑动画 */}
+      <div className={`pd-sec-body-wrap ${open[id] ? 'open' : ''}`}>
+        <div className="pd-sec-body">{body}</div>
+      </div>
     </div>
   )
 

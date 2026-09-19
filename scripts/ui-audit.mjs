@@ -49,7 +49,7 @@ try {
   await wait(2500)
   await shot('06-table')
   // 纵览-知识网络
-  await page.locator('.ov-tab', { hasText: '知识网络' }).click()
+  await page.locator('.ov-tab', { hasText: '知识' }).click()
   await wait(3500)
   await shot('07-graph')
   // 纵览-统计

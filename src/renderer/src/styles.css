@@ -1840,3 +1840,128 @@ html[data-theme='dark'] .pd-fold-all:hover { color: #e8e2da; }
 .statusbar { gap: 10px; }
 /* 卡片墙顶栏按钮统一高度，避免高低不齐 */
 .libhome-bar .btn { padding: 8px 14px; }
+
+/* =================================================================
+   v0.7.2 灵动层：过渡 / 浮起 / 按压 / 入场 / 手风琴 / 滚动条 / 焦点
+   全部为增量覆盖，不改既有布局语义；prefers-reduced-motion 下自动关闭
+   ================================================================= */
+
+/* ---------- 全局节奏 ---------- */
+button, .btn, .chip, .ws-chip, .kv-chip, .st2-chip, .ov-tab, .ov-filter, .side-tab, .menu-btn, .menu-item,
+.pd-tags-chip, .status-pill, .import-row-cat, .ws-btn, .ws-addr, .ws-search-input, .ws-search-go {
+  transition: background var(--speed, 0.15s) var(--ease, ease), color var(--speed, 0.15s) var(--ease, ease),
+    border-color var(--speed, 0.15s) var(--ease, ease), box-shadow 0.18s var(--ease, ease), transform 0.12s var(--ease, ease);
+}
+
+/* 按压反馈：所有可点元素按下时轻微收缩 */
+button:active, .btn:active, .ws-chip:active, .kv-chip:active, .st2-chip:active, .ov-tab:active, .menu-item:active {
+  transform: scale(0.97);
+}
+
+/* 键盘可达性：焦点环 */
+:focus-visible {
+  outline: 2px solid var(--accent, #b08d57);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+
+/* 输入聚焦：accent 描边 + 柔光 */
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent, #b08d57) !important;
+  box-shadow: 0 0 0 3px rgba(176, 141, 87, 0.15);
+  outline: none;
+}
+
+/* ---------- 滚动条：纤细主题化 ---------- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(140, 130, 118, 0.35);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(140, 130, 118, 0.6); }
+html[data-theme='dark'] ::-webkit-scrollbar-thumb { background-color: rgba(200, 190, 178, 0.22); }
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover { background-color: rgba(200, 190, 178, 0.4); }
+
+::selection { background: rgba(176, 141, 87, 0.32); }
+
+/* ---------- 弹窗入场：遮罩淡入 + 卡片上浮缩放 ---------- */
+.modal-mask { animation: maskIn 0.16s ease; }
+@keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  animation: modalIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---------- 视图切换入场：显示时轻微上浮淡入（display 切换自动重触发） ---------- */
+.main-win:not(.pane-hidden), .chat-wrap:not(.pane-hidden), .cmp-host:not(.pane-hidden),
+.ov-host:not(.pane-hidden), .ws-host:not(.ws-hidden) {
+  animation: viewIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes viewIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 卡片与可交互面：悬停浮起 ---------- */
+.pcard { transition: transform 0.16s var(--ease, ease), box-shadow 0.16s var(--ease, ease), border-color 0.16s var(--ease, ease); }
+.pcard:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(40, 25, 15, 0.14); border-color: rgba(176, 141, 87, 0.45); }
+html[data-theme='dark'] .pcard:hover { box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); }
+
+.btn { transition: all 0.15s var(--ease, ease); }
+.btn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(40, 25, 15, 0.16); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* 模式切换：选中态底色滑动感 */
+.mode-toggle button.on { box-shadow: 0 1px 5px rgba(25, 10, 15, 0.2), 0 0 0 1px rgba(176, 141, 87, 0.18); }
+
+/* 侧栏文献行：左缘指示条 */
+.lib-row, .tree-row { transition: background 0.12s ease, box-shadow 0.12s ease; }
+
+/* 纵览表格行 hover */
+.ov-wrap tbody tr { transition: background 0.12s ease; }
+
+/* chips：hover 轻浮起 */
+.ws-chip:hover, .kv-chip:hover, .st2-chip:hover { transform: translateY(-1px); border-color: var(--accent, #b08d57); }
+
+/* ---------- 手风琴平滑展开（配合 pd-sec-body-wrap 结构） ---------- */
+.pd-sec-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pd-sec-body-wrap.open { grid-template-rows: 1fr; }
+.pd-sec-body-wrap > .pd-sec-body { overflow: hidden; min-height: 0; }
+.pd-chev { transition: transform 0.2s var(--ease, ease); }
+.pd-chev.open { transform: rotate(180deg); }
+
+/* ---------- 提示条 / 进度条 ---------- */
+.ws-progress, .progress-fill { transition: width 0.25s var(--ease, ease); }
+.ws-toast, .app-notice { animation: toastIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 标签/徽标微交互 ---------- */
+.tag-dot, .pd-tags-dot, .sp-newdot { transition: transform 0.15s var(--ease, ease); }
+.tag-row:hover .tag-dot, .pd-tags-chip:hover .pd-tags-dot { transform: scale(1.25); }
+.pd-tags-x:hover { color: #b0654a; transform: scale(1.15); }
+
+/* ---------- 浮动保存栏 / 状态栏芯片 ---------- */
+.bridge-chip, .statusbar .chip { transition: background 0.15s ease, color 0.15s ease; }
+.statusbar .chip:hover { background: rgba(176, 141, 87, 0.12); }
+
+/* ---------- 减少动态偏好：全部动画关闭 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
