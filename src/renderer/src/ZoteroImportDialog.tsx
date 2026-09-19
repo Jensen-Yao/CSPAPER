@@ -48,7 +48,7 @@ export default function ZoteroImportDialog({ initialCats, onClose, onFinished }:
           }))
         )
         setPhase(r.items.length ? 'list' : 'pick')
-        if (!r.items.length) setError('这个 Zotero 库里没有带 PDF 附件的文献条目')
+        if (!r.items.length) setError('这个 Zotero 库里没有可导入的文献条目')
       })
       .catch((e) => {
         setError(String(e))
@@ -156,7 +156,8 @@ export default function ZoteroImportDialog({ initialCats, onClose, onFinished }:
           {phase === 'list' && (
             <>
               <div className="import-cat-hint">
-                在 <b>{dataDir}</b> 找到 {rows.length} 篇带 PDF 的文献，分类默认沿用 Zotero 的分类，可逐行修改。
+                在 <b>{dataDir}</b> 找到 {rows.length} 篇文献（含 PDF {rows.filter((r) => r.item.pdf).length} 篇；无 PDF 的会生成题录页，拿到原文后替换 paper.pdf 即可）。
+                分类默认沿用 Zotero 的分类，可逐行修改。
               </div>
               <div className="import-queue">
                 {rows.map((r, i) => (
@@ -173,6 +174,9 @@ export default function ZoteroImportDialog({ initialCats, onClose, onFinished }:
                         title={[r.item.authors, r.item.venue, r.item.year, r.item.itemType].filter(Boolean).join(' · ')}
                       >
                         {r.item.title}
+                      </span>
+                      <span className={`import-pdf-badge ${r.item.pdf ? 'yes' : 'no'}`} title={r.item.pdf ? '含 PDF 附件，完整导入' : '无 PDF，生成题录占位页'}>
+                        {r.item.pdf ? 'PDF' : '题录'}
                       </span>
                       {r.status === 'working' && <span className="import-st working">导入中…</span>}
                       {r.status === 'done' && <span className="import-st done">✓ {r.cat === 'inbox' ? '未分类' : r.cat}</span>}
@@ -221,7 +225,7 @@ export default function ZoteroImportDialog({ initialCats, onClose, onFinished }:
           {phase === 'list' ? (
             <>
               <span className="hint" style={{ flex: 1 }}>
-                复制 PDF + 元数据入库，导入后自动建立索引。
+                带 PDF 复制原文，无 PDF 生成题录页；导入后自动建立索引。
               </span>
               <button className="btn ghost" onClick={onClose}>
                 取消

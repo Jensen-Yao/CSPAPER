@@ -1798,3 +1798,24 @@ html[data-theme='dark'] .stat-card, html[data-theme='dark'] .stats-panel { backg
 .ref-ops { display: flex; gap: 6px; margin-top: 5px; }
 html[data-theme='dark'] .ref-title { color: #d9d3cd; }
 html[data-theme='dark'] .ref-abs { color: rgba(220,212,200,0.9); }
+
+/* ================= v0.6.1 反馈修复：详情信息区 / 折叠记忆 / 笔记溢出 / Zotero 徽标 ================= */
+/* 详情面板：信息区紧凑两列网格 */
+.pd-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.pd-grid2 .pd-field { min-width: 0; }
+.pd-fold-all { border: 0; background: transparent; color: rgba(120, 112, 100, 0.9); font-size: 11.5px; cursor: pointer; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+.pd-fold-all:hover { background: var(--accent-soft, rgba(176, 141, 87, 0.12)); color: var(--ink, #241f21); }
+.pd-head { gap: 6px; }
+/* 状态点统一小圆点尺寸 */
+.status-pill .sp-newdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+/* 笔记中心：标注文本两行截断，页码不挤走 */
+.note-hl-item { align-items: flex-start; }
+.note-hl-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: 1; min-width: 0; text-align: left; }
+.note-hl-page { white-space: nowrap; flex: none; color: rgba(120, 112, 100, 0.85); }
+/* Zotero 导入：PDF/题录 徽标 */
+.import-pdf-badge { flex: none; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; border-radius: 4px; padding: 2px 5px; }
+.import-pdf-badge.yes { color: #1c7a2e; background: rgba(122, 158, 126, 0.16); }
+.import-pdf-badge.no { color: #8a6d3b; background: rgba(176, 141, 87, 0.16); }
+html[data-theme='dark'] .import-pdf-badge.yes { color: #8fd3a0; }
+html[data-theme='dark'] .import-pdf-badge.no { color: #d3b98a; }
+html[data-theme='dark'] .pd-fold-all:hover { color: #e8e2da; }

@@ -47,7 +47,30 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   // ---- 阅读状态（五态） ----
   const [status, setStatus] = useState(paper.status)
 
-  const [open, setOpen] = useState<Record<string, boolean>>({ info: true, ai: true, abs: true, cite: false, mine: true, notes: false, files: false })
+  // 分区折叠状态记忆（localStorage）：上次收起/展开的分区下次保持，避免每次都从头翻
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pl.pdSecs') ?? '')
+      if (saved && typeof saved === 'object') return saved as Record<string, boolean>
+    } catch {
+      /* 无记忆用默认 */
+    }
+    return { info: true, ai: true, abs: true, cite: false, mine: true, notes: false, files: false }
+  })
+  const setOpenPersist = (next: Record<string, boolean>): void => {
+    setOpen(next)
+    try {
+      localStorage.setItem('pl.pdSecs', JSON.stringify(next))
+    } catch {
+      /* 存不下也无碍 */
+    }
+  }
+  const allOpen = Object.values(open).every(Boolean)
+  const toggleAllSecs = (): void => {
+    const next: Record<string, boolean> = {}
+    for (const k of ['info', 'ai', 'abs', 'cite', 'mine', 'notes', 'files']) next[k] = !allOpen
+    setOpenPersist(next)
+  }
   const [sumBusy, setSumBusy] = useState(false)
   const [summary, setSummary] = useState(paper.summary ?? '')
   const [sumErr, setSumErr] = useState('')
@@ -251,7 +274,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
 
   const sec = (id: string, icon: string, title: string, body: JSX.Element, extra?: JSX.Element): JSX.Element => (
     <div className={`pd-sec ${open[id] ? 'open' : ''}`}>
-      <button className="pd-sec-head" onClick={() => setOpen((o) => ({ ...o, [id]: !o[id] }))}>
+      <button className="pd-sec-head" onClick={() => setOpenPersist({ ...open, [id]: !open[id] })}>
         <span className="pd-sec-ic">{icon}</span>
         <span className="pd-sec-title">{title}</span>
         <span style={{ flex: 1 }} />
@@ -278,6 +301,9 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         <div className="pd-title" title={paper.title}>
           {paper.title}
         </div>
+        <button className="pd-fold-all" title={allOpen ? '收起全部分区' : '展开全部分区'} onClick={toggleAllSecs}>
+          {allOpen ? '⌃ 收起' : '⌄ 展开'}
+        </button>
         {onClose && (
           <button className="pd-x" title="关闭" onClick={onClose}>
             ✕
@@ -345,36 +371,39 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                     )}
                   </div>
                 </div>
-                {field(
-                  '状态',
-                  <span className="pd-status-row">
-                    <i className="pd-status-dot" style={{ background: statusMeta.color }} />
-                    <select className="pd-status" value={status} onChange={(e) => void changeStatus(e.target.value)}>
-                      {statusKeys.map((k) => (
-                        <option key={k} value={k}>
-                          {STATUS_META[k]?.label ?? k}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                )}
-                {field('类型', detail.venue ? '期刊文章' : '文献')}
-                {field('标题', <span className="pd-strong">{detail.title}</span>)}
-                {detail.authors &&
+                <div className="pd-grid2">
+                  {field(
+                    '状态',
+                    <span className="pd-status-row">
+                      <i className="pd-status-dot" style={{ background: statusMeta.color }} />
+                      <select className="pd-status" value={status} onChange={(e) => void changeStatus(e.target.value)}>
+                        {statusKeys.map((k) => (
+                          <option key={k} value={k}>
+                            {STATUS_META[k]?.label ?? k}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  )}
+                  {field('分类', catLabel(detail.category))}
+                </div>
+                {detail.authors && (
                   field(
                     '作者',
                     <div className="pd-chips">
-                      {detail.authors.split(/[,;，；]/).map((a, i) => (
+                      {detail.authors.split(/[,;，；]/).slice(0, 8).map((a, i) => (
                         <span key={i} className="pd-chip">
                           {a.trim()}
                         </span>
                       ))}
                     </div>
-                  )}
-                {detail.venue && field('期刊名称', detail.venue)}
-                {detail.year != null && field('发表年份', String(detail.year))}
-                {field('分类', catLabel(detail.category))}
-                {field('添加日期', (detail.added_at || '').slice(0, 10))}
+                  )
+                )}
+                {detail.venue && field('期刊 / 来源', detail.venue)}
+                <div className="pd-grid2">
+                  {detail.year != null && field('年份', String(detail.year))}
+                  {field('添加日期', (detail.added_at || '').slice(0, 10))}
+                </div>
               </>
             )}
             {sec(

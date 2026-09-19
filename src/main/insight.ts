@@ -530,11 +530,14 @@ const cosine = (a: Map<string, number>, b: Map<string, number>): number => {
   return dot / Math.sqrt(na * nb)
 }
 
-export function knowledgeGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
+export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const db = getDb()
-  const rows = db
-    .prepare('SELECT id, title, authors, summary, category, year, path FROM papers')
-    .all() as Array<{ id: number; title: string; authors: string; summary: string | null; category: string; year: number | null; path: string }>
+  // 分类筛选：空 = 全库；指定分类只在该分类内构图（跨分类硬连不相关论文反而干扰）
+  const rows = (
+    category
+      ? db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers').all()
+  ) as Array<{ id: number; title: string; authors: string; summary: string | null; category: string; year: number | null; path: string }>
   const chunkStmt = db.prepare('SELECT text FROM chunks WHERE paper_id = ? LIMIT 40')
 
   // 词频向量

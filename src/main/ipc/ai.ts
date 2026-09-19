@@ -37,7 +37,7 @@ export function registerAiIpc(ctx: IpcCtx): void {
   ipcMain.handle('compare:generate', (_e, paperId: number, dimensions: string[]) => generateCells(paperId, dimensions, send))
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, ctx.getWin()))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
-  ipcMain.handle('graph:data', () => knowledgeGraph())
+  ipcMain.handle('graph:data', (_e, category?: string) => knowledgeGraph(typeof category === 'string' && category ? category : undefined))
   ipcMain.handle('notes:mine-get', (_e, id: number) => getMyNotesText(id))
   ipcMain.handle('notes:mine-save', (_e, id: number, text: string) => saveMyNotesText(id, text))
 

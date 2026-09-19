@@ -353,7 +353,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                               setStatusMenu({ id: p.id, x: e.clientX, y: e.clientY })
                             }}
                           >
-                            {m.icon === '-new' ? <i className="sp-newdot" /> : <span className="sp-ico">{m.icon}</span>}
+                            {<i className="sp-newdot" style={{ background: m.color }} />}
                             <span>{m.label}</span>
                           </span>
                         )
@@ -477,6 +477,8 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
   const [selected, setSelected] = useState<number | null>(null)
   const [ready, setReady] = useState(false)
   const [resetTick, setResetTick] = useState(0)
+  // 分类筛选：空 = 全库；选定分类只在该分类内构图（W13 反馈：知识网络要能按分类看）
+  const [graphCat, setGraphCat] = useState('')
   const nodesRef = useRef<GNode[]>([])
   const edgesRef = useRef<GEdge[]>([])
   const dimsRef = useRef<{ w: number; h: number }>({ w: 900, h: 600 })
@@ -485,11 +487,12 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
   const hoverRef = useRef<number | null>(null)
   const selRef = useRef<number | null>(null)
   const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers])
+  const graphCats = useMemo(() => [...new Set(papers.map((p) => p.category))].sort((a, b) => a.localeCompare(b)), [papers])
 
   useEffect(() => {
     if (!visible) return
     void window.api
-      .graphData()
+      .graphData(graphCat || undefined)
       .then((g) => {
         const cats = [...new Set(g.nodes.map((n) => n.category))]
         const palette = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
@@ -506,9 +509,10 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
         edgesRef.current = g.edges
         dimsRef.current = { w, h }
         setReady(true)
+        setSelected(null)
       })
       .catch(() => {})
-  }, [visible, papers, resetTick])
+  }, [visible, papers, resetTick, graphCat])
 
   useEffect(() => {
     if (!visible || !ready) return
@@ -707,9 +711,17 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
         <button className="ov-tab" title="重新排布节点" onClick={() => setResetTick((t) => t + 1)}>
           ↻ 重置布局
         </button>
-        <span className="hint">圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点。</span>
+        <select className="ov-filter" value={graphCat} onChange={(e) => setGraphCat(e.target.value)} title="只看某个分类内的知识网络">
+          <option value="">全部分类</option>
+          {graphCats.map((c) => (
+            <option key={c} value={c}>
+              {catLabel(c)}
+            </option>
+          ))}
+        </select>
+        <span className="hint">{graphCat ? `仅「${catLabel(graphCat)}」内构图` : '圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点。'}</span>
         <span className="ov-legend">
-          {cats.map((c) => (
+          {(graphCat ? cats.filter((c) => c === graphCat) : cats).map((c) => (
             <span key={c} className="ov-leg">
               <i style={{ background: catColor(c) }} />
               {catLabel(c)}

@@ -214,7 +214,7 @@ export function previewZotero(dataDirRaw?: string): ZoteroPreviewResult {
           break
         }
       }
-      if (!pdf) continue // 没有 PDF 附件或文件缺失的条目不导入
+      // 没有 PDF 附件的条目也纳入导入（生成题录占位页）——只迁带 PDF 的会丢掉大半个库
 
       const authors = (creatorStmt.all(row.itemID) as Array<{ firstName: string; lastName: string }>)
         .map((c) => `${c.firstName} ${c.lastName}`.trim())
@@ -293,7 +293,16 @@ export async function importFromZotero(
       const slug = `${item.year ?? 'nd'}-${item.key.toLowerCase()}`
       const dest = path.join(dir, slug)
       fs.mkdirSync(dest, { recursive: true })
-      fs.copyFileSync(item.pdf, path.join(dest, 'paper.pdf'))
+      if (item.pdf && fs.existsSync(item.pdf)) {
+        fs.copyFileSync(item.pdf, path.join(dest, 'paper.pdf'))
+      } else {
+        // 无 PDF 条目：生成题录占位页（可检索、可引用；拿到原文后替换 paper.pdf 即可）
+        const { createPlaceholderPdf } = await import('./records')
+        fs.writeFileSync(
+          path.join(dest, 'paper.pdf'),
+          await createPlaceholderPdf({ title: item.title, authors: item.authors, year: item.year, venue: item.venue, abstract: item.abstract })
+        )
+      }
       fs.writeFileSync(path.join(dest, `${slug}.md`), noteMd(item))
       oc.ok = true
       oc.category = path.basename(dir).replace(/^\d+-/, '')

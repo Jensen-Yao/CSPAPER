@@ -303,7 +303,7 @@ declare global {
       paperDetail: (id: number) => Promise<PaperDetail | null>
       myNotesGet: (id: number) => Promise<string>
       myNotesSave: (id: number, text: string) => Promise<boolean>
-      graphData: () => Promise<{ nodes: Array<{ id: number; title: string; category: string; year: number | null; degree: number }>; edges: Array<{ a: number; b: number; w: number }> }>
+      graphData: (category?: string) => Promise<{ nodes: Array<{ id: number; title: string; category: string; year: number | null; degree: number }>; edges: Array<{ a: number; b: number; w: number }> }>
       appStatus: () => Promise<{ bridge: { running: boolean; port: number; version: string }; papers: number; categories: number; version: string; dataDir: string }>
       dataOpen: () => Promise<boolean | string>
       dataChangeDir: () => Promise<string | null>
