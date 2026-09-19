@@ -34,6 +34,10 @@
       {
         "from": "resources/csl-catalog.json",
         "to": "csl-catalog.json"
+      },
+      {
+        "from": "extension",
+        "to": "extension"
       }
     ],
     "win": {

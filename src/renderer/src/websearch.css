@@ -1,0 +1,231 @@
+/* ============================================================
+   内置文献浏览器（WebSearchView）— .ws- 前缀
+   注意：styles.css 已占用 .ws-row / .ws-icon / .ws-name / .ws-num
+   （设置页通用行布局），此处不重复定义这些名字。
+   颜色全部走设计令牌，深色模式随 html[data-theme='dark'] 自动生效。
+   ============================================================ */
+
+.ws-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+.ws-host.ws-hidden { display: none; }
+
+/* ============ 工具栏（导航 + 地址 + 保存） ============ */
+.ws-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px 6px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+.ws-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--speed), color var(--speed);
+}
+.ws-btn:hover:not(:disabled) { background: var(--bg3); color: var(--text); }
+.ws-btn:active:not(:disabled) { transform: scale(0.94); }
+.ws-btn:disabled { opacity: 0.35; cursor: default; }
+
+.ws-addr {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--text);
+  outline: none;
+  font-size: 12px;
+  font-family: var(--mono);
+  transition: border-color var(--speed);
+  user-select: text;
+}
+.ws-addr::placeholder { color: var(--text-dim); font-family: inherit; }
+.ws-addr:focus { border-color: var(--accent); }
+
+.ws-save {
+  flex-shrink: 0;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--speed), background var(--speed);
+  white-space: nowrap;
+}
+.ws-save:hover:not(:disabled) { opacity: 0.88; }
+.ws-save:disabled { cursor: default; opacity: 0.7; }
+.ws-save.ok { background: var(--ok); }
+.ws-save.err { background: var(--danger); }
+
+.ws-copy {
+  flex-shrink: 0;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 10px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color var(--speed), background var(--speed), color var(--speed);
+  white-space: nowrap;
+}
+.ws-copy:hover { border-color: var(--border-lit); background: var(--bg3); color: var(--text); }
+
+/* ============ 学术站点快捷芯片 ============ */
+.ws-chips {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.ws-chips::-webkit-scrollbar { display: none; }
+.ws-chip {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 2.5px 11px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color var(--speed), color var(--speed), background var(--speed);
+  white-space: nowrap;
+}
+.ws-chip:hover { border-color: var(--accent); color: var(--accent2); background: var(--accent-soft); }
+.ws-chip.on {
+  border-color: var(--accent);
+  color: var(--accent2);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+/* ============ webview 舞台 + 顶部细进度条 + 弹窗提示 ============ */
+.ws-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+.ws-frame {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: none;
+  background: #fff;
+}
+html[data-theme='dark'] .ws-frame { background: var(--bg); }
+
+.ws-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 6;
+  overflow: hidden;
+  background: transparent;
+}
+.ws-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent2));
+  animation: ws-slide 1.1s ease-in-out infinite;
+}
+@keyframes ws-slide {
+  from { left: -40%; }
+  to { left: 100%; }
+}
+
+.ws-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 7;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-lit);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  padding: 6px 16px;
+  font-size: 12px;
+  white-space: nowrap;
+  animation: ws-pop 0.14s ease;
+  pointer-events: none;
+}
+@keyframes ws-pop {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ============ 底部提示条（可关闭，localStorage 记忆） ============ */
+.ws-hint {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 12px;
+  background: var(--accent-soft);
+  border-top: 1px solid var(--border);
+}
+.ws-hint-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--accent2);
+}
+.ws-hint-x {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--speed), color var(--speed);
+}
+.ws-hint-x:hover { background: var(--bg4); color: var(--text); }

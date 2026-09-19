@@ -214,7 +214,20 @@ const api = {
   citedUpdate: (ids: number[]) => ipcRenderer.invoke('cited:update', ids),
   statsOverview: () => ipcRenderer.invoke('stats:overview'),
   venuesLookup: (name: string) => ipcRenderer.invoke('venues:lookup', name),
-  venuesImportCsv: () => ipcRenderer.invoke('venues:import-csv')
+  venuesImportCsv: () => ipcRenderer.invoke('venues:import-csv'),
+
+  // ---------- 知识体系 + 统计扩展（v0.7） ----------
+  graphKeywords: (category?: string) => ipcRenderer.invoke('graph:keywords', category),
+  graphAuthors: (category?: string) => ipcRenderer.invoke('graph:authors', category),
+  graphTopics: (category?: string) => ipcRenderer.invoke('graph:topics', category),
+  statsExtra: () => ipcRenderer.invoke('stats:extra'),
+
+  // ---------- 内置浏览器 + 一键安装（v0.7） ----------
+  webSavePage: (url: string, category?: string) => ipcRenderer.invoke('web:save-page', url, category),
+  extOpenFolder: () => ipcRenderer.invoke('ext:open-folder'),
+  extInstallGuide: (browser: 'chrome' | 'edge') => ipcRenderer.invoke('ext:install-guide', browser),
+  wordSideload: () => ipcRenderer.invoke('word:sideload'),
+  wpsOpenCite: () => ipcRenderer.invoke('wps:open-cite')
 }
 
 contextBridge.exposeInMainWorld('api', api)

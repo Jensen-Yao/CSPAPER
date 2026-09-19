@@ -15,6 +15,7 @@ import CompareView from './CompareView'
 import OverviewView from './OverviewView'
 import NotesView from './NotesView'
 import OnlineAddDialog from './OnlineAddDialog'
+import WebSearchView from './WebSearchView'
 import { STATUS_KEYS } from './types'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
@@ -118,7 +119,7 @@ export default function App(): JSX.Element {
   const [llmChip, setLlmChip] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview' | 'notes'>('read')
+  const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web'>('read')
   const [overviewTab, setOverviewTab] = useState<'table' | 'graph' | 'stats'>('table')
   const [onlineOpen, setOnlineOpen] = useState(false)
   const [findSignal, setFindSignal] = useState(0)
@@ -591,7 +592,8 @@ export default function App(): JSX.Element {
         { label: '知识网络', hint: '关联图谱', action: () => { setMode('overview'); setOverviewTab('graph') } },
         { label: '统计仪表盘', hint: '时长/时间线/词云', action: () => { setMode('overview'); setOverviewTab('stats') } },
         { sep: true, label: '' },
-        { label: '笔记中心', hint: '全库笔记与标注', action: () => setMode('notes') }
+        { label: '笔记中心', hint: '全库笔记与标注', action: () => setMode('notes') },
+        { label: '文献浏览器', hint: '知网/arXiv 等站点直达', action: () => setMode('web') }
       ] as MenuItem[]
     },
     {
@@ -790,6 +792,8 @@ export default function App(): JSX.Element {
           <div className={`ov-host ${mode === 'notes' ? '' : 'pane-hidden'}`}>
             <NotesView papers={papers} visible={mode === 'notes'} onOpenPaper={(id, page) => { const p = papers.find((x) => x.id === id); if (p) openPaper(p, page) }} onRefresh={refreshPapers} />
           </div>
+          {/* 内置文献浏览器：站点快捷入口 + Connector 扩展 + 一键保存入库 */}
+          <WebSearchView visible={mode === 'web'} />
         </div>
       </div>
 
@@ -850,6 +854,7 @@ export default function App(): JSX.Element {
             { id: 'add', label: '导入 PDF 文献…', hint: '文件', run: addPapers },
             { id: 'online', label: '在线添加文献…', hint: 'DOI / arXiv / 链接 / 关键词', run: () => setOnlineOpen(true) },
             { id: 'notes', label: '打开笔记中心', hint: '视图', run: () => setMode('notes') },
+            { id: 'web', label: '打开文献浏览器', hint: '知网 / arXiv 等站点', run: () => setMode('web') },
             { id: 'stats', label: '打开统计仪表盘', hint: '视图', run: () => { setMode('overview'); setOverviewTab('stats') } },
             { id: 'zotero', label: '从 Zotero 导入…', hint: '文件', run: () => setZoteroOpen(true) },
             { id: 'picklib', label: '选择文献库文件夹…', hint: '文件', run: () => void pickLibraryNow() },

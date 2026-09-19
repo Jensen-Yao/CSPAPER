@@ -378,8 +378,21 @@ declare global {
       statsOverview: () => Promise<StatsOverview>
       venuesLookup: (name: string) => Promise<{ name?: string; if_val?: number; zone?: string } | null>
       venuesImportCsv: () => Promise<{ imported: number } | null>
+      // ---------- 知识体系 + 统计扩展（v0.7） ----------
+      graphKeywords: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number; papers: number[] }>; edges: Array<{ a: string; b: string; w: number }> }>
+      graphAuthors: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number }>; edges: Array<{ a: string; b: string; w: number }> }>
+      graphTopics: (category?: string) => Promise<Array<{ label: string; keywords: string[]; paperIds: number[] }>>
+      statsExtra: () => Promise<{
+        wordsByYear: Array<{ w: string; total: number; years: Array<{ y: string; n: number }> }>
+        authorsTop: Array<{ author: string; n: number }>
+        heatmap: Array<{ day: string; seconds: number }>
+      }>
+      // ---------- 内置浏览器 + 一键安装（v0.7） ----------
+      webSavePage: (url: string, category?: string) => Promise<{ ok: boolean; slug?: string; error?: string; matched?: boolean; translator?: string }>
+      extOpenFolder: () => Promise<boolean>
+      extInstallGuide: (browser: 'chrome' | 'edge') => Promise<{ ok: boolean; found?: boolean; error?: string }>
+      wordSideload: () => Promise<{ ok: boolean; error?: string }>
+      wpsOpenCite: () => Promise<boolean>
     }
   }
 }
-
-export {}

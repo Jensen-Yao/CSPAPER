@@ -1,0 +1,258 @@
+/* ============================================================
+   StatsView 专属样式（.st2- 前缀）
+   纸色暖墨主题，跟随 styles.css 的设计令牌（--bg/--accent/...）
+   ============================================================ */
+
+.st2-view {
+  padding: 14px 18px 22px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- 顶部数字卡 ---------- */
+.st2-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.st2-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 13px 14px 12px 19px;
+}
+.st2-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--st2-accent, var(--accent));
+  opacity: 0.9;
+}
+.st2-num {
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.4px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st2-label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 面板通用 ---------- */
+.st2-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+}
+.st2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.st2-head-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.st2-canvas {
+  width: 100%;
+  display: block;
+}
+
+/* ---------- 视图切换 chips ---------- */
+.st2-chips {
+  display: flex;
+  gap: 3px;
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 3px;
+}
+.st2-chip {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-family: inherit;
+  padding: 3px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--speed), color var(--speed);
+}
+.st2-chip:hover {
+  color: var(--text);
+}
+.st2-chip.on {
+  background: var(--bg);
+  color: var(--accent2);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20, 12, 4, 0.1);
+}
+
+/* ---------- 下方双栏 ---------- */
+.st2-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 12px;
+}
+
+/* ---------- 状态分布行 ---------- */
+.st2-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+.st2-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg3);
+  border-radius: 999px;
+  padding: 3px 11px;
+}
+.st2-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.st2-empty {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+
+/* ---------- 论文列表浮层 ---------- */
+.st2-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 11, 8, 0.35);
+  z-index: 2000;
+  animation: st2-fade 0.12s ease;
+}
+.st2-pop {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 470px;
+  max-width: calc(100vw - 64px);
+  max-height: min(500px, calc(100vh - 88px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border-lit);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 2001;
+  animation: st2-pop-in 0.13s ease;
+}
+.st2-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px 11px 16px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.st2-pop-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st2-pop-x {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.st2-pop-x:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.st2-pop-list {
+  overflow-y: auto;
+  padding: 6px;
+}
+.st2-pop-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.st2-pop-row:hover {
+  background: var(--accent-soft);
+}
+.st2-pop-row-title {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.st2-pop-row-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.st2-pop-empty {
+  padding: 22px 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+@keyframes st2-fade {
+  from { opacity: 0; }
+}
+@keyframes st2-pop-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+}
+
+/* ---------- 深色微调 ---------- */
+html[data-theme='dark'] .st2-card,
+html[data-theme='dark'] .st2-panel {
+  background: rgba(255, 255, 255, 0.03);
+}
+html[data-theme='dark'] .st2-chip.on {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}

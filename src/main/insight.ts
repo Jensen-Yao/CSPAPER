@@ -380,7 +380,16 @@ ${parts.map((_, i) => `- [${i + 1}] 文献 ${i + 1}`).join('\n')}
 ${out}
 `
   fs.writeFileSync(path.join(dest, `${slug}.md`), md, 'utf8')
-  // 无正文 PDF —— 不生成占位文件；卡片墙/搜索仍可见（md 驱动）
+  // 综述无原文 PDF：生成题录占位页，否则 scanLibrary（按 PDF 发现条目）看不到这条知识
+  try {
+    const { createPlaceholderPdf } = await import('./records')
+    fs.writeFileSync(
+      path.join(dest, 'paper.pdf'),
+      await createPlaceholderPdf({ title, authors: 'CSPAPER AI 综述', year: new Date().getFullYear(), venue: 'AI 知识库', abstract: out.slice(0, 1200) })
+    )
+  } catch (err) {
+    console.error('[synthesis] 占位页生成失败:', String(err))
+  }
   scanLibrary(s2.libraryPath)
   return { slug, title }
 }
@@ -611,4 +620,192 @@ export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: 
   }
 
   return { nodes, edges: kept }
+}
+
+// ---------- 知识体系 v0.7：关键词共现 / 作者合作 / 主题星系（对标 CiteSpace·VOSviewer 范式） ----------
+// 全部离线计算，来自 DB 标题/小结/正文词频与作者字段，不调 AI。
+
+const KW_STOP = new Set([
+  'the', 'and', 'for', 'with', 'based', 'from', 'into', 'onto', 'via', 'using', 'under', 'over', 'between', 'among',
+  'research', 'study', 'method', 'methods', 'approach', 'analysis', 'model', 'modeling', 'framework', 'system', 'systems',
+  'journal', 'international', 'proceedings', 'conference', 'university', 'press', 'review', 'applied', 'ieee', 'access',
+  'of', 'in', 'on', 'to', 'a', 'an', 'by', 'at', 'as', 'is', 'are', 'its', 'their', 'this', 'that', 'these', 'those'
+])
+// 中文二字组里的高频虚词组合（词频统计时过滤）
+const CJK_STOP = new Set(['研究', '方法', '分析', '基于', '系统', '综述', '进展', '应用', '技术', '影响', '问题', '关于', '一种', '及其', '面向'])
+
+export interface KwNode {
+  id: string // 关键词
+  n: number // 总频次
+  papers: number[] // 命中论文 id
+}
+export interface KwEdge {
+  a: string
+  b: string
+  w: number // 共现论文数
+}
+
+// 每篇文献的关键词集合：标题（英文词 + 中文二字组，权重×2）+ AI 小结前 400 字（×1）
+function paperKeywords(r: { id: number; title: string; summary: string | null }): string[] {
+  const raw = tokenize(`${r.title}\n${r.title}\n${(r.summary ?? '').slice(0, 400)}`)
+  const set = new Set<string>()
+  for (const t of raw) {
+    if (/^[a-z0-9-]{2,}$/.test(t)) {
+      if (t.length >= 3 && !KW_STOP.has(t) && !/^\d+$/.test(t)) set.add(t)
+    } else if (!CJK_STOP.has(t)) {
+      set.add(t)
+    }
+  }
+  return [...set]
+}
+
+export function keywordGraph(category?: string, topK = 48): { nodes: KwNode[]; edges: KwEdge[] } {
+  const db = getDb()
+  const rows = (
+    category
+      ? db.prepare('SELECT id, title, summary FROM papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, title, summary FROM papers').all()
+  ) as Array<{ id: number; title: string; summary: string | null }>
+  const freq = new Map<string, number>()
+  const paperIds = new Map<string, number[]>()
+  const pair = new Map<string, number>()
+  for (const r of rows) {
+    const kws = paperKeywords(r)
+    for (const k of kws) {
+      freq.set(k, (freq.get(k) ?? 0) + 1)
+      const arr = paperIds.get(k) ?? []
+      arr.push(r.id)
+      paperIds.set(k, arr)
+    }
+    for (let i = 0; i < kws.length; i++)
+      for (let j = i + 1; j < kws.length; j++) {
+        const key = kws[i] < kws[j] ? `${kws[i]}\n${kws[j]}` : `${kws[j]}\n${kws[i]}`
+        pair.set(key, (pair.get(key) ?? 0) + 1)
+      }
+  }
+  const nodes: KwNode[] = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topK)
+    .map(([id, n]) => ({ id, n, papers: (paperIds.get(id) ?? []).slice(0, 60) }))
+  const keep = new Set(nodes.map((n) => n.id))
+  const edges: KwEdge[] = [...pair.entries()]
+    .map(([k, w]) => {
+      const [a, b] = k.split('\n')
+      return { a, b, w }
+    })
+    .filter((e) => keep.has(e.a) && keep.has(e.b))
+    .sort((x, y) => y.w - x.w)
+    .slice(0, topK * 3)
+  return { nodes, edges }
+}
+
+export interface AuNode {
+  id: string // 作者名
+  n: number // 论文数
+}
+export interface AuEdge {
+  a: string
+  b: string
+  w: number // 合著论文数
+}
+
+export function authorGraph(category?: string, topK = 60): { nodes: AuNode[]; edges: AuEdge[] } {
+  const db = getDb()
+  const rows = (
+    category
+      ? db.prepare('SELECT id, authors FROM papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, authors FROM papers').all()
+  ) as Array<{ id: number; authors: string }>
+  const freq = new Map<string, number>()
+  const pair = new Map<string, number>()
+  for (const r of rows) {
+    const names = r.authors
+      .split(/[,;，；]/)
+      .map((s) => s.trim().replace(/\s+/g, ' '))
+      .filter((s) => s && s.length <= 40)
+    for (const n of names) freq.set(n, (freq.get(n) ?? 0) + 1)
+    for (let i = 0; i < names.length; i++)
+      for (let j = i + 1; j < names.length; j++) {
+        const key = names[i] < names[j] ? `${names[i]}\n${names[j]}` : `${names[j]}\n${names[i]}`
+        pair.set(key, (pair.get(key) ?? 0) + 1)
+      }
+  }
+  const nodes: AuNode[] = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topK)
+    .map(([id, n]) => ({ id, n }))
+  const keep = new Set(nodes.map((n) => n.id))
+  const edges: AuEdge[] = [...pair.entries()]
+    .map(([k, w]) => {
+      const [a, b] = k.split('\n')
+      return { a, b, w }
+    })
+    .filter((e) => keep.has(e.a) && keep.has(e.b))
+    .sort((x, y) => y.w - x.w)
+    .slice(0, topK * 2)
+  return { nodes, edges }
+}
+
+export interface TopicCluster {
+  label: string // 簇内最高频关键词
+  keywords: string[] // 前 6 个关键词
+  paperIds: number[]
+}
+
+// 主题星系：相似度图做连通分量聚类，每簇给出高频关键词与论文清单（点击可展开）
+export function topicClusters(category?: string): TopicCluster[] {
+  const db = getDb()
+  const g = knowledgeGraph.call(null, category)
+  if (g.nodes.length === 0) return []
+  // 论文 → 关键词（重算一次，簇标签用）
+  const rows = (
+    category
+      ? db.prepare('SELECT id, title, summary FROM papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, title, summary FROM papers').all()
+  ) as Array<{ id: number; title: string; summary: string | null }>
+  const kwOf = new Map<number, string[]>()
+  for (const r of rows) kwOf.set(r.id, paperKeywords(r))
+
+  // 并查集（论文级：两篇共享 ≥1 关键词即连边，按共享关键词数加权）
+  const parent = new Map<number, number>()
+  for (const r of rows) parent.set(r.id, r.id)
+  const find = (x: number): number => {
+    while (parent.get(x) !== x) parent.set(x, parent.get(parent.get(x)!)!)
+    return parent.get(x)!
+  }
+  const kwPapers = new Map<string, number[]>()
+  for (const [pid, kws] of kwOf) for (const k of kws) (kwPapers.get(k) ?? kwPapers.set(k, []).get(k)!).push(pid)
+  // 两篇共享 ≥2 个关键词才连边：单个二字组重合太常见，全连会把整库糊成一大团
+  const pairCount = new Map<string, number>()
+  for (const [, pids] of kwPapers) {
+    if (pids.length > 40) continue // 泛化词（出现在 40+ 篇）不参与连边
+    for (let i = 0; i < pids.length; i++)
+      for (let j = i + 1; j < pids.length; j++) {
+        const key = pids[i] < pids[j] ? `${pids[i]}-${pids[j]}` : `${pids[j]}-${pids[i]}`
+        pairCount.set(key, (pairCount.get(key) ?? 0) + 1)
+      }
+  }
+  for (const [key, n] of pairCount) {
+    if (n < 2) continue
+    const [a, b] = key.split('-').map(Number)
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent.set(ra, rb)
+  }
+  const clusters = new Map<number, number[]>()
+  for (const r of rows) {
+    const root = find(r.id)
+    const arr = clusters.get(root) ?? []
+    arr.push(r.id)
+    clusters.set(root, arr)
+  }
+  const out: TopicCluster[] = []
+  for (const [, pids] of clusters) {
+    if (pids.length < 2) continue // 单篇散点不构成主题
+    const freq = new Map<string, number>()
+    for (const pid of pids) for (const k of kwOf.get(pid) ?? []) freq.set(k, (freq.get(k) ?? 0) + 1)
+    const kws = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k)
+    out.push({ label: kws[0] ?? '未命名主题', keywords: kws, paperIds: pids.sort((a, b) => a - b) })
+  }
+  return out.sort((a, b) => b.paperIds.length - a.paperIds.length).slice(0, 12)
 }

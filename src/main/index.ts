@@ -12,6 +12,8 @@ import { registerEcoIpc } from './ipc/eco'
 import { registerTranslatorsIpc } from './ipc/translators'
 import { registerCiteIpc } from './ipc/cite'
 import { registerExtraIpc } from './ipc/extra'
+import { registerKnowledgeIpc } from './ipc/extra'
+import { registerIntegrateIpc, setupWebSession } from './ipc/integrate'
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -113,7 +115,8 @@ function createWindow(): void {
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true
     }
   })
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -160,6 +163,10 @@ app.whenReady().then(() => {
   registerTranslatorsIpc(ctx)
   registerCiteIpc(ctx)
   registerExtraIpc({ send })
+  registerKnowledgeIpc()
+  registerIntegrateIpc()
+  // 内置浏览器会话：独立分区 + Connector 扩展 + PDF 下载自动入库
+  setupWebSession((title, detail) => send('app:notice', { title, detail }))
   createWindow()
   // 托盘常驻（W10）：图标占用极小，配合设置里的「关闭时最小化到托盘」使用
   ensureTray()

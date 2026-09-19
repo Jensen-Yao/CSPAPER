@@ -23,3 +23,8 @@ Thumbs.db
 *.local
 mobile/sample.cspack
 ui-audit/
+out-smoke/
+audit*.log
+check-*.log
+debug-*.log
+ui-audit/

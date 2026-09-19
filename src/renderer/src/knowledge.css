@@ -1,0 +1,81 @@
+/* ============================================================
+   知识体系（纵览「知识」tab）
+   相似网络 / 关键词共现 / 作者合作 / 主题星系 / 知识库
+   类名前缀 .kv-，只依赖 styles.css 里的设计令牌
+   ============================================================ */
+
+.kv-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+/* ---------- 子导航 chips + 分类筛选 ---------- */
+.kv-nav { display: flex; align-items: center; gap: 6px; padding: 9px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.kv-chip { border: 1px solid var(--border-lit); background: var(--bg); color: var(--text); border-radius: 9px; padding: 5px 12px; font-size: 12px; cursor: pointer; transition: background var(--speed), border-color var(--speed), color var(--speed); }
+.kv-chip:hover { border-color: var(--accent); color: var(--accent2); }
+.kv-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.kv-nav-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.kv-cat-label { font-size: 11.5px; font-weight: 700; color: var(--text-dim); letter-spacing: 1px; }
+.kv-cat { border: 1px solid var(--border-lit); background: var(--bg); color: var(--text); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+
+/* ---------- 视图容器 / 工具行 ---------- */
+.kv-view { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.kv-head { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.kv-hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; }
+.kv-legend { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
+.kv-leg { font-size: 11.5px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
+.kv-leg i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.kv-canvas-wrap { flex: 1; position: relative; min-height: 0; display: flex; }
+.kv-canvas-wrap canvas { display: block; flex-shrink: 0; }
+
+/* ---------- 详情浮层面板 ---------- */
+.kv-panel { position: absolute; right: 18px; top: 18px; width: 300px; max-height: calc(100% - 36px); overflow: auto; background: var(--bg); border: 1px solid var(--border-lit); border-radius: 13px; padding: 13px 14px; box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 8px; z-index: 6; }
+.kv-panel-head { display: flex; align-items: flex-start; gap: 8px; }
+.kv-panel-title { font-size: 13px; font-weight: 650; line-height: 1.5; flex: 1; min-width: 0; word-break: break-all; }
+.kv-panel-close { border: none; background: none; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+.kv-panel-close:hover { color: var(--text); }
+.kv-panel-sub { font-size: 11.5px; color: var(--text-dim); }
+.kv-panel-sec { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 1px; margin-top: 2px; }
+.kv-panel-kws { display: flex; flex-wrap: wrap; gap: 5px; }
+.kv-kw-chip { font-size: 11px; background: var(--accent-soft); color: var(--accent2); border-radius: 5px; padding: 2px 8px; }
+.kv-panel-list { display: flex; flex-direction: column; }
+.kv-panel-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+.kv-panel-row:hover { background: var(--accent-soft); }
+.kv-panel-row .kv-ell { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv-panel-meta { color: var(--text-dim); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
+.kv-btn-mini { border: 1px solid var(--border-lit); background: none; color: var(--text); border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer; align-self: flex-start; flex-shrink: 0; }
+.kv-btn-mini:hover { border-color: var(--accent); color: var(--accent2); background: var(--accent-soft); }
+
+/* ---------- 空状态 ---------- */
+.kv-empty { flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 12.5px; padding: 30px; text-align: center; }
+
+/* ---------- 主题星系 ---------- */
+.kv-galaxy { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+.kv-cluster { position: absolute; border-radius: 50%; border: 1.5px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; text-align: center; padding: 10px; transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease); }
+.kv-cluster:hover { transform: scale(1.03); box-shadow: var(--shadow-card); z-index: 2; }
+.kv-cluster.on { box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-card); z-index: 3; }
+.kv-cluster-name { font-weight: 650; line-height: 1.3; word-break: break-all; max-height: 60%; overflow: hidden; }
+.kv-cluster-count { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+.kv-cluster-kws { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 5px; white-space: nowrap; font-size: 10.5px; opacity: 0.9; max-width: 260px; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+
+/* ---------- 知识库 ---------- */
+.kv-kbwrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.kv-kb { flex: 1; min-height: 0; overflow: auto; padding: 14px 20px 30px; }
+.kv-kb-note { font-size: 12px; color: var(--text-dim); padding: 0 2px 12px; }
+.kv-kb-sec { font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.5px; margin: 4px 0 10px; }
+.kv-kb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.kv-kb-card { background: var(--bg); border: 1px solid var(--border-lit); border-radius: 11px; padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; transition: border-color var(--speed), box-shadow var(--speed); }
+.kv-kb-card:hover { border-color: var(--accent); box-shadow: var(--shadow-card); }
+.kv-kb-title { font-size: 12.5px; font-weight: 650; line-height: 1.5; }
+.kv-kb-meta { font-size: 11px; color: var(--text-dim); }
+.kv-kb-sum { font-size: 11.5px; color: var(--text-dim); line-height: 1.65; }
+.kv-kb-foot { display: flex; justify-content: flex-end; margin-top: 2px; }
+.kv-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.kv-tag-card { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-lit); background: var(--bg); border-radius: 9px; padding: 6px 12px; font-size: 12px; color: var(--text); cursor: pointer; transition: background var(--speed), border-color var(--speed); }
+.kv-tag-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+.kv-tag-card.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent2); font-weight: 600; }
+.kv-tag-card i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.kv-tag-n { color: var(--text-dim); font-size: 11px; font-family: var(--mono); }
+.kv-tag-card.on .kv-tag-n { color: var(--accent2); }
+
+/* ---------- 深色模式关键处 ---------- */
+html[data-theme='dark'] .kv-chip:hover { color: var(--accent2); }
+html[data-theme='dark'] .kv-kw-chip { color: var(--accent2); }
+html[data-theme='dark'] .kv-cluster { backdrop-filter: blur(1px); }

@@ -26,7 +26,7 @@ function fmtSize(n?: number): string {
   return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
 }
 
-type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'model' | 'embed' | 'index'
+type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'model' | 'embed' | 'plugins' | 'index'
 
 const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'appear', icon: '🎨', label: '外观与翻译' },
@@ -35,6 +35,7 @@ const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'cites', icon: '📑', label: '引文样式' },
   { id: 'model', icon: '🤖', label: '模型服务' },
   { id: 'embed', icon: '🧬', label: '向量嵌入' },
+  { id: 'plugins', icon: '🔌', label: '插件与安装' },
   { id: 'index', icon: '🗂', label: '索引与关于' }
 ]
 
@@ -77,6 +78,8 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const [cslSearching, setCslSearching] = useState(false)
   const [cslBusy, setCslBusy] = useState(false)
   const [cslMsg, setCslMsg] = useState('')
+  // —— 插件与安装（浏览器扩展一键装载反馈）——
+  const [extMsg, setExtMsg] = useState<Partial<Record<'chrome' | 'edge', string>>>({})
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
@@ -316,6 +319,22 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     const r = await window.api.exportMobilePack()
     if (r) setMsg(`已导出 ${r.papers} 篇 · ${Math.round(r.bytes / 1024)} KB`)
   }
+
+  // 浏览器扩展一键装载：自动打开对应浏览器的扩展管理页，扩展目录路径已进剪贴板
+  const installGuide = async (browser: 'chrome' | 'edge'): Promise<void> => {
+    const name = browser === 'chrome' ? 'Chrome' : 'Edge'
+    try {
+      const r = await window.api.extInstallGuide(browser)
+      if (r.ok) {
+        setExtMsg((m) => ({ ...m, [browser]: `✓ 已打开 ${name} 扩展管理页：开启右上角「开发者模式」→「加载已解压的扩展程序」→ 粘贴路径` }))
+      } else {
+        setExtMsg((m) => ({ ...m, [browser]: `✗ ${r.error ?? `未能启动 ${name}，可先「打开扩展文件夹」手动装载`}` }))
+      }
+    } catch (err) {
+      setExtMsg((m) => ({ ...m, [browser]: `✗ ${String(err).slice(0, 120)}` }))
+    }
+  }
+
   const mergeMobile = async (): Promise<void> => {
     const r = await window.api.mergeMobileNotes()
     if (r) {
@@ -720,6 +739,71 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                     测试嵌入
                   </button>
                   <span className="test-result">{embedTest}</span>
+                </div>
+              </div>
+            )}
+
+            {sec === 'plugins' && (
+              <div className="section">
+                <div className="section-title">内置浏览器</div>
+                <div className="ws-row">
+                  <div className="ws-icon">🧭</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-name">已内置 CSPAPER Connector——内置浏览器里直接右键保存文献，无需安装</div>
+                    <div className="hint">打开内置浏览器：左侧模式栏「网页」。知网、万方、arXiv 等站点已备好快捷入口，保存的题录与 PDF 自动入库。</div>
+                  </div>
+                </div>
+
+                <div className="section-title" style={{ marginTop: 22 }}>Chrome 一键安装</div>
+                <div className="ws-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-name">在系统 Chrome 里也能「右键保存到 CSPAPER」</div>
+                    <div className="hint">点击后自动打开 Chrome 扩展管理页（需先开启右上角开发者模式），扩展文件夹路径已复制到剪贴板。</div>
+                    {extMsg.chrome && (
+                      <div className="hint" style={{ color: extMsg.chrome.startsWith('✗') ? 'var(--danger)' : 'var(--ok)' }}>
+                        {extMsg.chrome}
+                      </div>
+                    )}
+                  </div>
+                  <button className="btn ghost" style={{ flexShrink: 0 }} onClick={() => void installGuide('chrome')}>
+                    一键打开 Chrome 扩展页
+                  </button>
+                  <button className="btn ghost" style={{ flexShrink: 0 }} onClick={() => void window.api.extOpenFolder()}>
+                    打开扩展文件夹
+                  </button>
+                </div>
+
+                <div className="section-title" style={{ marginTop: 22 }}>Edge 一键安装</div>
+                <div className="ws-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-name">Edge 同样支持（Win11 自带，无需另装浏览器）</div>
+                    <div className="hint">点击后自动打开 Edge 扩展管理页（需先开启左下角开发人员模式），扩展文件夹路径已复制到剪贴板。</div>
+                    {extMsg.edge && (
+                      <div className="hint" style={{ color: extMsg.edge.startsWith('✗') ? 'var(--danger)' : 'var(--ok)' }}>
+                        {extMsg.edge}
+                      </div>
+                    )}
+                  </div>
+                  <button className="btn ghost" style={{ flexShrink: 0 }} onClick={() => void installGuide('edge')}>
+                    一键打开 Edge 扩展页
+                  </button>
+                  <button className="btn ghost" style={{ flexShrink: 0 }} onClick={() => void window.api.extOpenFolder()}>
+                    打开扩展文件夹
+                  </button>
+                </div>
+
+                <div className="section-title" style={{ marginTop: 22 }}>Word / WPS</div>
+                <div className="ws-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-name">在 Word / WPS 里搜索并插入引文</div>
+                    <div className="hint">Word 走加载项装载（约 30 秒，过程有步骤引导）；WPS 直接用网页版：搜索 → 生成参考文献 → 粘贴。使用前请确保 CSPAPER 桌面端正在运行。</div>
+                  </div>
+                  <button className="btn ghost" style={{ flexShrink: 0 }} onClick={() => void window.api.wordSideload()}>
+                    安装到 Word（引导）
+                  </button>
+                  <button className="btn ghost" style={{ flexShrink: 0 }} onClick={() => void window.api.wpsOpenCite()}>
+                    打开 WPS 引文助手
+                  </button>
                 </div>
               </div>
             )}

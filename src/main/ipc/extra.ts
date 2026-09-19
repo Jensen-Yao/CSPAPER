@@ -17,3 +17,14 @@ export function registerExtraIpc(ctx: { send: (ev: string, p: unknown) => void }
   ipcMain.handle('venues:lookup', (_e, name: string) => venueLookup(String(name)))
   ipcMain.handle('venues:import-csv', () => importVenuesCsv())
 }
+
+// ---------- v0.7 知识体系 + 统计扩展 ----------
+import { keywordGraph, authorGraph, topicClusters } from '../insight'
+import { wordsByYear, authorsTop, readHeatmap } from '../stats'
+
+export function registerKnowledgeIpc(): void {
+  ipcMain.handle('graph:keywords', (_e, category?: string) => keywordGraph(category || undefined))
+  ipcMain.handle('graph:authors', (_e, category?: string) => authorGraph(category || undefined))
+  ipcMain.handle('graph:topics', (_e, category?: string) => topicClusters(category || undefined))
+  ipcMain.handle('stats:extra', () => ({ wordsByYear: wordsByYear(10), authorsTop: authorsTop(15), heatmap: readHeatmap() }))
+}

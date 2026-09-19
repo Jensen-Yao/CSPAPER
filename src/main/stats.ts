@@ -124,3 +124,74 @@ export function statsOverview(): StatsOverview {
     words: titleWords(titles)
   }
 }
+
+// ---------- v0.7 统计扩展：关键词时序 / 作者排行 / 阅读热力图 ----------
+export interface WordYear {
+  w: string
+  total: number
+  years: Array<{ y: string; n: number }> // 近 10 年，缺月补零
+}
+
+const EN_STOP = STOP_WORDS
+const CJK_STOP2 = new Set(['研究', '方法', '分析', '基于', '系统', '综述', '应用', '技术', '一种', '及其', '面向', '问题'])
+
+function wordsOfTitle(title: string): string[] {
+  const t = (title || '').toLowerCase()
+  const out: string[] = []
+  for (const w of t.match(/[a-z][a-z-]{2,}/g) ?? []) if (!EN_STOP.has(w)) out.push(w)
+  const cjk = t.replace(/[^\u4e00-\u9fff]/g, '')
+  for (let i = 0; i < cjk.length - 1; i++) {
+    const g = cjk.slice(i, i + 2)
+    if (!CJK_STOP2.has(g)) out.push(g)
+  }
+  return out
+}
+
+// Top 关键词近 10 年的年度频次（关键词时序图 / 主题河流数据源）
+export function wordsByYear(topN = 10): WordYear[] {
+  const db = getDb()
+  const rows = db.prepare('SELECT title, year FROM papers WHERE year IS NOT NULL AND year >= 2015').all() as Array<{ title: string; year: number }>
+  const perYear = new Map<number, Map<string, number>>() // year -> word -> n
+  const total = new Map<string, number>()
+  for (const r of rows) {
+    let m = perYear.get(r.year)
+    if (!m) perYear.set(r.year, (m = new Map()))
+    for (const w of new Set(wordsOfTitle(r.title))) {
+      m.set(w, (m.get(w) ?? 0) + 1)
+      total.set(w, (total.get(w) ?? 0) + 1)
+    }
+  }
+  const thisYear = new Date().getFullYear()
+  const years: string[] = []
+  for (let y = thisYear - 9; y <= thisYear; y++) years.push(String(y))
+  const top = [...total.entries()].sort((a, b) => b[1] - a[1]).slice(0, topN)
+  return top.map(([w, t]) => ({
+    w,
+    total: t,
+    years: years.map((y) => ({ y, n: perYear.get(parseInt(y))?.get(w) ?? 0 }))
+  }))
+}
+
+// 高产作者排行（按论文数）
+export function authorsTop(topN = 15): Array<{ author: string; n: number }> {
+  const db = getDb()
+  const rows = db.prepare('SELECT authors FROM papers').all() as Array<{ authors: string }>
+  const freq = new Map<string, number>()
+  for (const r of rows)
+    for (const a of r.authors.split(/[,;，；]/).map((s) => s.trim()).filter((s) => s && s.length <= 40)) freq.set(a, (freq.get(a) ?? 0) + 1)
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([author, n]) => ({ author, n }))
+}
+
+// 阅读热力图：近 371 天逐日阅读秒数（GitHub 风格）
+export function readHeatmap(): Array<{ day: string; seconds: number }> {
+  const db = getDb()
+  try {
+    const rows = db.prepare('SELECT day, SUM(seconds) AS s FROM read_log GROUP BY day').all() as Array<{ day: string; s: number }>
+    return rows.map((r) => ({ day: r.day, seconds: r.s || 0 }))
+  } catch {
+    return []
+  }
+}

@@ -20,8 +20,8 @@ interface Props {
   canBack: boolean
   canFwd: boolean
   onOpenPalette: () => void
-  mode: 'read' | 'chat' | 'compare' | 'overview' | 'notes'
-  onModeChange: (m: 'read' | 'chat' | 'compare' | 'overview' | 'notes') => void
+  mode: 'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web'
+  onModeChange: (m: 'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web') => void
   width: number
   onPapersChanged: () => void
   // v0.6 标签筛选：组件内部自持状态；若上层传入 activeTag 则受控，
@@ -410,6 +410,13 @@ export default function LibraryPane({
               <path d="M8.5 9.5h7M8.5 13h7M8.5 16.5h4.5" />
             </svg>
             笔记
+          </button>
+          <button className={mode === 'web' ? 'on' : ''} onClick={() => onModeChange('web')} title="内置文献浏览器（知网 / arXiv 等站点直达，一键保存入库）">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z" />
+            </svg>
+            网页
           </button>
         </div>
         <div className="nav-row">
