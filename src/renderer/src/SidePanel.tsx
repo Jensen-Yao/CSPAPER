@@ -69,6 +69,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const [busy, setBusy] = useState(false)
   const [scope, setScope] = useState<'paper' | 'lib'>('paper')
   const [current, setCurrent] = useState<Translation | null>(null)
+  const [copied, setCopied] = useState(false)
   const [ctxOn, setCtxOn] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const ctxRef = useRef('')
@@ -176,13 +177,13 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   }))
 
   // 标注列表（切到该标签或换文献时加载）
-  const [notes, setNotes] = useState<Array<{ id: number; page: number; text: string }> | null>(null)
+  const [notes, setNotes] = useState<Array<{ id: number; page: number; text: string; color?: string }> | null>(null)
   useEffect(() => {
     if (tab !== 'notes' || !paper) return
     setNotes(null)
     void window.api
       .listHighlights(paper.id)
-      .then((hs) => setNotes(hs.map((h) => ({ id: h.id, page: h.page, text: h.text }))))
+      .then((hs) => setNotes(hs.map((h) => ({ id: h.id, page: h.page, text: h.text, color: h.color }))))
       .catch(() => setNotes([]))
   }, [tab, paper?.id])
   const delNote = async (id: number): Promise<void> => {
@@ -299,7 +300,12 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
           {notes?.map((n) => (
             <div key={n.id} className="bil-pair">
               <div className="bil-src" style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                <span className="pd-note-page">p.{n.page}</span>
+                <span
+                  className="pd-note-page"
+                  style={{ background: n.color === 'red' ? '#eb5050' : n.color === 'green' ? '#46c882' : '#ffd200', color: '#1d1d22', borderRadius: 4, padding: '0 5px' }}
+                >
+                  p.{n.page}
+                </span>
                 <span className="ellipsis" style={{ flex: 1 }}>
                   {n.text.slice(0, 90)}
                 </span>
@@ -472,7 +478,20 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
                 {current.src.slice(0, 400)}
                 {current.src.length > 400 ? '…' : ''}
               </div>
-              <div className="dst-text">{current.out || '翻译中…'}</div>
+              <div style={{ marginTop: 6 }}>
+                <button
+                  className="ctx-toggle"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(current.out)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  }}
+                  disabled={!current.out}
+                >
+                  复制译文
+                </button>
+                {copied && <span style={{ fontSize: 11, color: 'var(--ok)', marginLeft: 6 }}>已复制</span>}
+              </div>
             </div>
           )}
         </div>

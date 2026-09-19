@@ -400,11 +400,12 @@ function registerIpc(): void {
     }
   )
   ipcMain.handle('highlights:list', (_e, paperId: number) =>
-    (dbmod.getDb().prepare('SELECT id, page, rects, text FROM highlights WHERE paper_id=?').all(paperId) as Array<{
+    (dbmod.getDb().prepare('SELECT id, page, rects, text, color FROM highlights WHERE paper_id=?').all(paperId) as Array<{
       id: number
       page: number
       rects: string
       text: string
+      color: string
     }>).map((h) => ({ ...h, rects: JSON.parse(h.rects) }))
   )
   ipcMain.handle('highlights:delete', (_e, hid: number) => {

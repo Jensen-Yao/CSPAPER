@@ -109,6 +109,11 @@ export function initDb(): void {
   if (!cols.includes('pvec')) db.exec('ALTER TABLE papers ADD COLUMN pvec BLOB')
   if (!cols.includes('opened_at')) db.exec('ALTER TABLE papers ADD COLUMN opened_at TEXT')
   if (!cols.includes('summary')) db.exec('ALTER TABLE papers ADD COLUMN summary TEXT')
+  // 导入去重指纹（内容 sha1 + 大小）
+  db.exec(`CREATE TABLE IF NOT EXISTS import_fp(
+    fp TEXT PRIMARY KEY,
+    added_at TEXT DEFAULT (datetime('now'))
+  );`)
   // AI 文献卡片小结 / 对比表格
   db.exec(`CREATE TABLE IF NOT EXISTS compare_tables(
     id INTEGER PRIMARY KEY AUTOINCREMENT,

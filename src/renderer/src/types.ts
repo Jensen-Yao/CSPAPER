@@ -57,13 +57,13 @@ export interface Highlight {
 
 export interface ImportOutcome {
   file: string
-  // 源文件完整路径（弹窗按它精确匹配队列行）
   path?: string
   ok: boolean
   slug?: string
   title?: string
   category?: string
-  classified: boolean
+  classified?: boolean
+  skipped?: boolean
   error?: string
 }
 

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { shell } from 'electron'
 import { getDb, getSettings, scanLibrary, setExtraCats, getExtraCats } from './db'
@@ -15,7 +16,21 @@ export interface ImportOutcome {
   title?: string
   category?: string
   classified: boolean
+  skipped?: boolean
   error?: string
+}
+
+// 内容指纹：首 256KB 哈希 + 文件大小（导入去重，避免同一 PDF 重复入库）
+function fingerprintFile(p: string): string {
+  const fd = fs.openSync(p, 'r')
+  try {
+    const buf = Buffer.alloc(256 * 1024)
+    const bytes = fs.readSync(fd, buf, 0, buf.length, 0)
+    const size = fs.fstatSync(fd).size
+    return crypto.createHash('sha1').update(buf.subarray(0, bytes)).update(String(size)).digest('hex')
+  } finally {
+    fs.closeSync(fd)
+  }
 }
 
 function titleFromFilename(p: string): { base: string; year: number | null } {
@@ -277,9 +292,25 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
     }
   }
   const outcomes: ImportOutcome[] = []
+  const db = getDb()
+  const fpSeen = new Set<string>()
+  const fpHas = db.prepare('SELECT 1 FROM import_fp WHERE fp=?')
+  const fpIns = db.prepare('INSERT INTO import_fp(fp) VALUES(?)')
   for (let i = 0; i < files.length; i++) {
     const src = files[i]
     send('import:progress', { done: i, total: files.length, current: path.basename(src) })
+    // 内容去重：同一 PDF（含桥接/题录导入）只入一次库
+    let fp = ''
+    try {
+      fp = fingerprintFile(src)
+      if (fpHas.get(fp)) {
+        const oc: ImportOutcome = { file: path.basename(src), path: src, ok: true, skipped: true, classified: false }
+        outcomes.push(oc)
+        send('import:file', oc)
+        continue
+      }
+      fpIns.run(fp)
+    } catch { /* 指纹失败不阻断导入 */ }
     const fb = titleFromFilename(src)
     let title = fb.base
     let authors = ''

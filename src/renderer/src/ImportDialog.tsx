@@ -14,6 +14,7 @@ interface QueueItem {
   touched?: boolean
   category?: string
   classified?: boolean
+  skipped?: boolean
   error?: string
 }
 
@@ -164,7 +165,7 @@ export default function ImportDialog({ initialFiles, initialCats, hasApiKey, onB
           let idx = o.path ? its.findIndex((i) => i.path && i.path.toLowerCase() === o.path!.toLowerCase() && matchable(i)) : -1
           if (idx < 0) idx = its.findIndex((i) => i.name === o.file && matchable(i))
           const patch: Partial<QueueItem> = o.ok
-            ? { status: 'done', category: o.category, classified: o.classified }
+            ? { status: 'done', category: o.category, classified: o.classified, skipped: o.skipped }
             : { status: 'failed', error: o.error }
           if (idx < 0) {
             return [...its, { path: o.path ?? '', name: o.file, status: 'done', cat: o.category ?? 'inbox', category: o.category, classified: o.classified }]
@@ -363,7 +364,7 @@ export default function ImportDialog({ initialFiles, initialCats, hasApiKey, onB
                     {it.status === 'working' && <span className="import-st working">导入中…</span>}
                     {it.status === 'done' && (
                       <span className="import-st done" title={it.classified ? 'AI 自动归类' : '按所选分类导入'}>
-                        ✓ {catLabel(it.category || 'inbox')}
+                        ✓ {catLabel(it.category || 'inbox')}{it.skipped ? ' · 已存在' : ''}
                       </span>
                     )}
                     {phase !== 'idle' && it.status === 'failed' && (

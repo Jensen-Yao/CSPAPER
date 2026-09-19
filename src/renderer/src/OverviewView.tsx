@@ -156,6 +156,7 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [ready, setReady] = useState(false)
+  const [resetTick, setResetTick] = useState(0)
   const nodesRef = useRef<GNode[]>([])
   const edgesRef = useRef<GEdge[]>([])
   const dimsRef = useRef<{ w: number; h: number }>({ w: 900, h: 600 })
@@ -187,7 +188,7 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
         setReady(true)
       })
       .catch(() => {})
-  }, [visible, papers])
+  }, [visible, papers, resetTick])
 
   useEffect(() => {
     if (!visible || !ready) return
@@ -383,6 +384,9 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
   return (
     <div className="ov-graph-wrap">
       <div className="ov-graph-head">
+        <button className="ov-tab" title="重新排布节点" onClick={() => setResetTick((t) => t + 1)}>
+          ↻ 重置布局
+        </button>
         <span className="hint">圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点。</span>
         <span className="ov-legend">
           {cats.map((c) => (
