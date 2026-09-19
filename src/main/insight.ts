@@ -2,9 +2,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { dialog, BrowserWindow } from 'electron'
-import { getDb } from './db'
+import { getDb, getSettings, scanLibrary } from './db'
 import { chatStream } from './llm'
 import { extractPagesCached } from './ingest'
+import { findCategoryDir, nextCategoryDir } from './import'
 
 export interface CompareCell {
   t: string
@@ -319,6 +320,71 @@ export interface PaperDetail {
   myNotes: string
 }
 
+// ---------- AI 综合总结：选取的文献 → 生成知识综述 md，存入「AI 知识库」分类 ----------
+export async function synthesizePapers(
+  ids: number[],
+  send: (ev: string, payload: unknown) => void
+): Promise<{ slug: string; title: string }> {
+  const db = getDb()
+  const parts: string[] = []
+  for (const pid of ids) {
+    const row = db.prepare('SELECT id, title, authors, year, summary, path FROM papers WHERE id=?').get(pid) as
+      | { id: number; title: string; authors: string; year: number | null; summary: string | null; path: string }
+      | undefined
+    if (!row) continue
+    let text = ''
+    try {
+      const pages = await extractPagesCached(row.path)
+      text = pages.slice(0, 3).join('\n').slice(0, 12000)
+    } catch { text = row.summary ?? '' }
+    parts.push(`【文献：${row.title}（${row.authors}，${row.year ?? ''}）】
+${text}`)
+    send('ai:progress', { done: parts.length, total: ids.length })
+  }
+  if (parts.length < 2) throw new Error('至少需要 2 篇有正文的文献')
+  const prompt =
+    '你是学术研究助手。以下是多篇相关文献的正文节选。请撰写一篇 800-1200 字的中文综述，包括：' +
+    '1）共同的研究主题；2）各文献的方法与核心结论对比（分点，标注文献编号如 [1]）；' +
+    '3）研究空白与未来方向。结构清晰，使用 markdown 小标题。只输出综述正文。'
+  let out = ''
+  for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: parts.join('\n\n') }])) out += d
+  if (!out.trim()) throw new Error('AI 未返回内容')
+
+  // 写入 md → AI 知识库分类
+  const s2 = getSettings()
+  const libPapers = path.join(s2.libraryPath, 'papers')
+  fs.mkdirSync(libPapers, { recursive: true })
+  const catName = 'AI 知识库'
+  let dir = findCategoryDir(libPapers, catName)
+  if (!dir) dir = nextCategoryDir(libPapers, catName)
+  fs.mkdirSync(dir, { recursive: true })
+  const slug = 'ai-synthesis-' + Date.now()
+  const dest = path.join(dir, slug)
+  fs.mkdirSync(dest, { recursive: true })
+  const title = `AI 综述：${ids.length} 篇文献综合分析`
+  const safe = out.replace(/"/g, "'")
+  const md = `---
+title: "${title}"
+authors: "CSPAPER AI"
+year: ${new Date().getFullYear()}
+venue: "AI 知识库"
+tags: [ai/synthesis]
+status: read
+---
+
+# ${title}
+
+**综合文献：**
+${parts.map((_, i) => `- [${i + 1}] 文献 ${i + 1}`).join('\n')}
+
+${out}
+`
+  fs.writeFileSync(path.join(dest, `${slug}.md`), md, 'utf8')
+  // 无正文 PDF —— 不生成占位文件；卡片墙/搜索仍可见（md 驱动）
+  scanLibrary(s2.libraryPath)
+  return { slug, title }
+}
+
 // ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
 export function getMyNotesText(paperId: number): string {
   const db = getDb()
@@ -427,6 +493,7 @@ export interface GraphNode {
   category: string
   year: number | null
   degree: number
+  cluster?: number
 }
 export interface GraphEdge {
   a: number
@@ -513,5 +580,32 @@ export function knowledgeGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   }
 
   const nodes: GraphNode[] = metas.map((m) => ({ ...m, degree: degree.get(m.id) ?? 0 }))
+
+  // 连通分量聚类：有边相连的文献归为同一簇，用不同颜色区分
+  const parent = new Map<number, number>()
+  for (const m of metas) parent.set(m.id, m.id)
+  const find = (x: number): number => {
+    let cur = x
+    while (parent.get(cur) !== cur) {
+      const next = parent.get(cur)
+      if (next === undefined) break
+      parent.set(cur, next)
+      cur = next
+    }
+    return cur
+  }
+  for (const e of kept) {
+    const ra = find(e.a)
+    const rb = find(e.b)
+    if (ra !== rb) parent.set(ra, rb)
+  }
+  const clusterMap = new Map<number, number>()
+  let nextCluster = 0
+  for (const n of nodes) {
+    const root = find(n.id)
+    if (!clusterMap.has(root)) clusterMap.set(root, nextCluster++)
+    n.cluster = clusterMap.get(root)!
+  }
+
   return { nodes, edges: kept }
 }

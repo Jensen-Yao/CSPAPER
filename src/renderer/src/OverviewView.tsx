@@ -22,7 +22,7 @@ const COLS: Array<{ key: SortKey; label: string; w: string }> = [
   { key: 'status', label: '状态', w: '8%' }
 ]
 
-const PALETTE = ['#98122e', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
+const PALETTE = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
 
 // 纵览：Zotero 式文献总表 + 知识网络（同类/同作者/共现关联的力导向图）
 export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh }: Props): JSX.Element {
@@ -258,7 +258,7 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
       .graphData()
       .then((g) => {
         const cats = [...new Set(g.nodes.map((n) => n.category))]
-        const palette = ['#98122e', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
+        const palette = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
         const w = wrapRef.current?.clientWidth || 900
         const h = wrapRef.current?.clientHeight || 600
         nodesRef.current = g.nodes.map((n, i) => ({
@@ -464,7 +464,7 @@ function KnowledgeGraph({ papers, visible, onOpen }: { papers: Paper[]; visible:
   }, [selected, papers, paperById])
 
   const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
-  const palette = ['#98122e', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
+  const palette = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
   const catColor = (c: string): string => palette[Math.max(0, cats.indexOf(c)) % palette.length]
 
   return (

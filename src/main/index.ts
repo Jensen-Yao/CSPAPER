@@ -60,7 +60,7 @@ function createWindow(): void {
     y: wa.y + Math.max(0, Math.floor((wa.height - h) / 2)),
     minWidth: 1080,
     minHeight: 640,
-    backgroundColor: '#16171a',
+    backgroundColor: '#26221e',
     title: 'CSPAPER',
     titleBarStyle: process.platform === 'linux' ? 'default' : 'hidden',
     ...(process.platform === 'win32'
