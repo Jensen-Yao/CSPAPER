@@ -35,6 +35,29 @@ function slugify(s: string): string {
   )
 }
 
+
+// ---------- Crossref 免 Key 元数据：从正文里的 DOI 拉权威题录 ----------
+export async function crossrefMeta(doi: string): Promise<{ title: string; authors: string; year: number | null; venue: string } | null> {
+  try {
+    const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, { signal: AbortSignal.timeout(12000) })
+    if (!r.ok) return null
+    const j = (await r.json()) as { message?: Record<string, unknown> }
+    const m = j.message ?? {}
+    const title = Array.isArray(m.title) ? String(m.title[0] ?? '') : String(m.title ?? '')
+    if (!title) return null
+    const authors = ((m.author ?? []) as Array<{ given?: string; family?: string; name?: string }>)
+      .map((a) => [a.given, a.family].filter(Boolean).join(' ').trim() || a.name || '')
+      .filter(Boolean)
+      .join(', ')
+    const dp = (m.issued ?? {}) as { 'date-parts'?: number[][] }
+    const year = dp['date-parts']?.[0]?.[0] ?? null
+    const ct = (m['container-title'] ?? []) as string[]
+    return { title: String(title), authors, year: typeof year === 'number' ? year : null, venue: String(ct[0] ?? '') }
+  } catch {
+    return null
+  }
+}
+
 async function classify(firstPages: string): Promise<{
   title: string
   authors: string
@@ -289,6 +312,24 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
         }
       }
       // 用户在队列里选了分类就以其为准（与 AI 推荐一致时仍算 AI 归类）
+      // 免 Key 补充：识别正文 DOI → Crossref 元数据（有 Key 时 AI 已处理）
+      if (!meta && !s.apiKey && title === fb.base) {
+        try {
+          const pages = await extractPages(src, 1)
+          const doi = (pages[0] ?? '').match(/10\.\d{4,9}\/[^\s"）)]+/i)?.[0]
+          if (doi) {
+            const m = await crossrefMeta(doi)
+            if (m?.title) {
+              title = m.title
+              authors = m.authors
+              year = m.year ?? year
+              venue = m.venue
+              paperSlug = slugify(`${m.year ?? ''}-${m.title}`)
+            }
+          }
+        } catch { /* 离线环境跳过 */ }
+      }
+
       const manualCat = sanitizeCategoryName(fileCat.get(src) ?? '')
       if (manualCat && manualCat !== 'inbox') {
         categorySlug = manualCat

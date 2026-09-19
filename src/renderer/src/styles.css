@@ -1261,3 +1261,12 @@ html[data-theme='dark'] .add-btn { background: linear-gradient(135deg, #e0557c, 
 .fbdot.green { background: #46c882; }
 .fbdot.red { background: #eb5050; }
 .fbdot:hover { transform: scale(1.15); }
+
+/* ---- 详情栏：我的笔记编辑 ---- */
+.pd-note-edit {
+  width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  color: var(--text); padding: 8px 10px; font-size: 12px; line-height: 1.6; resize: vertical;
+  font-family: inherit;
+}
+.pd-note-edit:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+.pd-note-hl { font-size: 11.5px; font-weight: 650; color: var(--text-dim); margin: 4px 0 6px; }

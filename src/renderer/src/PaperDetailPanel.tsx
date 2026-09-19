@@ -14,6 +14,9 @@ interface Props {
 // 卡片详情栏：信息 / AI 洞察 / 摘要 / 笔记 / 附件（参考成熟文献工具的信息面板）
 export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized, embedded }: Props): JSX.Element {
   const [detail, setDetail] = useState<PaperDetail | null>(null)
+  const [myNote, setMyNote] = useState('')
+  const [noteSaved, setNoteSaved] = useState(false)
+  const [noteBusy, setNoteBusy] = useState(false)
   const [open, setOpen] = useState<Record<string, boolean>>({ info: true, ai: true, abs: true, notes: false, files: false })
   const [sumBusy, setSumBusy] = useState(false)
   const [summary, setSummary] = useState(paper.summary ?? '')
@@ -29,7 +32,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
       .then((d) => {
         if (!cancelled && d) {
           setDetail(d)
-          setSummary(d.summary ?? '')
+          setMyNote(d.myNotes ?? '')
         }
       })
       .catch(() => {})
@@ -37,6 +40,17 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
       cancelled = true
     }
   }, [paper.id])
+
+  const saveMine = async (): Promise<void> => {
+    setNoteBusy(true)
+    try {
+      await window.api.myNotesSave(paper.id, myNote)
+      setNoteSaved(true)
+      setTimeout(() => setNoteSaved(false), 2000)
+    } finally {
+      setNoteBusy(false)
+    }
+  }
 
   const genSummary = async (): Promise<void> => {
     setSumBusy(true)

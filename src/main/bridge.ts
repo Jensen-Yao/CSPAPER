@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { app } from 'electron'
 import { getDb, getSettings } from './db'
-import { importPapers } from './import'
+import { importPapers, crossrefMeta } from './import'
 import { gbt7714, bibtex, type CiteRecord } from './cite'
 import { CITE_UI_HTML, WORD_TASKPANE_HTML } from './citeui'
 
@@ -124,6 +124,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, notif
       authors?: string
       year?: number | null
       venue?: string
+      doi?: string
       category?: string
       source?: string
     }
@@ -151,19 +152,21 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, notif
     } catch (err) {
       return json(res, 502, { ok: false, error: String(err).slice(0, 200) })
     }
+    // 有 DOI 但缺标题：用 Crossref 权威元数据补全
+    let meta = {
+      title: body.title || '',
+      authors: body.authors || '',
+      year: body.year ?? null,
+      venue: body.venue || ''
+    }
+    if (body.doi && (!meta.title || !meta.authors)) {
+      const m = await crossrefMeta(body.doi)
+      if (m) {
+        meta = { ...meta, title: meta.title || m.title, authors: meta.authors || m.authors, year: meta.year ?? m.year, venue: meta.venue || m.venue }
+      }
+    }
     const outcomes = await importPapers(
-      [
-        {
-          path: tmpFile,
-          category: body.category || 'inbox',
-          meta: {
-            title: body.title || '',
-            authors: body.authors || '',
-            year: body.year ?? null,
-            venue: body.venue || ''
-          }
-        }
-      ],
+      [{ path: tmpFile, category: body.category || 'inbox', meta }],
       () => {}
     )
     const ok = outcomes[0]?.ok

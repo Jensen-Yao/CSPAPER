@@ -11,7 +11,7 @@ import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroI
 import { startBridge } from './bridge'
 import { parseRecords, importRecords, type RecordEntry } from './records'
 import { exportMobilePack, mergeMobileNotes } from './mobilepack'
-import { listCompare, createCompare, deleteCompare, saveCompare, generateCells, summarizePaper, deepSearch, exportCompare, paperDetail, knowledgeGraph, type CompareData } from './insight'
+import { listCompare, createCompare, deleteCompare, saveCompare, generateCells, summarizePaper, deepSearch, exportCompare, paperDetail, getMyNotesText, saveMyNotesText, knowledgeGraph, type CompareData } from './insight'
 import { bridgeStatus } from './bridge'
 
 let win: BrowserWindow | null = null
@@ -256,6 +256,8 @@ function registerIpc(): void {
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, win))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
   ipcMain.handle('graph:data', () => knowledgeGraph())
+  ipcMain.handle('notes:mine-get', (_e, id: number) => getMyNotesText(id))
+  ipcMain.handle('notes:mine-save', (_e, id: number, text: string) => saveMyNotesText(id, text))
   ipcMain.handle('data:open', async () => {
     const r = await shell.openPath(app.getPath('userData'))
     return r === '' ? true : String(r)

@@ -169,6 +169,7 @@ export interface PaperDetail {
   abstract: string
   files: string[]
   notesCount: number
+  myNotes: string
 }
 
 // 深度搜索命中（正文 / 划词笔记）
@@ -237,6 +238,8 @@ declare global {
       compareGenerate: (paperId: number, dimensions: string[]) => Promise<Record<string, CompareCell[]>>
       compareExport: (id: number, format: 'md' | 'csv') => Promise<void>
       paperDetail: (id: number) => Promise<PaperDetail | null>
+      myNotesGet: (id: number) => Promise<string>
+      myNotesSave: (id: number, text: string) => Promise<boolean>
       graphData: () => Promise<{ nodes: Array<{ id: number; title: string; category: string; year: number | null; degree: number }>; edges: Array<{ a: number; b: number; w: number }> }>
       appStatus: () => Promise<{ bridge: { running: boolean; port: number; version: string }; papers: number; categories: number; version: string; dataDir: string }>
       dataOpen: () => Promise<boolean | string>

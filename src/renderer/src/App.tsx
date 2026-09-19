@@ -128,6 +128,11 @@ export default function App(): JSX.Element {
         e.preventDefault()
         setPaletteOpen((v) => !v)
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setShowLib(true)
+        setTimeout(() => (document.querySelector('.searchbox') as HTMLInputElement | null)?.focus(), 60)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

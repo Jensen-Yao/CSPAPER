@@ -316,6 +316,52 @@ export interface PaperDetail {
   abstract: string
   files: string[]
   notesCount: number
+  myNotes: string
+}
+
+// ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
+export function getMyNotesText(paperId: number): string {
+  const db = getDb()
+  const row = db.prepare('SELECT path FROM papers WHERE id=?').get(paperId) as { path: string } | undefined
+  if (!row) return ''
+  try {
+    const dir = path.dirname(row.path)
+    const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
+    if (!mdFile) return ''
+    const raw = fs.readFileSync(path.join(dir, mdFile), 'utf8')
+    const si = raw.indexOf('## 我的笔记')
+    if (si < 0) return ''
+    let ei = raw.indexOf('\n## ', si + 10)
+    if (ei < 0) ei = raw.length
+    return raw.slice(si + '## 我的笔记'.length, ei).trim()
+  } catch {
+    return ''
+  }
+}
+
+export function saveMyNotesText(paperId: number, text: string): boolean {
+  const db = getDb()
+  const row = db.prepare('SELECT path FROM papers WHERE id=?').get(paperId) as { path: string } | undefined
+  if (!row) return false
+  const dir = path.dirname(row.path)
+  try {
+    const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
+    if (!mdFile) return false
+    const mdPath = path.join(dir, mdFile)
+    let raw = fs.readFileSync(mdPath, 'utf8')
+    const si = raw.indexOf('## 我的笔记')
+    if (si >= 0) {
+      let ei = raw.indexOf('\n## ', si + 10)
+      if (ei < 0) ei = raw.length
+      raw = raw.slice(0, si) + '## 我的笔记\n\n' + text.trim() + '\n' + raw.slice(ei)
+    } else {
+      raw = raw.replace(/\s*$/, '') + '\n\n## 我的笔记\n\n' + text.trim() + '\n'
+    }
+    fs.writeFileSync(mdPath, raw)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function paperDetail(id: number): Promise<PaperDetail | null> {
@@ -343,7 +389,7 @@ export async function paperDetail(id: number): Promise<PaperDetail | null> {
     abstract = ''
   }
   const notesCount = (db.prepare('SELECT COUNT(*) AS n FROM highlights WHERE paper_id=?').get(id) as { n: number }).n
-  return { ...row, abstract, files, notesCount }
+  return { ...row, abstract, files, notesCount, myNotes: getMyNotesText(id) }
 }
 
 // ---------- 导入后自动小结队列（配置了 API Key 时） ----------
