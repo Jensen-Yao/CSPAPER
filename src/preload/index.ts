@@ -73,6 +73,7 @@ const api = {
   graphData: () => ipcRenderer.invoke('graph:data'),
   appStatus: () => ipcRenderer.invoke('app:status'),
   dataOpen: () => ipcRenderer.invoke('data:open'),
+  dataChangeDir: () => ipcRenderer.invoke('data:change-dir'),
   onPreviewFile: (cb: (p: unknown) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p)
     ipcRenderer.on('preview:file', h)

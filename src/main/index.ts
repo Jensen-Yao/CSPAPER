@@ -85,9 +85,24 @@ function createWindow(): void {
 
 app.setName('CSPAPER')
 
-// 数据目录固定为小写 cspaper：开发与打包版本共用同一份数据库/设置（可用环境变量覆盖）
+// 数据目录：优先级 环境变量 > 引导文件（AppData/CSPAPER/launcher.json）> 默认（AppData/cspaper）。
+// 引导文件让用户能把数据库/索引迁出 C 盘；更改后写引导文件并迁移数据，重启生效。
+const LAUNCHER_DIR = path.join(app.getPath('appData'), 'CSPAPER')
+const LAUNCHER_FILE = path.join(LAUNCHER_DIR, 'launcher.json')
+function readLauncherDataDir(): string | null {
+  try {
+    const j = JSON.parse(fs.readFileSync(LAUNCHER_FILE, 'utf8')) as { dataDir?: string }
+    return typeof j.dataDir === 'string' && j.dataDir.trim() ? j.dataDir.trim() : null
+  } catch {
+    return null
+  }
+}
+
+const launcherDataDir = readLauncherDataDir()
 if (process.env.CSPAPER_DATA_DIR) {
   app.setPath('userData', path.resolve(process.env.CSPAPER_DATA_DIR))
+} else if (launcherDataDir) {
+  app.setPath('userData', launcherDataDir)
 } else {
   app.setPath('userData', path.join(app.getPath('appData'), 'cspaper'))
 }
@@ -261,6 +276,26 @@ function registerIpc(): void {
   ipcMain.handle('data:open', async () => {
     const r = await shell.openPath(app.getPath('userData'))
     return r === '' ? true : String(r)
+  })
+  // 更改数据存储目录：迁移当前数据（跳过缓存）+ 写引导文件，重启后生效
+  ipcMain.handle('data:change-dir', async () => {
+    const cur = app.getPath('userData')
+    const r = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory', 'createDirectory'],
+      message: '选择新的数据存储位置（将复制现有数据，重启后生效）'
+    })
+    if (r.canceled || !r.filePaths[0]) return null
+    const target = path.resolve(r.filePaths[0])
+    if (path.resolve(cur).toLowerCase() === target.toLowerCase()) return null
+    fs.mkdirSync(target, { recursive: true })
+    const skip = new Set(['Caches', 'GPUCache', 'Code Cache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'blob_storage', 'Crashpad'])
+    for (const entry of fs.readdirSync(cur)) {
+      if (skip.has(entry)) continue
+      fs.cpSync(path.join(cur, entry), path.join(target, entry), { recursive: true, force: false })
+    }
+    fs.mkdirSync(LAUNCHER_DIR, { recursive: true })
+    fs.writeFileSync(LAUNCHER_FILE, JSON.stringify({ dataDir: target }, null, 2))
+    return target
   })
   ipcMain.handle('app:status', () => ({
     bridge: bridgeStatus(),

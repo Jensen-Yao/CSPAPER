@@ -17,6 +17,9 @@ export interface ZoteroPaper {
   year: number | null
   venue: string
   collections: string[]
+  abstract: string
+  tags: string[]
+  notes: string[] // Zotero 子笔记（已去 HTML 标签）
   pdf: string // PDF 附件绝对路径
 }
 
@@ -108,18 +111,35 @@ export function previewZotero(dataDirRaw?: string): ZoteroPreviewResult {
   const sqlite = path.join(dataDir, 'zotero.sqlite')
   if (!fs.existsSync(sqlite)) return { dataDir, items: [], error: '该目录下没有 zotero.sqlite' }
 
-  // 复制主库与 WAL/SHM 到临时目录再打开：Zotero 运行中也不受锁影响，WAL 里未合并的数据不丢
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cspaper-zotero-'))
-  for (const suffix of ['', '-wal', '-shm']) {
-    const src = `${sqlite}${suffix}`
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(tmp, `zotero.sqlite${suffix}`))
+  // 优先只读直读原库（Zotero 通常只持共享锁）。
+  // 被独占锁挡住时回退：复制主库文件到临时目录打开；Zotero 写入瞬间可能复制到
+  // 撕裂页，用 quick_check 校验并最多重试 5 次（每次间隔 400ms）。
+  let db: Database.Database | null = null
+  let tmp: string | null = null
+  let lastErr = ''
+  for (let attempt = 0; attempt < 5 && !db; attempt++) {
+    try {
+      db = new Database(sqlite, { readonly: true, fileMustExist: true })
+      break
+    } catch (e1) {
+      lastErr = String(e1)
+    }
+    try {
+      tmp = os.tmpdir() + '/cspaper-zotero-' + Date.now() + '-' + attempt + '.sqlite'
+      fs.copyFileSync(sqlite, tmp)
+      db = new Database(tmp, { readonly: true })
+      const qc = (db.prepare('PRAGMA quick_check').get() as { quick_check?: string }).quick_check
+      if (qc !== 'ok') throw new Error('副本未通过一致性校验: ' + qc)
+      break
+    } catch (e2) {
+      lastErr = String(e2)
+      try { db?.close() } catch { /* 已关闭 */ }
+      db = null
+      try { if (tmp) fs.rmSync(tmp, { force: true }) } catch { /* 忽略 */ }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400)
+    }
   }
-  let db: Database.Database
-  try {
-    db = new Database(path.join(tmp, 'zotero.sqlite'), { readonly: true })
-  } catch (err) {
-    return { dataDir, items: [], error: `无法读取 zotero.sqlite：${String(err)}` }
-  }
+  if (!db) return { dataDir, items: [], error: `无法读取 zotero.sqlite：${lastErr}（Zotero 可能正在写入，已重试 5 次）` }
 
   try {
     const rows = db
@@ -151,6 +171,27 @@ export function previewZotero(dataDirRaw?: string): ZoteroPreviewResult {
       `SELECT c.collectionName AS name FROM collectionItems ci JOIN collections c ON c.collectionID = ci.collectionID
        WHERE ci.itemID = ? ORDER BY c.collectionName`
     )
+    const tagsStmt = db.prepare(
+      `SELECT t.name AS name FROM itemTags it JOIN tags t ON t.tagID = it.tagID WHERE it.itemID = ? ORDER BY t.name`
+    )
+    const noteStmt = db.prepare(
+      `SELECT n.note AS note FROM itemNotes n JOIN items i2 ON i2.itemID = n.itemID
+       WHERE n.parentItemID = ? AND NOT EXISTS (SELECT 1 FROM deletedItems d WHERE d.itemID = i2.itemID)`
+    )
+    const stripHtml = (html: string): string =>
+      html
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|h\d|li)>/gi, '\n')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
 
     const items: ZoteroPaper[] = []
     for (const row of rows) {
@@ -182,8 +223,13 @@ export function previewZotero(dataDirRaw?: string): ZoteroPreviewResult {
       const year = parseInt((fields.date ?? '').match(/(19|20)\d{2}/)?.[0] ?? '', 10) || null
       const venue = fields.publicationTitle || fields.proceedingsTitle || fields.bookTitle || fields.publisher || ''
       const collections = (collStmt.all(row.itemID) as Array<{ name: string }>).map((c) => c.name)
+      const abstract = stripHtml(fields.abstractNote ?? '')
+      const tags = (tagsStmt.all(row.itemID) as Array<{ name: string }>).map((t) => t.name.trim()).filter(Boolean)
+      const notes = (noteStmt.all(row.itemID) as Array<{ note: string }>)
+        .map((n) => stripHtml(n.note))
+        .filter(Boolean)
 
-      items.push({ key: row.key, itemType: row.typeName, title, authors, year, venue, collections, pdf })
+      items.push({ key: row.key, itemType: row.typeName, title, authors, year, venue, collections, abstract, tags, notes, pdf })
     }
     items.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title))
     return { dataDir, items }
@@ -191,7 +237,7 @@ export function previewZotero(dataDirRaw?: string): ZoteroPreviewResult {
     return { dataDir, items: [], error: `解析 Zotero 库失败：${String(err)}` }
   } finally {
     db.close()
-    fs.rmSync(tmp, { recursive: true, force: true })
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true })
   }
 }
 
@@ -200,7 +246,12 @@ const eqKey = (dirName: string, key: string): boolean => dirName.toLowerCase().e
 
 function noteMd(p: ZoteroPaper): string {
   const q = (s: string): string => s.replace(/"/g, "'")
-  return `---\ntitle: "${q(p.title)}"\nauthors: "${q(p.authors)}"\nyear: ${p.year ?? 'null'}\nvenue: "${q(p.venue)}"\nzotero: "${p.key}"\ntags: [status/unread]\nstatus: unread\n---\n\n# ${p.title}\n\n- **作者:** ${p.authors || '（作者见原文）'}\n- **发表:** ${p.venue || `${p.year ?? ''}（待核实）`}\n- **来源:** Zotero 导入（key: ${p.key}）\n`
+  const tagLine = p.tags.length ? `tags: [${p.tags.map((t) => q(t)).join(', ')}]` : 'tags: [status/unread]'
+  let s = `---\ntitle: "${q(p.title)}"\nauthors: "${q(p.authors)}"\nyear: ${p.year ?? 'null'}\nvenue: "${q(p.venue)}"\nzotero: "${p.key}"\n${tagLine}\nstatus: unread\n---\n\n# ${p.title}\n\n- **作者:** ${p.authors || '（作者见原文）'}\n- **发表:** ${p.venue || `${p.year ?? ''}（待核实）`}\n- **来源:** Zotero 导入（key: ${p.key}）\n`
+  if (p.abstract) s += `\n## 摘要\n\n${p.abstract}\n`
+  if (p.tags.length) s += `\n## Zotero 标签\n\n${p.tags.map((t) => `- ${t}`).join('\n')}\n`
+  for (const n of p.notes) s += `\n## Zotero 笔记\n\n${n}\n`
+  return s
 }
 
 export async function importFromZotero(

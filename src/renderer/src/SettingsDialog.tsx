@@ -94,6 +94,13 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     await onSave({ theme })
   }
 
+  const changeDataDir = async (): Promise<void> => {
+    const target = await window.api.dataChangeDir()
+    if (!target) return
+    setDataDir(target)
+    setMsg('数据目录已迁移，重启 CSPAPER 后生效')
+  }
+
   const pickWorkspace = async (): Promise<void> => {
     const p = await window.api.pickLibrary()
     if (!p) return
@@ -262,6 +269,15 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   <button className="btn ghost" onClick={() => void mergeMobile()}>
                     合并…
                   </button>
+                </div>
+                <div className="section-title" style={{ marginTop: 24 }}>数据存储位置</div>
+                <div className="ws-row">
+                  <div className="ws-icon">💽</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-name ellipsis" title={dataDir}>{dataDir}</div>
+                    <div className="hint">数据库、索引与设置所在位置；更改后自动迁移，重启生效。</div>
+                  </div>
+                  <button className="btn ghost" onClick={() => void changeDataDir()}>更改…</button>
                 </div>
                 <div className="hint" style={{ marginTop: 12 }}>
                   💡 已有 Zotero 文献库？「文件 → 从 Zotero 导入」一键迁移；知网题录用「文件 → 导入题录文件」。
