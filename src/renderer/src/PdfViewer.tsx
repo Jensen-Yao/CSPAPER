@@ -37,14 +37,27 @@ interface Props {
   onDeleteHighlight: (id: number) => void
   // 面板常驻但 chat 模式下隐藏：隐藏时全局缩放快捷键不生效（让位给引用面板）
   visible: boolean
+  // 恢复上次阅读位置（W2）：文档加载完成后跳到该页（>1 才生效，仅本次加载生效一次；
+  // 引用跳转 pendingJump 优先）。协调者传 paper.last_page；会话内 tab 来回切换时
+  // 优先用本会话的最新阅读页
+  initialPage?: number
+  // PDF 内查找（W11）：数值变化（父组件 +1）即打开查找条并聚焦（如绑定 Ctrl+F）
+  findSignal?: number
 }
 
 interface PageTextMap {
   [num: number]: string
 }
 
+// 全文档查找的一次命中（offset/length 相对该页纯文本）
+interface FindHit {
+  page: number
+  offset: number
+  length: number
+}
+
 const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
-  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, visible },
+  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, visible, initialPage, findSignal },
   ref
 ): JSX.Element {
   const active = tabs.find((t) => t.paper.id === activeId) ?? null
@@ -64,6 +77,29 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
   // 侧边导航：页面缩略图 / 文档目录
   const [navi, setNavi] = useState<'none' | 'thumbs' | 'toc'>('none')
   const [outline, setOutline] = useState<Array<{ title: string; page: number; depth: number }>>([])
+  // ===== 阅读进度（W2）=====
+  // 会话内每篇论文的最新阅读页（tab 来回切换时恢复位置用，优先于 initialPage）
+  const reportedPageRef = useRef(new Map<number, number>())
+  const lastPageTimerRef = useRef<number | null>(null)
+  const lastPagePendingRef = useRef<{ id: number; page: number } | null>(null)
+  // 当前已加载 doc 归属的 paper id（切 tab 的过渡期里 curPage 还是上一篇的，
+  // 用它挡住上报/心跳，避免把旧页码记到新论文头上）
+  const docPaperIdRef = useRef<number | null>(null)
+  // ===== PDF 内查找（W11）=====
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findHits, setFindHits] = useState<FindHit[]>([])
+  const [findIdx, setFindIdx] = useState(0)
+  const findInputRef = useRef<HTMLInputElement | null>(null)
+  // 每页纯文本缓存（打开查找时惰性逐页构建；tab 切换/文档关闭时清空）
+  const findTextRef = useRef(new Map<number, string>())
+  const findBuildRef = useRef<{ doc: any; promise: Promise<void> } | null>(null)
+  // 当前页 textLayer 重建完成计数（首次渲染/缩放后）：触发查找高亮补涂
+  const [layerTick, setLayerTick] = useState(0)
+
+  const handleLayerReady = useCallback((n: number) => {
+    if (n === curPageRef.current) setLayerTick((v) => v + 1)
+  }, [])
 
   // 挂载滚动容器：Ctrl+滚轮缩放；不再在 resize 时重缩放/回跳（保持阅读位置）
   const attachScrollEl = useCallback((el: HTMLDivElement | null) => {
@@ -105,6 +141,13 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     setHls([])
     setOutline([])
     textCache.current = {}
+    // 查找缓存/状态随文档重置
+    findTextRef.current = new Map()
+    findBuildRef.current = null
+    setFindOpen(false)
+    setFindQuery('')
+    setFindHits([])
+    setFindIdx(0)
     if (!active) return
     let cancelled = false
     void (async () => {
@@ -143,11 +186,33 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
         baseVwRef.current = metas[0]?.w ?? 612
         const w = scrollRef.current?.clientWidth ?? 800
         setBaseScale(Math.max(0.5, Math.min(2.2, (w - 56) / baseVwRef.current)))
+        docPaperIdRef.current = active.paper.id
         setDoc(d)
         setNumPages(d.numPages)
         setCurPage(1)
         scrollRef.current?.scrollTo({ top: 0 })
         curPageRef.current = 1
+        // 恢复上次阅读位置（W2）：会话内最新阅读页 > initialPage（协调者传 paper.last_page）
+        // > 库内 last_page。仅本次文档加载生效一次；引用跳转（pendingJump）优先。
+        // initialPage 每次渲染可能都是新引用，故意不加入依赖（本 effect 只按 paper.id 重跑）。
+        const restored = reportedPageRef.current.get(active.paper.id) ?? initialPage ?? active.paper.last_page ?? 1
+        const restorePage = Math.max(1, Math.min(d.numPages, Math.floor(restored)))
+        if (!pendingJump && restorePage > 1) {
+          window.setTimeout(() => {
+            if (cancelled) return
+            // 等 PageView 提交后再按页高锚定滚动（只滚 .viewer-scroll 自身）
+            const el = pageRefs.current.get(restorePage)
+            const sc = scrollRef.current
+            if (el && sc) {
+              const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop
+              sc.scrollTo({ top: Math.max(0, top - 30), behavior: 'auto' })
+            }
+            setCurPage(restorePage)
+            curPageRef.current = restorePage
+            onPageContext(textCache.current[restorePage] ?? '')
+            onPageChange?.(restorePage)
+          }, 320)
+        }
         // 文档目录（书签）
         void buildOutline(d).then((o) => {
           if (!cancelled) setOutline(o)
@@ -160,6 +225,46 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
       cancelled = true
     }
   }, [active?.paper.id])
+
+  // 阅读进度上报（W2）：页码变化时节流 2s 调 paperLastPage（2s 窗口内只保留最新页码）
+  useEffect(() => {
+    if (!active || !doc || curPage < 1 || docPaperIdRef.current !== active.paper.id) return
+    const id = active.paper.id
+    reportedPageRef.current.set(id, curPage)
+    lastPagePendingRef.current = { id, page: curPage }
+    if (lastPageTimerRef.current != null) return
+    lastPageTimerRef.current = window.setTimeout(() => {
+      lastPageTimerRef.current = null
+      const p = lastPagePendingRef.current
+      lastPagePendingRef.current = null
+      if (p) {
+        try { window.api.paperLastPage(p.id, p.page) } catch { /* 忽略 */ }
+      }
+    }, 2000)
+  }, [curPage, active?.paper.id, doc])
+
+  // 组件卸载：把还没落库的页码立即补发，避免丢进度
+  useEffect(() => {
+    return () => {
+      if (lastPageTimerRef.current != null) window.clearTimeout(lastPageTimerRef.current)
+      lastPageTimerRef.current = null
+      const p = lastPagePendingRef.current
+      lastPagePendingRef.current = null
+      if (p) {
+        try { window.api.paperLastPage(p.id, p.page) } catch { /* 忽略 */ }
+      }
+    }
+  }, [])
+
+  // 阅读时长心跳（W2）：文档打开且阅读器在前台（活跃 tab + read 模式）时每 30s 计 30s
+  useEffect(() => {
+    if (!active || !doc || !visible || docPaperIdRef.current !== active.paper.id) return
+    const pid = active.paper.id
+    const t = window.setInterval(() => {
+      try { window.api.paperReadTime(pid, 30) } catch { /* 忽略 */ }
+    }, 30000)
+    return () => window.clearInterval(t)
+  }, [active?.paper.id, doc, visible])
 
   const scale = baseScale * zoom
 
@@ -298,6 +403,248 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     }
   }, [numPages, onPageContext, onPageChange])
 
+  // ===== PDF 内查找（W11）=====
+  // 清掉所有查找高亮（拆 mark 还原文本节点，normalize 合并相邻文本节点）
+  const clearFindMarks = useCallback(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    sc.querySelectorAll('mark.pdf-find-hit').forEach((m) => {
+      const parent = m.parentNode
+      if (!parent) return
+      while (m.firstChild) parent.insertBefore(m.firstChild, m)
+      parent.removeChild(m)
+    })
+    sc.normalize()
+  }, [])
+
+  // 惰性逐页构建全文档纯文本索引。disableNormalization 与 textLayer 的取法一致，
+  // 尽量让索引文本与 DOM 文本对齐（高亮匹配更可靠）。以局部 map 捕获，文档切换后
+  // 旧的构建循环不会污染新文档的缓存。
+  const ensureFindText = useCallback((d: any): Promise<void> => {
+    if (!d) return Promise.resolve()
+    const building = findBuildRef.current
+    if (building && building.doc === d) return building.promise
+    const map = new Map<number, string>()
+    findTextRef.current = map
+    const promise = (async () => {
+      for (let n = 1; n <= d.numPages; n++) {
+        if (map.has(n)) continue
+        try {
+          const pg = await d.getPage(n)
+          const tc = await pg.getTextContent({ disableNormalization: true })
+          map.set(
+            n,
+            (tc.items as Array<{ str: string; hasEOL?: boolean }>)
+              .map((it) => it.str + (it.hasEOL ? '\n' : ''))
+              .join('')
+          )
+        } catch {
+          map.set(n, map.get(n) ?? '')
+        }
+      }
+    })()
+    findBuildRef.current = { doc: d, promise }
+    return promise
+  }, [])
+
+  // 用当前缓存对全文档做大小写不敏感 indexOf 匹配
+  const computeFindHits = useCallback(
+    (q: string): FindHit[] => {
+      const ql = q.toLowerCase()
+      if (!ql) return []
+      const hits: FindHit[] = []
+      for (let n = 1; n <= numPages; n++) {
+        const t = findTextRef.current.get(n)
+        if (!t) continue
+        const low = t.toLowerCase()
+        let from = 0
+        for (;;) {
+          const i = low.indexOf(ql, from)
+          if (i < 0) break
+          hits.push({ page: n, offset: i, length: ql.length })
+          from = i + ql.length
+        }
+      }
+      return hits
+    },
+    [numPages]
+  )
+
+  // 查询变化：先用已缓存文本即时出结果，索引建完后再全量重算（命中列表是全文档的，与当前页解耦）
+  useEffect(() => {
+    if (!findOpen || !doc) return
+    setFindHits(computeFindHits(findQuery))
+    setFindIdx(0)
+    if (!findQuery.trim()) {
+      clearFindMarks()
+      return
+    }
+    let cancelled = false
+    void ensureFindText(doc).then(() => {
+      if (cancelled) return
+      setFindHits(computeFindHits(findQuery))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [findQuery, findOpen, doc, computeFindHits, ensureFindText, clearFindMarks])
+
+  // findSignal 变化（父组件 +1）→ 打开查找条并聚焦/全选
+  useEffect(() => {
+    if (!findSignal || !doc) return
+    setFindOpen(true)
+    requestAnimationFrame(() => {
+      findInputRef.current?.focus()
+      findInputRef.current?.select()
+    })
+  }, [findSignal, doc])
+
+  // Esc 在任意位置关闭查找条
+  useEffect(() => {
+    if (!findOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setFindOpen(false)
+        setFindQuery('')
+        setFindHits([])
+        setFindIdx(0)
+        clearFindMarks()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [findOpen, clearFindMarks])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindHits([])
+    setFindIdx(0)
+    clearFindMarks()
+  }, [clearFindMarks])
+
+  const stepFind = useCallback(
+    (dir: 1 | -1) => {
+      if (!findHits.length) return
+      setFindIdx((i) => (i + dir + findHits.length) % findHits.length)
+    },
+    [findHits.length]
+  )
+
+  // 在指定页 textLayer 内把全部匹配包上 <mark class="pdf-find-hit">，返回「当前命中」的 mark。
+  // 跨文本节点/跨行的匹配尽力分段包裹；结构对不上时返回 null（静默放弃高亮，计数与跳页不受影响）。
+  const applyFindHighlight = useCallback(
+    (page: number, query: string, activeOrdinal: number): HTMLElement | null => {
+      const wrap = pageRefs.current.get(page)
+      const layer = wrap?.querySelector(':scope > .textLayer')
+      if (!(layer instanceof HTMLElement)) return null
+      clearFindMarks()
+      const ql = query.toLowerCase()
+      if (!ql) return null
+      // 收集该页 textLayer 的全部文本节点拼成整串，用于定位匹配区间
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+      const nodes: Text[] = []
+      const starts: number[] = []
+      let total = ''
+      for (let wn = walker.nextNode(); wn; wn = walker.nextNode()) {
+        const t = wn as Text
+        if (!t.nodeValue) continue
+        starts.push(total.length)
+        nodes.push(t)
+        total += t.nodeValue
+      }
+      const low = total.toLowerCase()
+      const ranges: Array<[number, number]> = []
+      let from = 0
+      for (;;) {
+        const i = low.indexOf(ql, from)
+        if (i < 0) break
+        ranges.push([i, i + ql.length])
+        from = i + ql.length
+      }
+      if (!ranges.length) return null
+      const activeIdx = Math.min(Math.max(0, activeOrdinal), ranges.length - 1)
+      // live：随拆分动态增长的候选文本节点（start 为整串内的绝对偏移）
+      const live: Array<{ node: Text; start: number }> = nodes.map((node, i) => ({ node, start: starts[i] ?? 0 }))
+      let activeMark: HTMLElement | null = null
+      for (let ri = 0; ri < ranges.length; ri++) {
+        const rStart = ranges[ri][0]
+        const rEnd = ranges[ri][1]
+        let j = 0
+        while (j < live.length) {
+          const cur = live[j]
+          if (cur.start + (cur.node.nodeValue?.length ?? 0) > rStart) break
+          j++
+        }
+        let lastMark: HTMLElement | null = null
+        while (j < live.length) {
+          const cur = live[j]
+          const ns = cur.start
+          if (ns >= rEnd) break
+          let target: Text = cur.node
+          let ls = Math.max(0, rStart - ns)
+          let le = Math.min(cur.node.nodeValue?.length ?? 0, rEnd - ns)
+          if (ls > 0) {
+            target = target.splitText(ls)
+            le -= ls
+          }
+          if (le < (target.nodeValue?.length ?? 0)) target.splitText(le)
+          const mark = document.createElement('mark')
+          mark.className = 'pdf-find-hit'
+          target.parentNode?.insertBefore(mark, target)
+          mark.appendChild(target)
+          lastMark = mark
+          // 本节点被拆出的剩余部分重新登记，同一节点内的后续匹配也能命中
+          const rest = mark.nextSibling
+          if (rest instanceof Text && rest.nodeValue) live.splice(j + 1, 0, { node: rest, start: rEnd })
+          j++
+        }
+        if (ri === activeIdx && lastMark) activeMark = lastMark
+      }
+      return activeMark ?? (layer.querySelector('mark.pdf-find-hit') as HTMLElement | null)
+    },
+    [clearFindMarks]
+  )
+
+  // 当前命中：跳页（复用 goToPage）+ 包高亮 + 滚到命中处（只滚 .viewer-scroll）。
+  // 页面懒渲染未就绪时轮询重试；layerTick（当前页文本层重建完成，含缩放后）触发重涂。
+  const curHit = findOpen && findQuery.trim() && findHits.length > 0 ? findHits[Math.min(findIdx, findHits.length - 1)] : null
+  const curHitKey = curHit ? `${curHit.page}:${curHit.offset}` : ''
+  useEffect(() => {
+    if (!curHit || !findQuery.trim()) return
+    const target = curHit.page
+    // 当前命中在该页内的序号（DOM 内第几个匹配，尽力对齐）
+    let ordinal = 0
+    for (let i = 0; i < Math.min(findIdx, findHits.length); i++) {
+      if (findHits[i]?.page === target) ordinal++
+    }
+    if (curPageRef.current !== target) goToPage(target)
+    let cancelled = false
+    let timer: number | undefined
+    let attempts = 0
+    const run = (): void => {
+      if (cancelled) return
+      attempts++
+      const mark = applyFindHighlight(target, findQuery, ordinal)
+      if (mark) {
+        const sc = scrollRef.current
+        if (sc) {
+          const top = mark.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop
+          sc.scrollTo({ top: Math.max(0, top - sc.clientHeight * 0.35), behavior: 'smooth' })
+        }
+        return
+      }
+      if (attempts < 10) timer = window.setTimeout(run, 250)
+    }
+    timer = window.setTimeout(run, 60)
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+    // findIdx/findHits/curHit 均由 curHitKey 覆盖，闭合值始终取自最新渲染
+  }, [curHitKey, findQuery, layerTick, goToPage, applyFindHighlight])
+
   // 缩放后把当前页锚回视野（页面宽度按比例变化，阅读位置不丢）
   useEffect(() => {
     const t = setTimeout(() => {
@@ -418,6 +765,37 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
           译 全文翻译
         </button>
       </div>
+      {findOpen && (
+        <div className="pdf-findbar">
+          <input
+            ref={findInputRef}
+            className="pdf-findbar-input"
+            type="text"
+            placeholder="在文档中查找…"
+            spellCheck={false}
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                stepFind(e.shiftKey ? -1 : 1)
+              }
+            }}
+          />
+          <span className="pdf-findbar-count">
+            {!findQuery.trim() ? '' : findHits.length > 0 ? `${Math.min(findIdx + 1, findHits.length)} / ${findHits.length}` : '无结果'}
+          </span>
+          <button className="pdf-findbar-btn" title="上一个（Shift+Enter）" disabled={!findHits.length} onClick={() => stepFind(-1)}>
+            ↑
+          </button>
+          <button className="pdf-findbar-btn" title="下一个（Enter）" disabled={!findHits.length} onClick={() => stepFind(1)}>
+            ↓
+          </button>
+          <button className="pdf-findbar-btn" title="关闭（Esc）" onClick={closeFind}>
+            ✕
+          </button>
+        </div>
+      )}
       <div className="pdf-main">
         {navi !== 'none' && (
           <div className="pdf-navi">
@@ -462,6 +840,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
                 textCache.current[n] = txt
                 if (n === curPage) onPageContext(txt)
               }}
+              onLayerReady={handleLayerReady}
             />
           ))}
         </div>
@@ -552,9 +931,11 @@ interface PageViewProps {
   onDeleteHl: (id: number) => void
   registerRef: (el: HTMLDivElement | null) => void
   onPageText: (n: number, text: string) => void
+  // 该页 textLayer 渲染完成（首次/缩放重建后）
+  onLayerReady?: (n: number) => void
 }
 
-function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageText }: PageViewProps): JSX.Element {
+function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageText, onLayerReady }: PageViewProps): JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
@@ -628,6 +1009,7 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageTe
           viewport
         })
         await tl.render()
+        onLayerReady?.(num)
       } catch (e) {
         if (!String(e).toLowerCase().includes('cancel')) console.error(`[page ${num}] text layer failed:`, e)
       }

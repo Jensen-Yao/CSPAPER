@@ -40,6 +40,31 @@ async function detect() {
   PAGE_URL = tab.url
   PDF_URL = resolvePdfUrl(PAGE_URL)
 
+  // 优先问桌面端有没有命中站点的抓取脚本（Translators）：命中则用脚本结果，更准也更全
+  let translatorName = ''
+  try {
+    const port = await getPort()
+    const tr = await fetch(`http://127.0.0.1:${port}/translate?url=${encodeURIComponent(PAGE_URL)}`)
+    const t = await tr.json()
+    if (t.ok && t.csl?.title) {
+      translatorName = t.translator || ''
+      const csl = t.csl
+      const year = csl.issued?.['date-parts']?.[0]?.[0] ?? ''
+      $('title').value = csl.title || tab.title || ''
+      $('authors').value = (csl.author || []).map((a) => a.literal || [a.given, a.family].filter(Boolean).join(' ')).join(', ')
+      $('venue').value = (Array.isArray(csl['container-title']) ? csl['container-title'][0] : csl['container-title']) || ''
+      $('year').value = String(year)
+      window.__translatorCsl = csl
+      const kind = /arxiv/i.test(translatorName) ? 'arXiv' : translatorName
+      $('detected').textContent = `识别为：${kind}（脚本抓取）`
+      $('pdfrow').innerHTML = '<span class="pdfyes">● 脚本抓取成功，保存后直接按题录入库' + (t.pdfPath ? '（含 PDF）' : '') + '</span>'
+      $('save').disabled = false
+      return
+    }
+  } catch {
+    /* 桌面端未运行或旧版本无 /translate，走本地元数据解析 */
+  }
+
   let meta = { title: tab.title ?? '', authors: '', venue: '', year: '', doi: '' }
   try {
     const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: extractMetaInPage })
@@ -95,6 +120,24 @@ $('save').addEventListener('click', async () => {
   $('msg').textContent = '正在保存…'
   const port = await getPort()
   try {
+    // 脚本抓取命中且拿到完整题录：走 /translate-import（无需本地 PDF 直链，无 PDF 时生成题录条目）
+    if (window.__translatorCsl) {
+      const resp = await fetch(`http://127.0.0.1:${port}/translate-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: PAGE_URL })
+      })
+      const data = await resp.json().catch(() => ({ ok: false, error: `HTTP ${resp.status}` }))
+      if (data.ok) {
+        $('msg').className = 'msg ok'
+        $('msg').textContent = '✓ 已入库：切回 CSPAPER 即可看到'
+      } else {
+        $('msg').className = 'msg err'
+        $('msg').textContent = data.error || '保存失败'
+      }
+      $('save').disabled = false
+      return
+    }
     const resp = await fetch(`http://127.0.0.1:${port}/save-paper`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

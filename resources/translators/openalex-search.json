@@ -1,0 +1,25 @@
+{
+  "id": "openalex-search",
+  "name": "OpenAlex 检索",
+  "version": 1,
+  "type": "search",
+  "note": "开源学术图谱 OpenAlex 检索（含被引次数，覆盖面广，免 Key）。",
+  "steps": [
+    { "op": "fetch", "url": "https://api.openalex.org/works?search={q}&per-page=8" },
+    {
+      "op": "jsonlist",
+      "path": "results",
+      "map": {
+        "_doiUrl": "doi",
+        "title": "display_name",
+        "_authors": "authorships",
+        "year": "publication_year",
+        "venue": "primary_location.source.display_name",
+        "itemType": "type",
+        "url": "id",
+        "cited": "cited_by_count"
+      },
+      "rowTransform": "const a = t._authors ? JSON.parse(t._authors) : []\nconst r = {}\nr.authors = a.map(x => x.author && x.author.display_name).filter(Boolean).join(', ')\nif (t._doiUrl) { const m = t._doiUrl.match(/10\\.\\d{4,9}\\/\\S+/); if (m) r.doi = m[0] }\nreturn r"
+    }
+  ]
+}

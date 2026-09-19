@@ -1,0 +1,21 @@
+{
+  "id": "baidu-xueshu",
+  "name": "百度学术",
+  "version": 1,
+  "type": "web",
+  "matches": ["xueshu.baidu.com"],
+  "patterns": ["xueshu\\.baidu\\.com/(paper|usercenter/paper)/"],
+  "note": "百度学术论文详情页（尽力而为）。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "css", "selector": ".paper-title h1, h1", "attr": "text", "as": "title", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "css", "selector": ".paper-author-wraper .paper-author, .author_text", "attr": "text", "as": "authors", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_journal_title", "as": "venue", "ifEmpty": true },
+    { "op": "css", "selector": ".journal_text", "attr": "text", "as": "venue", "ifEmpty": true },
+    { "op": "regex", "from": "title", "re": "(\\d{4})", "as": "year", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_abstract", "as": "abstract", "ifEmpty": true },
+    { "op": "css", "selector": ".abstract_text", "attr": "text", "as": "abstract", "ifEmpty": true }
+  ]
+}

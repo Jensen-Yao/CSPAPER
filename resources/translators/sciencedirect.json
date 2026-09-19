@@ -1,0 +1,22 @@
+{
+  "id": "sciencedirect",
+  "name": "ScienceDirect",
+  "version": 1,
+  "type": "web",
+  "matches": ["sciencedirect.com"],
+  "patterns": ["sciencedirect\\.com/science/article/"],
+  "note": "ScienceDirect 论文页（Elsevier）。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "meta", "pick": "citation_journal_title", "as": "venue" },
+    { "op": "meta", "pick": "citation_publication_date", "as": "year", "re": "(\\d{4})" },
+    { "op": "meta", "pick": "citation_doi", "as": "doi" },
+    { "op": "meta", "pick": "citation_volume", "as": "volume" },
+    { "op": "meta", "pick": "citation_firstpage", "as": "pages" },
+    { "op": "meta", "pick": "citation_abstract", "as": "abstract" },
+    { "op": "meta", "pick": "citation_pdf_url", "as": "_pdfurl" },
+    { "op": "download", "url": "{_pdfurl}" }
+  ]
+}

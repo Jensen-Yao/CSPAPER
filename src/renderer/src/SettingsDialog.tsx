@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Settings } from './types'
+import type { ScriptInfo, Settings, StyleInfo } from './types'
 import { ALL_PROVIDERS, PROVIDER_GROUPS, type ProviderPreset } from './providers'
 
 interface Props {
@@ -21,11 +21,18 @@ function workspaceName(p: string): string {
   return parts[parts.length - 1] ?? p
 }
 
-type Sec = 'appear' | 'lib' | 'model' | 'embed' | 'index'
+function fmtSize(n?: number): string {
+  if (n == null || !Number.isFinite(n)) return ''
+  return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+}
+
+type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'model' | 'embed' | 'index'
 
 const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'appear', icon: '🎨', label: '外观与翻译' },
   { id: 'lib', icon: '📚', label: '文献库与数据' },
+  { id: 'translators', icon: '🌐', label: '在线获取' },
+  { id: 'cites', icon: '📑', label: '引文样式' },
   { id: 'model', icon: '🤖', label: '模型服务' },
   { id: 'embed', icon: '🧬', label: '向量嵌入' },
   { id: 'index', icon: '🗂', label: '索引与关于' }
@@ -59,6 +66,17 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const [busy, setBusy] = useState(false)
   const [llmTest, setLlmTest] = useState('')
   const [embedTest, setEmbedTest] = useState('')
+  // —— 在线获取（抓取脚本）——
+  const [scripts, setScripts] = useState<ScriptInfo[]>([])
+  const [scriptDir, setScriptDir] = useState('')
+  // —— 引文样式 ——
+  const [styles, setStyles] = useState<StyleInfo[]>([])
+  const [engine, setEngine] = useState<{ downloaded: boolean; size?: number } | null>(null)
+  const [cslQ, setCslQ] = useState('')
+  const [cslIds, setCslIds] = useState<string[]>([])
+  const [cslSearching, setCslSearching] = useState(false)
+  const [cslBusy, setCslBusy] = useState(false)
+  const [cslMsg, setCslMsg] = useState('')
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
@@ -86,6 +104,118 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       })
       .catch(() => {})
   }, [])
+
+  // 进入对应分区时才加载（脚本/样式列表走文件系统，懒加载保持设置窗口打开迅速）
+  useEffect(() => {
+    if (sec === 'translators') {
+      void window.api
+        .translatorsList()
+        .then((r) => {
+          setScripts(r.scripts)
+          setScriptDir(r.userDir)
+        })
+        .catch(() => {})
+    }
+    if (sec === 'cites') void refreshCsl()
+  }, [sec])
+
+  // 样式库搜索（离线 catalog，轻量；防抖后检索）
+  useEffect(() => {
+    const q = cslQ.trim()
+    if (!q) {
+      setCslIds([])
+      return
+    }
+    setCslSearching(true)
+    const t = setTimeout(() => {
+      void window.api
+        .cslCatalogSearch(q)
+        .then((ids) => setCslIds(ids.slice(0, 60)))
+        .catch(() => setCslIds([]))
+        .finally(() => setCslSearching(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [cslQ])
+
+  const refreshCsl = async (): Promise<void> => {
+    try {
+      const [list, eng] = await Promise.all([window.api.cslStyles(), window.api.cslEngineStatus()])
+      setStyles(list)
+      setEngine(eng)
+    } catch {
+      /* 忽略：列表加载失败不阻塞设置页 */
+    }
+  }
+
+  // 启停脚本：本地即时翻转，后台把「禁用后剩余的禁用名单」写回（translatorsSetDisabled 语义是设置禁用集合）
+  const toggleScript = (s: ScriptInfo): void => {
+    const nextDisabled = scripts.filter((x) => (x.id === s.id ? !s.disabled : x.disabled)).map((x) => x.id)
+    setScripts((list) => list.map((x) => (x.id === s.id ? { ...x, disabled: !s.disabled } : x)))
+    void window.api.translatorsSetDisabled(nextDisabled).catch(() => {})
+  }
+
+  const reloadScripts = async (): Promise<void> => {
+    const n = await window.api.translatorsReload()
+    const r = await window.api.translatorsList()
+    setScripts(r.scripts)
+    setScriptDir(r.userDir)
+    setMsg(`已重新加载 ${n} 个抓取脚本`)
+  }
+
+  const removeStyle = async (id: string): Promise<void> => {
+    const ok = await window.api.cslRemoveStyle(id)
+    if (ok) {
+      setCslMsg(`已删除样式 ${id}`)
+      await refreshCsl()
+    } else {
+      setCslMsg(`删除 ${id} 失败`)
+    }
+  }
+
+  const importStyleFile = async (): Promise<void> => {
+    const r = await window.api.cslImportStyle()
+    if (r == null) return // 用户取消了文件选择
+    if (r.ok) {
+      setCslMsg(`已导入样式 ${r.id ?? ''}`)
+      await refreshCsl()
+    } else {
+      setCslMsg(`✗ ${r.error ?? '导入失败'}`)
+    }
+  }
+
+  const downloadStyle = async (id: string): Promise<void> => {
+    if (cslBusy) return
+    setCslBusy(true)
+    setCslMsg(`正在下载 ${id}…`)
+    try {
+      const r = await window.api.cslDownloadStyle(id)
+      if (r.ok) {
+        setCslMsg(`已安装 ${id}`)
+        await refreshCsl()
+      } else {
+        setCslMsg(`✗ ${r.error ?? '下载失败'}`)
+      }
+    } finally {
+      setCslBusy(false)
+    }
+  }
+
+  const downloadEngine = async (): Promise<void> => {
+    if (cslBusy) return
+    setCslBusy(true)
+    setCslMsg('正在下载 citeproc 引擎…')
+    try {
+      const r = await window.api.cslEngineDownload()
+      if (r.ok) {
+        setCslMsg('引擎已就绪')
+        await refreshCsl()
+      } else {
+        setCslMsg(`✗ ${r.error ?? '下载失败'}`)
+      }
+    } finally {
+      setCslBusy(false)
+    }
+  }
 
   const set = (patch: Partial<Settings>): void => setForm((f) => ({ ...f, ...patch }))
 
@@ -279,9 +409,153 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   </div>
                   <button className="btn ghost" onClick={() => void changeDataDir()}>更改…</button>
                 </div>
+                <div className="section-title" style={{ marginTop: 24 }}>导入与窗口</div>
+                <div className="field">
+                  <label>导入重命名模板</label>
+                  <input
+                    value={form.renameTemplate ?? ''}
+                    placeholder="{author}_{year}_{title}"
+                    onChange={(e) => set({ renameTemplate: e.target.value })}
+                  />
+                  <div className="hint">{'导入 PDF 时按模板重命名文件，可用占位符 {author} {year} {title}；留空保持原文件名。'}</div>
+                </div>
+                <label className="set-check">
+                  <input
+                    type="checkbox"
+                    checked={!!form.closeToTray}
+                    onChange={(e) => set({ closeToTray: e.target.checked })}
+                  />
+                  关闭窗口时最小化到系统托盘
+                </label>
+                <div className="hint" style={{ marginTop: 4 }}>开启后点关闭只是隐藏到托盘（托盘图标右键退出），导入与索引不中断。</div>
                 <div className="hint" style={{ marginTop: 12 }}>
                   💡 已有 Zotero 文献库？「文件 → 从 Zotero 导入」一键迁移；知网题录用「文件 → 导入题录文件」。
                 </div>
+              </div>
+            )}
+
+            {sec === 'translators' && (
+              <div className="section set-translators">
+                <div className="section-title">抓取脚本（对标 Zotero Translators）</div>
+                <div className="set-translators-tools">
+                  <button className="btn ghost" onClick={() => void window.api.translatorsOpenDir()}>
+                    打开脚本目录
+                  </button>
+                  <button className="btn ghost" onClick={() => void reloadScripts()}>
+                    重新加载
+                  </button>
+                </div>
+                <div className="set-translators-list">
+                  {scripts.length === 0 && <div className="hint">没有加载到脚本。内置脚本随应用发布；也可把自制 .json 脚本放进数据目录的 translators/ 文件夹。</div>}
+                  {scripts.map((s) => (
+                    <div key={s.id} className={`set-translators-row ${s.disabled ? 'off' : ''}`}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="set-translators-name">
+                          <span className="ellipsis" title={`${s.name}（${s.id}）`}>
+                            {s.name}
+                          </span>
+                          <span className={`set-translators-badge ${s.source === 'user' ? 'user' : ''}`}>{s.source === 'builtin' ? '内置' : '用户'}</span>
+                          <span className="set-translators-badge">{s.type === 'search' ? '检索' : '网页抓取'}</span>
+                        </div>
+                        <div className="set-translators-sub ellipsis" title={s.matches.join(' · ')}>
+                          {s.matches.length ? s.matches.join(' · ') : s.note ?? '通用站点'}
+                        </div>
+                      </div>
+                      <button
+                        className={`set-switch ${s.disabled ? '' : 'on'}`}
+                        title={s.disabled ? '已停用，点击启用' : '已启用，点击停用'}
+                        onClick={() => toggleScript(s)}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="hint" style={{ marginTop: 12 }}>
+                  把 .json 抓取脚本放进数据目录的 translators/ 文件夹即自动生效（热加载，免重启）；停用的脚本不参与匹配与在线检索。
+                  {scriptDir && (
+                    <>
+                      {' '}
+                      脚本目录：<span className="set-mono" title={scriptDir}>{scriptDir}</span>
+                    </>
+                  )}
+                  格式文档见 docs/translators.md。
+                </div>
+              </div>
+            )}
+
+            {sec === 'cites' && (
+              <div className="section set-cites">
+                <div className="section-title">已安装样式</div>
+                <div className="set-cites-list">
+                  {styles.length === 0 && <div className="hint">还没有安装样式，可从下方官方样式库按需下载。</div>}
+                  {styles.map((st) => (
+                    <div key={st.id} className="set-cites-row">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="set-cites-name ellipsis">
+                          {st.name}
+                          {st.kind === 'builtin' && <span className="set-translators-badge">内置</span>}
+                        </div>
+                        <div className="set-cites-id ellipsis" title={st.id}>
+                          {st.id}
+                        </div>
+                      </div>
+                      {st.kind === 'csl' && (
+                        <button className="set-cites-del" title="从本机删除该样式" onClick={() => void removeStyle(st.id)}>
+                          删除
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="set-cites-tools">
+                  <button className="btn ghost" onClick={() => void importStyleFile()}>
+                    导入 .csl 文件…
+                  </button>
+                </div>
+
+                <div className="section-title" style={{ marginTop: 20 }}>从样式库添加</div>
+                <div className="set-cites-catalog">
+                  <input
+                    placeholder="搜索样式名，如 apa / chinese / nature…"
+                    value={cslQ}
+                    onChange={(e) => setCslQ(e.target.value)}
+                  />
+                  {cslSearching && <div className="hint">搜索中…</div>}
+                  {!cslSearching && cslIds.length > 0 && (
+                    <div className="set-cites-ids">
+                      {cslIds.map((id) => (
+                        <button key={id} className="set-cites-id-chip" title={`下载并安装 ${id}`} disabled={cslBusy} onClick={() => void downloadStyle(id)}>
+                          {id}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="hint">官方 CSL 样式库共 10000+ 样式，按需下载到本机；装好的样式会出现在上面「已安装样式」里。</div>
+                </div>
+
+                <div className="set-cites-engine">
+                  <span className="set-cites-engine-ic">⚙️</span>
+                  {engine?.downloaded ? (
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="set-cites-name">citeproc 引擎已就绪</div>
+                      <div className="hint">完整 CSL 样式由外部引擎在本机渲染（{fmtSize(engine.size)}，已下载到数据目录）。</div>
+                    </div>
+                  ) : (
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="set-cites-name">外部 citeproc 引擎未下载</div>
+                      <div className="hint">完整 CSL 样式需要外部 citeproc 引擎（CPAL/AGPL 许可组件，不随 CSPAPER 分发；点击后从 jsDelivr 下载到本机数据目录运行）。</div>
+                    </div>
+                  )}
+                  {!engine?.downloaded && (
+                    <button className="btn ghost" disabled={cslBusy} onClick={() => void downloadEngine()}>
+                      下载引擎
+                    </button>
+                  )}
+                </div>
+                {cslMsg && (
+                  <div className="test-result" style={{ marginTop: 10 }}>
+                    {cslMsg}
+                  </div>
+                )}
               </div>
             )}
 

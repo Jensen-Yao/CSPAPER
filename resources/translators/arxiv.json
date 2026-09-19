@@ -1,0 +1,20 @@
+{
+  "id": "arxiv",
+  "name": "arXiv",
+  "version": 1,
+  "type": "web",
+  "matches": ["arxiv.org"],
+  "patterns": ["arxiv\\.org/(abs|pdf)/"],
+  "note": "arXiv 论文详情页，含 OA PDF 直下。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "template", "as": "itemType", "value": "preprint" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "meta", "pick": "citation_date", "as": "year", "re": "(\\d{4})" },
+    { "op": "meta", "pick": "citation_abstract", "as": "abstract" },
+    { "op": "meta", "pick": "citation_arxiv_id", "as": "arxivId" },
+    { "op": "meta", "pick": "citation_pdf_url", "as": "_pdfurl" },
+    { "op": "download", "url": "{_pdfurl}" }
+  ]
+}

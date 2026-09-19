@@ -13,7 +13,25 @@ export interface Paper {
   added_at: string
   opened_at?: string | null
   summary?: string
+  // v0.6.0 扩展
+  doi?: string | null
+  item_type?: string | null
+  last_page?: number
+  read_seconds?: number
+  cited_by?: number | null
+  jcr?: string | null
+  tags?: string[]
 }
+
+// 阅读状态五态（W2，对标 Reading List）
+export const STATUS_META: Record<string, { label: string; icon: string; color: string }> = {
+  todo: { label: '稍后读', icon: '🕓', color: '#b08d57' },
+  unread: { label: '待读', icon: '-new', color: '#98a2ab' },
+  reading: { label: '在读', icon: '📖', color: '#6b7fa3' },
+  read: { label: '已读', icon: '✅', color: '#7a9e7e' },
+  paused: { label: '暂不读', icon: '⏸', color: '#a37f9e' }
+}
+export const STATUS_KEYS = ['todo', 'unread', 'reading', 'read', 'paused']
 
 // 多服务商配置（设置页可维护多套，对话界面切换模型时自动激活所属配置）
 export interface ProviderProfile {
@@ -38,6 +56,39 @@ export interface Settings {
   theme: 'system' | 'light' | 'dark'
   setupDone?: boolean
   profiles?: ProviderProfile[]
+  renameTemplate?: string
+  closeToTray?: boolean
+  disabledTranslators?: string[]
+}
+
+// 标签（W1）
+export interface TagRow {
+  id: number
+  name: string
+  color: string
+  count: number
+}
+
+// 抓取脚本信息（W13）
+export interface ScriptInfo {
+  id: string
+  name: string
+  type: 'web' | 'search'
+  matches: string[]
+  source: 'builtin' | 'user'
+  disabled: boolean
+  file: string
+  note?: string
+}
+
+// 引文样式（W8）
+export interface StyleInfo {
+  id: string
+  name: string
+  kind: 'builtin' | 'csl'
+  numeric: boolean
+  note?: string
+  engineRequired?: boolean
 }
 
 export interface HighlightRect {
@@ -197,6 +248,18 @@ export interface ChatMsg {
   sources?: SourceRef[]
 }
 
+// 统计仪表盘（W7）
+export interface StatsOverview {
+  totalPapers: number
+  totalReadSeconds: number
+  readingPapers: number
+  topRead: Array<{ id: number; title: string; seconds: number }>
+  monthly: Array<{ ym: string; added: number; readSeconds: number }>
+  categories: Array<{ name: string; count: number }>
+  statuses: Array<{ status: string; count: number }>
+  words: Array<{ w: string; n: number }>
+}
+
 declare global {
   interface Window {
     api: {
@@ -276,6 +339,45 @@ declare global {
       onImportProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       openExternal: (url: string) => void
       syncTheme: (theme: string) => void
+      // ---------- 标签系统（W1） ----------
+      tagsList: () => Promise<TagRow[]>
+      tagsCreate: (name: string, color?: string) => Promise<TagRow>
+      tagsRename: (id: number, name: string) => Promise<void>
+      tagsDelete: (id: number) => Promise<boolean>
+      tagsSetColor: (id: number, color: string) => Promise<boolean>
+      paperTagAdd: (id: number, name: string, color?: string) => Promise<TagRow>
+      paperTagRemove: (id: number, tagId: number) => Promise<boolean>
+      papersTagsOf: (id: number) => Promise<Array<{ id: number; name: string; color: string }>>
+      // ---------- 阅读进度与时长（W2/W7） ----------
+      paperLastPage: (id: number, page: number) => void
+      paperReadTime: (id: number, seconds: number) => void
+      // ---------- Translators（W13） ----------
+      translatorsList: () => Promise<{ scripts: ScriptInfo[]; userDir: string }>
+      translatorsMatch: (url: string) => Promise<{ id: string; name: string } | null>
+      translatorsTranslate: (url: string) => Promise<{ ok: boolean; translator?: string; csl?: Record<string, unknown>; pdfPath?: string; error?: string }>
+      translatorsSearch: (q: string) => Promise<Array<Record<string, unknown> & { translator?: string }>>
+      translatorsImport: (payload: { csl: Record<string, unknown>; pdfPath?: string; category?: string; origin?: string }) => Promise<{ ok: boolean; slug?: string; error?: string }>
+      translatorsSetDisabled: (ids: string[]) => Promise<boolean>
+      translatorsReload: () => Promise<number>
+      translatorsOpenDir: () => Promise<boolean>
+      translatorsDetectInput: (text: string) => Promise<{ kind: string; doi?: string; id?: string; url?: string; q?: string }>
+      // ---------- CSL 引文（W8） ----------
+      cslStyles: () => Promise<StyleInfo[]>
+      cslFormat: (ids: number[], styleId: string) => Promise<{ ok: boolean; items?: string[]; error?: string; style?: string }>
+      cslDownloadStyle: (id: string) => Promise<{ ok: boolean; error?: string }>
+      cslRemoveStyle: (id: string) => Promise<boolean>
+      cslCatalogSearch: (q: string) => Promise<string[]>
+      cslEngineStatus: () => Promise<{ downloaded: boolean; size?: number }>
+      cslEngineDownload: () => Promise<{ ok: boolean; error?: string }>
+      cslImportStyle: () => Promise<{ ok: boolean; id?: string; error?: string } | null>
+      cslOpenDir: () => Promise<boolean>
+      // ---------- 参考文献 / 被引 / 统计（W4/W6/W7） ----------
+      refsList: (id: number) => Promise<{ ok: boolean; refs?: Array<{ title: string; authors?: string; year?: number | null; venue?: string; doi?: string; raw?: string }>; error?: string; cached?: boolean }>
+      refsImport: (paperId: number, index: number, category?: string) => Promise<{ ok: boolean; slug?: string; error?: string }>
+      citedUpdate: (ids: number[]) => Promise<{ updated: number; errors: number }>
+      statsOverview: () => Promise<StatsOverview>
+      venuesLookup: (name: string) => Promise<{ name?: string; if_val?: number; zone?: string } | null>
+      venuesImportCsv: () => Promise<{ imported: number } | null>
     }
   }
 }

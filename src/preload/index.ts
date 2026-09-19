@@ -170,7 +170,51 @@ const api = {
     return () => ipcRenderer.removeListener('import:progress', h)
   },
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
-  syncTheme: (theme: string) => ipcRenderer.send('ui:theme', theme)
+  syncTheme: (theme: string) => ipcRenderer.send('ui:theme', theme),
+
+  // ---------- 标签系统（W1） ----------
+  tagsList: () => ipcRenderer.invoke('tags:list'),
+  tagsCreate: (name: string, color?: string) => ipcRenderer.invoke('tags:create', name, color),
+  tagsRename: (id: number, name: string) => ipcRenderer.invoke('tags:rename', id, name),
+  tagsDelete: (id: number) => ipcRenderer.invoke('tags:delete', id),
+  tagsSetColor: (id: number, color: string) => ipcRenderer.invoke('tags:set-color', id, color),
+  paperTagAdd: (id: number, name: string, color?: string) => ipcRenderer.invoke('papers:tag-add', id, name, color),
+  paperTagRemove: (id: number, tagId: number) => ipcRenderer.invoke('papers:tag-remove', id, tagId),
+  papersTagsOf: (id: number) => ipcRenderer.invoke('papers:tags-of', id),
+
+  // ---------- 阅读进度与时长（W2/W7） ----------
+  paperLastPage: (id: number, page: number) => ipcRenderer.send('papers:lastpage', id, page),
+  paperReadTime: (id: number, seconds: number) => ipcRenderer.send('papers:readtime', id, seconds),
+
+  // ---------- Translators 抓取脚本（W13） ----------
+  translatorsList: () => ipcRenderer.invoke('translators:list'),
+  translatorsMatch: (url: string) => ipcRenderer.invoke('translators:match', url),
+  translatorsTranslate: (url: string) => ipcRenderer.invoke('translators:translate', url),
+  translatorsSearch: (q: string) => ipcRenderer.invoke('translators:search', q),
+  translatorsImport: (payload: unknown) => ipcRenderer.invoke('translators:import', payload),
+  translatorsSetDisabled: (ids: string[]) => ipcRenderer.invoke('translators:set-disabled', ids),
+  translatorsReload: () => ipcRenderer.invoke('translators:reload'),
+  translatorsOpenDir: () => ipcRenderer.invoke('translators:open-dir'),
+  translatorsDetectInput: (text: string) => ipcRenderer.invoke('translators:detect-input', text),
+
+  // ---------- CSL 引文（W8） ----------
+  cslStyles: () => ipcRenderer.invoke('csl:styles'),
+  cslFormat: (ids: number[], styleId: string) => ipcRenderer.invoke('csl:format', ids, styleId),
+  cslDownloadStyle: (id: string) => ipcRenderer.invoke('csl:download-style', id),
+  cslRemoveStyle: (id: string) => ipcRenderer.invoke('csl:remove-style', id),
+  cslCatalogSearch: (q: string) => ipcRenderer.invoke('csl:catalog-search', q),
+  cslEngineStatus: () => ipcRenderer.invoke('csl:engine-status'),
+  cslEngineDownload: () => ipcRenderer.invoke('csl:engine-download'),
+  cslImportStyle: () => ipcRenderer.invoke('csl:import-style'),
+  cslOpenDir: () => ipcRenderer.invoke('csl:open-dir'),
+
+  // ---------- 参考文献 / 被引 / 统计（W4/W6/W7） ----------
+  refsList: (id: number) => ipcRenderer.invoke('refs:list', id),
+  refsImport: (paperId: number, index: number, category?: string) => ipcRenderer.invoke('refs:import', paperId, index, category),
+  citedUpdate: (ids: number[]) => ipcRenderer.invoke('cited:update', ids),
+  statsOverview: () => ipcRenderer.invoke('stats:overview'),
+  venuesLookup: (name: string) => ipcRenderer.invoke('venues:lookup', name),
+  venuesImportCsv: () => ipcRenderer.invoke('venues:import-csv')
 }
 
 contextBridge.exposeInMainWorld('api', api)

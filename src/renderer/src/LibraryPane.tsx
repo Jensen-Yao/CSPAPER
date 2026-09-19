@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DeepHit, Paper } from './types'
+import type { DeepHit, Paper, TagRow } from './types'
+import { STATUS_META } from './types'
 
 interface Props {
   papers: Paper[]
@@ -19,10 +20,29 @@ interface Props {
   canBack: boolean
   canFwd: boolean
   onOpenPalette: () => void
-  mode: 'read' | 'chat' | 'compare' | 'overview'
-  onModeChange: (m: 'read' | 'chat' | 'compare' | 'overview') => void
+  mode: 'read' | 'chat' | 'compare' | 'overview' | 'notes'
+  onModeChange: (m: 'read' | 'chat' | 'compare' | 'overview' | 'notes') => void
   width: number
   onPapersChanged: () => void
+  // v0.6 标签筛选：组件内部自持状态；若上层传入 activeTag 则受控，
+  // 筛选变化通过 onTagFilter 通知（App 侧可据此联动纵览/卡片墙）
+  activeTag?: string | null
+  onTagFilter?: (tag: string | null) => void
+}
+
+// 标签预设色板（8 色，暖墨优先，与纵览分类配色一致）
+export const TAG_COLORS = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
+
+// 阅读状态五态元数据（历史数据里有旧三态 'done'，兜底映射到 'read'）
+export const statusMeta = (s: string): { label: string; icon: string; color: string } =>
+  STATUS_META[s] ?? (s === 'done' ? STATUS_META.read : STATUS_META.unread)
+
+// #rrggbb → rgba(...,a)，用于状态角标/胶囊的透明底；非十六进制输入原样返回
+export const withAlpha = (hex: string, a: number): string => {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim())
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
 }
 
 // sqlite datetime('now') 是 UTC 无时区后缀，补 Z 再解析
@@ -63,25 +83,119 @@ export default function LibraryPane({
   mode,
   onModeChange,
   width,
-  onPapersChanged
+  onPapersChanged,
+  activeTag,
+  onTagFilter
 }: Props): JSX.Element {
+  // ---------- 标签系统（v0.6） ----------
+  const [tags, setTags] = useState<TagRow[]>([])
+  const [tagsVer, setTagsVer] = useState(0) // 增删改标签后手动递增触发重拉
+  useEffect(() => {
+    let on = true
+    window.api
+      .tagsList()
+      .then((t) => {
+        if (on) setTags(t)
+      })
+      .catch(() => {})
+    return () => {
+      on = false
+    }
+  }, [papers, tagsVer])
+  const bumpTags = (): void => setTagsVer((v) => v + 1)
+
+  // 选中标签：activeTag 传入时受控，否则内部自持；变化经 onTagFilter 通知上层
+  const [innerTag, setInnerTag] = useState<string | null>(null)
+  const selectedTag = activeTag !== undefined ? activeTag : innerTag
+  const applyTagFilter = (t: string | null): void => {
+    setInnerTag(t)
+    onTagFilter?.(t)
+  }
+
+  // 按标签过滤后的视图（最近 / 分类树 / 搜索结果共用）
+  const papersView = useMemo(
+    () => (selectedTag ? papers.filter((p) => (p.tags ?? []).includes(selectedTag)) : papers),
+    [papers, selectedTag]
+  )
+
+  // 标签右键菜单（简易浮层：重命名 / 改色 / 删除）
+  const [tagMenu, setTagMenu] = useState<{ x: number; y: number; tag: TagRow } | null>(null)
+
+  const onCreateTag = async (): Promise<void> => {
+    const name = window.prompt('新建标签（名称）')
+    const n = name?.trim()
+    if (!n) return
+    try {
+      await window.api.tagsCreate(n)
+      bumpTags()
+    } catch (e) {
+      alert(String(e))
+    }
+  }
+  const doRenameTag = async (): Promise<void> => {
+    if (!tagMenu) return
+    const { tag } = tagMenu
+    const name = window.prompt('重命名标签', tag.name)
+    const n = name?.trim()
+    if (!n || n === tag.name) {
+      setTagMenu(null)
+      return
+    }
+    try {
+      await window.api.tagsRename(tag.id, n)
+      if (selectedTag === tag.name) applyTagFilter(n)
+      setTagMenu(null)
+      bumpTags()
+      onPapersChanged() // 文献上的 tags 字段含旧名，需刷新
+    } catch (e) {
+      alert(String(e))
+    }
+  }
+  const doSetTagColor = async (color: string): Promise<void> => {
+    if (!tagMenu) return
+    try {
+      await window.api.tagsSetColor(tagMenu.tag.id, color)
+      setTagMenu(null)
+      bumpTags()
+    } catch (e) {
+      alert(String(e))
+    }
+  }
+  const doDeleteTag = async (): Promise<void> => {
+    if (!tagMenu) return
+    const { tag } = tagMenu
+    if (!window.confirm(`删除标签「${tag.name}」？将从所有文献上移除该标签。`)) {
+      setTagMenu(null)
+      return
+    }
+    try {
+      await window.api.tagsDelete(tag.id)
+      if (selectedTag === tag.name) applyTagFilter(null)
+      setTagMenu(null)
+      bumpTags()
+      onPapersChanged()
+    } catch (e) {
+      alert(String(e))
+    }
+  }
+
   const tree = useMemo(() => {
     // 分类树 = 数据库分类列表（含空分类）+ 兜底（行里有但列表漏掉的）
     const m = new Map<string, Paper[]>(cats.map((c) => [c, []]))
-    for (const p of papers) {
+    for (const p of papersView) {
       if (!m.has(p.category)) m.set(p.category, [])
       m.get(p.category)!.push(p)
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [papers, cats])
+  }, [papersView, cats])
 
   // 最近：最近打开优先，没打开过的按导入时间（新导入的自然置顶）
   const recent = useMemo(
     () =>
-      [...papers]
+      [...papersView]
         .sort((a, b) => (b.opened_at ?? b.added_at).localeCompare(a.opened_at ?? a.added_at))
         .slice(0, 60),
-    [papers]
+    [papersView]
   )
 
   const [view, setView] = useState<'recent' | 'cats'>('recent')
@@ -115,7 +229,7 @@ export default function LibraryPane({
     return () => clearTimeout(t)
   }, [kw, searching])
   const deepMap = useMemo(() => new Map(deep.map((h) => [h.id, h])), [deep])
-  const extraDeep = deep.filter((h) => !papers.some((p) => p.id === h.id && match(p)))
+  const extraDeep = deep.filter((h) => !papersView.some((p) => p.id === h.id && match(p)))
 
   // 拖拽移动文献：拖到分类头放下
   const [dragCat, setDragCat] = useState<string | null>(null)
@@ -236,8 +350,9 @@ export default function LibraryPane({
       <div className="t">{p.title}</div>
       <div className="m">
         <span
-          className={`status-dot status-${p.status}`}
-          title={`${p.status}（点击切换）`}
+          className="status-dot"
+          style={{ background: statusMeta(p.status).color }}
+          title={`${statusMeta(p.status).label}（点击切换）`}
           onClick={(e) => {
             e.stopPropagation()
             onCycleStatus(p)
@@ -289,13 +404,20 @@ export default function LibraryPane({
             </svg>
             纵览
           </button>
+          <button className={mode === 'notes' ? 'on' : ''} onClick={() => onModeChange('notes')} title="我的笔记与划词标注（全库聚合）">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 4h11l3 3v13H5z" />
+              <path d="M8.5 9.5h7M8.5 13h7M8.5 16.5h4.5" />
+            </svg>
+            笔记
+          </button>
         </div>
         <div className="nav-row">
           {navBtn('back')}
           {navBtn('fwd')}
           <span className="nav-label">文献</span>
           <span style={{ flex: 1 }} />
-          <span className="cat-count">{papers.length}</span>
+          <span className="cat-count">{papersView.length}</span>
         </div>
         <button className="add-btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -359,8 +481,8 @@ export default function LibraryPane({
         >
           {searching ? (
             <>
-              <div className="lib-section">搜索结果 · {papers.filter(match).length}</div>
-              {papers.filter(match).map((p) => paperRow(p, undefined, deepMap.get(p.id)))}
+              <div className="lib-section">搜索结果 · {papersView.filter(match).length}</div>
+              {papersView.filter(match).map((p) => paperRow(p, undefined, deepMap.get(p.id)))}
               {extraDeep.length > 0 && (
                 <>
                   <div className="lib-section">正文 / 笔记匹配 · {extraDeep.length}</div>
@@ -448,6 +570,39 @@ export default function LibraryPane({
               </div>
             ))
           )}
+        </div>
+        {/* 标签区：点击筛选，右键重命名 / 改色 / 删除，「＋」新建 */}
+        <div className="tag-section">
+          <div className="tag-section-head">
+            <span className="tag-section-title">标签{selectedTag ? ` · ${selectedTag}` : ''}</span>
+            <span style={{ flex: 1 }} />
+            <button className="tag-add-btn" title="新建标签" onClick={() => void onCreateTag()}>
+              ＋
+            </button>
+          </div>
+          <div className="tag-list">
+            {tags.length === 0 ? (
+              <div className="tag-empty">暂无标签</div>
+            ) : (
+              tags.map((t) => (
+                <div
+                  key={t.id}
+                  className={`tag-row ${selectedTag === t.name ? 'active' : ''}`}
+                  onClick={() => applyTagFilter(selectedTag === t.name ? null : t.name)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setTagMenu({ x: e.clientX, y: e.clientY, tag: t })
+                  }}
+                  title="点击按标签筛选（再点取消）；右键重命名 / 改色 / 删除"
+                >
+                  <i className="tag-dot" style={{ background: t.color }} />
+                  <span className="tag-name">{t.name}</span>
+                  <span className="tag-count">{t.count}</span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -551,6 +706,52 @@ export default function LibraryPane({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 标签右键菜单：重命名 / 改色（8 色小色板）/ 删除 */}
+      {tagMenu && (
+        <>
+          <div
+            className="tag-menu-mask"
+            onMouseDown={() => setTagMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setTagMenu(null)
+            }}
+          />
+          <div
+            className="tag-menu"
+            style={{
+              left: Math.max(6, Math.min(tagMenu.x, window.innerWidth - 210)),
+              top: Math.max(6, Math.min(tagMenu.y, window.innerHeight - 140))
+            }}
+          >
+            <div className="tag-menu-head">
+              <i className="tag-dot" style={{ background: tagMenu.tag.color }} />
+              <span className="ellipsis">{tagMenu.tag.name}</span>
+            </div>
+            <button className="tag-menu-item" onClick={() => void doRenameTag()}>
+              重命名
+            </button>
+            <div className="tag-menu-item colors">
+              <span>改色</span>
+              <span className="tag-swatches">
+                {TAG_COLORS.map((c) => (
+                  <i
+                    key={c}
+                    className={`tag-swatch ${tagMenu.tag.color.toLowerCase() === c.toLowerCase() ? 'on' : ''}`}
+                    style={{ background: c }}
+                    title={c}
+                    onClick={() => void doSetTagColor(c)}
+                  />
+                ))}
+              </span>
+            </div>
+            <button className="tag-menu-item danger" onClick={() => void doDeleteTag()}>
+              删除…
+            </button>
+          </div>
+        </>
       )}
     </div>
   )

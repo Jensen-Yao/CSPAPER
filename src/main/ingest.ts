@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getDb, getSettings } from './db'
 import { embed } from './embed'
+import { extractInWorker } from './extract-pool'
 
 let running = false
 
@@ -61,7 +62,18 @@ function chunkText(text: string): string[] {
   return out
 }
 
+// 抽取优先走工作线程（W0a，不阻塞主进程事件循环）；worker 不可用时回退主线程直接抽取
 export async function extractPages(pdfPath: string, maxPages = Infinity): Promise<string[]> {
+  const capped = Number.isFinite(maxPages) ? maxPages : 0
+  try {
+    return await extractInWorker(pdfPath, capped)
+  } catch (err) {
+    console.warn(`[extract] worker 抽取失败，回退主线程：${path.basename(pdfPath)} (${String(err).slice(0, 120)})`)
+    return extractDirect(pdfPath, maxPages)
+  }
+}
+
+async function extractDirect(pdfPath: string, maxPages = Infinity): Promise<string[]> {
   const { app } = await import('electron')
   const assetRoot = app.isPackaged ? path.join(process.resourcesPath, 'app.asar') : app.getAppPath()
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
@@ -94,10 +106,16 @@ export async function extractPages(pdfPath: string, maxPages = Infinity): Promis
     if (line.trim()) lines.push(line.trim())
     pages.push(lines.join('\n'))
   }
+  try {
+    await doc.destroy()
+  } catch {
+    /* 释放失败无碍 */
+  }
   return pages
 }
 
-// 带缓存的整文抽取（问答整篇模式用；按 mtime 失效）
+// 带缓存的整文抽取（问答整篇模式用；按 mtime 失效，LRU 上限防大库内存无界增长）
+const PAGE_CACHE_MAX = 200
 const pageCache = new Map<string, { mtime: number; pages: string[] }>()
 export async function extractPagesCached(pdfPath: string): Promise<string[]> {
   let mtime = 0
@@ -107,9 +125,19 @@ export async function extractPagesCached(pdfPath: string): Promise<string[]> {
     /* 读不到就没有缓存意义 */
   }
   const hit = pageCache.get(pdfPath)
-  if (hit && hit.mtime === mtime) return hit.pages
+  if (hit && hit.mtime === mtime) {
+    // LRU touch：重插到队尾
+    pageCache.delete(pdfPath)
+    pageCache.set(pdfPath, hit)
+    return hit.pages
+  }
   const pages = await extractPages(pdfPath)
   pageCache.set(pdfPath, { mtime, pages })
+  while (pageCache.size > PAGE_CACHE_MAX) {
+    const oldest = pageCache.keys().next().value
+    if (oldest === undefined) break
+    pageCache.delete(oldest)
+  }
   return pages
 }
 

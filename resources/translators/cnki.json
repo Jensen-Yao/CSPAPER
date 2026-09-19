@@ -1,0 +1,22 @@
+{
+  "id": "cnki",
+  "name": "知网 CNKI（尽力而为）",
+  "version": 1,
+  "type": "web",
+  "matches": ["cnki.net", "cnki.com.cn", "chndoi.org"],
+  "patterns": ["kcms2?/article/abstract", "kcms/detail", "chndoi\\.org/Resolution"],
+  "note": "知网详情页元数据有限且站点常变动，本脚本尽力抓取；稳定路径仍推荐「CNKI 导出题录文件 → 题录导入」。浏览器插件保存知网页面时也会先尝试本脚本。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "css", "selector": "h1", "attr": "text", "as": "title", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "css", "selector": ".author, .wx-author", "attr": "text", "as": "authors", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_journal_title", "as": "venue" },
+    { "op": "css", "selector": ".top-tip span a, .jour-row a", "attr": "text", "as": "venue", "ifEmpty": true },
+    { "op": "regex", "from": "title", "re": "(\\d{4})", "as": "year", "ifEmpty": true },
+    { "op": "regex", "from": "url", "re": "(10\\.\\d{4,9}/[^#?\\s&]+)", "as": "doi", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_doi", "as": "doi", "ifEmpty": true },
+    { "op": "css", "selector": ".abstract-text, #ChDivSummary", "attr": "text", "as": "abstract", "ifEmpty": true }
+  ]
+}

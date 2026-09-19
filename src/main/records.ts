@@ -13,6 +13,11 @@ export { parseRecords }
 export type { RecordEntry } from './record-parse'
 
 // ---------- 占位题录页：离屏渲染 → JPEG → 包成单页 PDF ----------
+// 导出给 translators 等模块复用（在线添加无 PDF 时同样生成题录占位）
+export async function createPlaceholderPdf(rec: RecordEntry): Promise<Buffer> {
+  return titlePagePdf(rec)
+}
+
 async function titlePagePdf(rec: RecordEntry): Promise<Buffer> {
   const win = new BrowserWindow({
     show: false,

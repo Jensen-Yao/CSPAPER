@@ -1,0 +1,23 @@
+{
+  "id": "ieee",
+  "name": "IEEE Xplore",
+  "version": 1,
+  "type": "web",
+  "matches": ["ieeexplore.ieee.org"],
+  "patterns": ["ieeexplore\\.ieee\\.org/(document|iel\\d)"],
+  "note": "IEEE Xplore 论文详情页（页面自带 citation_* 元数据）。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "meta", "pick": "citation_publication_title", "as": "venue" },
+    { "op": "meta", "pick": "citation_date", "as": "year", "re": "(\\d{4})" },
+    { "op": "meta", "pick": "citation_doi", "as": "doi" },
+    { "op": "meta", "pick": "citation_volume", "as": "volume" },
+    { "op": "meta", "pick": "citation_issue", "as": "issue" },
+    { "op": "meta", "pick": "citation_firstpage", "as": "pages" },
+    { "op": "meta", "pick": "citation_abstract", "as": "abstract" },
+    { "op": "meta", "pick": "citation_pdf_url", "as": "_pdfurl" },
+    { "op": "download", "url": "{_pdfurl}" }
+  ]
+}

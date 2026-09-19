@@ -1,0 +1,21 @@
+{
+  "id": "pubmed",
+  "name": "PubMed",
+  "version": 1,
+  "type": "web",
+  "matches": ["pubmed.ncbi.nlm.nih.gov"],
+  "patterns": ["pubmed\\.ncbi\\.nlm\\.nih\\.gov/\\d+"],
+  "note": "PubMed 单篇摘要页。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "meta", "pick": "citation_journal_title", "as": "venue" },
+    { "op": "meta", "pick": "citation_date", "as": "year", "re": "(\\d{4})" },
+    { "op": "meta", "pick": "citation_doi", "as": "doi" },
+    { "op": "meta", "pick": "citation_volume", "as": "volume" },
+    { "op": "meta", "pick": "citation_firstpage", "as": "pages" },
+    { "op": "meta", "pick": "citation_abstract", "as": "abstract", "ifEmpty": true },
+    { "op": "css", "selector": ".abstract-content", "attr": "text", "as": "abstract", "ifEmpty": true }
+  ]
+}

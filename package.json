@@ -1,6 +1,6 @@
 {
   "name": "cspaper",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "CSPAPER — PDF 文献阅读 + 划词翻译 + LLM 问答 + 全库 RAG",
   "main": "out/main/index.js",
   "productName": "CSPAPER",
@@ -25,6 +25,16 @@
     },
     "files": [
       "out/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/translators",
+        "to": "translators"
+      },
+      {
+        "from": "resources/csl-catalog.json",
+        "to": "csl-catalog.json"
+      }
     ],
     "win": {
       "icon": "build/icon.png",
@@ -62,6 +72,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.5.0",
     "better-sqlite3": "^11.9.0",
+    "cheerio": "^1.2.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

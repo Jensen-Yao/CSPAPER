@@ -13,6 +13,9 @@ import RecordsDialog from './RecordsDialog'
 import LibraryHome from './LibraryHome'
 import CompareView from './CompareView'
 import OverviewView from './OverviewView'
+import NotesView from './NotesView'
+import OnlineAddDialog from './OnlineAddDialog'
+import { STATUS_KEYS } from './types'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
 
@@ -115,28 +118,51 @@ export default function App(): JSX.Element {
   const [llmChip, setLlmChip] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview'>('read')
-  const [overviewTab, setOverviewTab] = useState<'table' | 'graph'>('table')
+  const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview' | 'notes'>('read')
+  const [overviewTab, setOverviewTab] = useState<'table' | 'graph' | 'stats'>('table')
+  const [onlineOpen, setOnlineOpen] = useState(false)
+  const [findSignal, setFindSignal] = useState(0)
   const [pageNo, setPageNo] = useState(1)
   const [appStatus, setAppStatus] = useState<Awaited<ReturnType<typeof window.api.appStatus>> | null>(null)
   const isMac = /Mac/.test(navigator.platform)
 
-  // 命令面板：Ctrl/Cmd + K 全局唤起
+  // 命令面板：Ctrl/Cmd + K 全局唤起；Ctrl+F 分流——阅读模式进 PDF 内查找，其他模式聚焦侧栏搜索
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((v) => !v)
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault()
-        setShowLib(true)
-        setTimeout(() => (document.querySelector('.searchbox') as HTMLInputElement | null)?.focus(), 60)
-      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        if (mode === 'read' && activeId !== null) {
+          setFindSignal((n) => n + 1)
+        } else {
+          setShowLib(true)
+          setTimeout(() => (document.querySelector('.searchbox') as HTMLInputElement | null)?.focus(), 60)
+        }
+        return
+      }
+      // Alt+1~5 快捷改当前论文阅读状态（W2，对标 Reading List 插件）
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-5]$/.test(e.key)) {
+        const p = tabs.find((t) => t.paper.id === activeId)?.paper
+        if (!p) return
+        e.preventDefault()
+        const next = STATUS_KEYS[parseInt(e.key, 10) - 1]
+        void window.api.setStatus(p.id, next)
+        setPapers((ps) => ps.map((x) => (x.id === p.id ? { ...x, status: next } : x)))
+        setTabs((ts) => ts.map((t) => (t.paper.id === p.id ? { ...t, paper: { ...t.paper, status: next } } : t)))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mode, activeId, tabs])
 
   const viewerRef = useRef<ViewerHandle>(null)
   const sideControl = useRef<SideControl>(null)
@@ -284,11 +310,13 @@ export default function App(): JSX.Element {
     [tabs, activeId]
   )
 
+  // 五态循环：待读 → 在读 → 已读 → 稍后读 → 暂不读 → 待读（W2）
   const cycleStatus = useCallback(async (p: Paper) => {
-    const next = p.status === 'unread' ? 'reading' : p.status === 'reading' ? 'done' : 'unread'
+    const cur = STATUS_KEYS.includes(p.status) ? STATUS_KEYS.indexOf(p.status) : 1
+    const next = STATUS_KEYS[(cur + 1) % STATUS_KEYS.length]
     await window.api.setStatus(p.id, next)
     setPapers((ps) => ps.map((x) => (x.id === p.id ? { ...x, status: next } : x)))
-    setTabs((ts) => ts.map((t) => (t.paper.id === p.id ? { ...t, paper: { ...p, status: next } } : t)))
+    setTabs((ts) => ts.map((t) => (t.paper.id === p.id ? { ...t, paper: { ...t.paper, status: next } } : t)))
   }, [])
 
   const onSelect = useCallback((text: string, x: number, y: number) => {
@@ -525,6 +553,7 @@ export default function App(): JSX.Element {
       name: '文件',
       items: [
         { label: '导入 PDF 文献…', hint: '拖入窗口也可以', action: addPapers },
+        { label: '在线添加…', hint: 'DOI / arXiv / 链接 / 关键词', action: () => setOnlineOpen(true) },
         { label: '从 Zotero 导入…', hint: '迁移文献库', action: () => setZoteroOpen(true) },
         { label: '导入题录文件…', hint: 'RIS / CNKI 导出', action: () => setRecordsOpen(true) },
         { label: '导出移动端数据包…', hint: '手机端阅读', action: () => void window.api.exportMobilePack() },
@@ -559,7 +588,10 @@ export default function App(): JSX.Element {
       name: '纵览',
       items: [
         { label: '文献表格', hint: 'Zotero 式总表', action: () => { setMode('overview'); setOverviewTab('table') } },
-        { label: '知识网络', hint: '关联图谱', action: () => { setMode('overview'); setOverviewTab('graph') } }
+        { label: '知识网络', hint: '关联图谱', action: () => { setMode('overview'); setOverviewTab('graph') } },
+        { label: '统计仪表盘', hint: '时长/时间线/词云', action: () => { setMode('overview'); setOverviewTab('stats') } },
+        { sep: true, label: '' },
+        { label: '笔记中心', hint: '全库笔记与标注', action: () => setMode('notes') }
       ] as MenuItem[]
     },
     {
@@ -656,12 +688,15 @@ export default function App(): JSX.Element {
                 onOpen={openPaperFromTree}
                 onAddPapers={addPapers}
                 onOpenRecords={() => setRecordsOpen(true)}
+                onOpenOnline={() => setOnlineOpen(true)}
+                onPapersChanged={refreshPapers}
               />
             ) : (
               <PdfViewer
                 ref={viewerRef}
                 tabs={tabs}
                 activeId={activeId}
+                findSignal={findSignal}
                 onActivate={setActiveId}
                 onCloseTab={closeTab}
                 pendingJump={pendingJump}
@@ -698,6 +733,7 @@ export default function App(): JSX.Element {
                 pageNum={pageNo}
                 onJump={jumpTo}
                 onDeleteHighlight={onDeleteHighlight}
+                onPapersChanged={refreshPapers}
                 models={models}
                 model={model}
                 thinking={thinking}
@@ -746,9 +782,13 @@ export default function App(): JSX.Element {
           <div className={`cmp-host ${mode === 'compare' ? '' : 'pane-hidden'}`}>
             <CompareView papers={papers} onJump={openCite} />
           </div>
-          {/* 纵览区：文献总表 + 知识网络 */}
+          {/* 纵览区：文献总表 + 知识网络 + 统计 */}
           <div className={`ov-host ${mode === 'overview' ? '' : 'pane-hidden'}`}>
             <OverviewView papers={papers} visible={mode === 'overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} onRefresh={refreshPapers} />
+          </div>
+          {/* 笔记中心：全库我的笔记 + 划词标注聚合（W3） */}
+          <div className={`ov-host ${mode === 'notes' ? '' : 'pane-hidden'}`}>
+            <NotesView papers={papers} visible={mode === 'notes'} onOpenPaper={(id, page) => { const p = papers.find((x) => x.id === id); if (p) openPaper(p, page) }} onRefresh={refreshPapers} />
           </div>
         </div>
       </div>
@@ -800,6 +840,7 @@ export default function App(): JSX.Element {
       )}
       {zoteroOpen && <ZoteroImportDialog initialCats={cats} onClose={() => setZoteroOpen(false)} onFinished={() => void refreshPapers()} />}
       {recordsOpen && <RecordsDialog initialCats={cats} onClose={() => setRecordsOpen(false)} onFinished={() => void refreshPapers()} />}
+      <OnlineAddDialog open={onlineOpen} cats={cats} onClose={() => setOnlineOpen(false)} onDone={() => void refreshPapers()} />
       {paletteOpen && (
         <CommandPalette
           papers={papers}
@@ -807,6 +848,9 @@ export default function App(): JSX.Element {
           onOpenPaper={openPaperFromTree}
           commands={[
             { id: 'add', label: '导入 PDF 文献…', hint: '文件', run: addPapers },
+            { id: 'online', label: '在线添加文献…', hint: 'DOI / arXiv / 链接 / 关键词', run: () => setOnlineOpen(true) },
+            { id: 'notes', label: '打开笔记中心', hint: '视图', run: () => setMode('notes') },
+            { id: 'stats', label: '打开统计仪表盘', hint: '视图', run: () => { setMode('overview'); setOverviewTab('stats') } },
             { id: 'zotero', label: '从 Zotero 导入…', hint: '文件', run: () => setZoteroOpen(true) },
             { id: 'picklib', label: '选择文献库文件夹…', hint: '文件', run: () => void pickLibraryNow() },
             { id: 'reindex', label: '重建全库索引', hint: '文件', run: () => void window.api.rebuildIndex() },

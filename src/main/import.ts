@@ -347,7 +347,7 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
       if (!meta && !s.apiKey && title === fb.base) {
         try {
           const pages = await extractPages(src, 1)
-          const doi = (pages[0] ?? '').match(/10\.\d{4,9}\/[^\s"）)]+/i)?.[0]
+          const doi = (pages[0] ?? '').match(/10\.\d{4,9}\/[^\s"）)]+/i)?.[0]
           if (doi) {
             const m = await crossrefMeta(doi)
             if (m?.title) {
@@ -360,6 +360,18 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
           }
         } catch { /* 离线环境跳过 */ }
       }
+
+      // 导入重命名模板（W9，对标 ZotFile）：{author}_{year}_{title} 占位符，只影响落盘文件夹名
+      const tpl = (s.renameTemplate || '{title}').slice(0, 120)
+      if (tpl.trim() && tpl !== '{title}') {
+        const filled = tpl
+          .replace(/\{author\}/gi, authors.split(/[,;，；]/)[0]?.trim() || '')
+          .replace(/\{year\}/gi, String(year ?? ''))
+          .replace(/\{title\}/gi, title)
+        const tslug = slugify(filled)
+        if (tslug && tslug !== 'paper') paperSlug = tslug
+      }
+
 
       const manualCat = sanitizeCategoryName(fileCat.get(src) ?? '')
       if (manualCat && manualCat !== 'inbox') {
@@ -462,17 +474,20 @@ export function deleteCategory(name: string, libPapers: string): boolean {
 }
 
 // ---------- 删除 / 重命名文献 ----------
-// 删除：论文文件夹移入系统废纸篓（可找回），DB 行 + 块/向量/FTS/高亮一并清理。
+// 删除：默认论文文件夹移入系统废纸篓（可找回），DB 行 + 块/向量/FTS/高亮一并清理。
+// keepFiles=true 时仅移出库（磁盘文件原地保留，W9 精细删除选项）。
 // 外键级联默认关闭且 FTS rowid 与 chunks.id 对齐，全部手动删，避免残留孤儿块污染检索
-export async function deletePaper(paperId: number): Promise<void> {
+export async function deletePaper(paperId: number, opts?: { keepFiles?: boolean }): Promise<void> {
   const db = getDb()
   const p = db.prepare('SELECT id, path FROM papers WHERE id=?').get(paperId) as { id: number; path: string } | undefined
   if (!p) throw new Error('论文不存在（可能已被删除）')
-  const dir = path.dirname(p.path)
-  try {
-    await shell.trashItem(dir)
-  } catch {
-    fs.rmSync(dir, { recursive: true, force: true }) // 废纸篓不可用（罕见）时直接删除
+  if (!opts?.keepFiles) {
+    const dir = path.dirname(p.path)
+    try {
+      await shell.trashItem(dir)
+    } catch {
+      fs.rmSync(dir, { recursive: true, force: true }) // 废纸篓不可用（罕见）时直接删除
+    }
   }
   const chunkIds = (db.prepare('SELECT id FROM chunks WHERE paper_id=?').all(paperId) as Array<{ id: number }>).map((r) => r.id)
   const tx = db.transaction(() => {

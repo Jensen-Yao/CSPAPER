@@ -1,0 +1,18 @@
+{
+  "id": "wanfang",
+  "name": "万方数据",
+  "version": 1,
+  "type": "web",
+  "matches": ["wanfangdata.com.cn"],
+  "patterns": ["d\\.wanfangdata\\.com\\.cn/(periodical|thesis|conference|patent|standard)/"],
+  "note": "万方详情页（尽力而为，页面为客户端渲染时可能取不全；稳定路径推荐导出题录文件导入）。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "css", "selector": "h1", "attr": "text", "as": "title", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "meta", "pick": "citation_journal_title", "as": "venue" },
+    { "op": "regex", "from": "url", "re": "(\\d{4})", "as": "year", "ifEmpty": true },
+    { "op": "regex", "from": "url", "re": "(10\\.\\d{4,9}/[^#?\\s&]+)", "as": "doi", "ifEmpty": true }
+  ]
+}

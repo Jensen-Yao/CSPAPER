@@ -36,17 +36,23 @@ export const CITE_UI_HTML = `<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <header><h1>引文助手</h1><span>GB/T 7714</span></header>
-  <div class="sub">搜索本机 CSPAPER 文献库 → 勾选 → 生成参考文献列表 → 复制粘贴进 Word / WPS。按引用先后自动编号。</div>
+  <header><h1>引文助手</h1><span id="stylecount">万种样式</span></header>
+  <div class="sub">搜索本机 CSPAPER 文献库 → 勾选 → 选样式 → 生成参考文献列表 → 复制粘贴进 Word / WPS。内置 12 种常用样式，更多样式在 CSPAPER 设置 → 引文样式 里下载（官方 CSL 库共 10000+）。</div>
   <div class="search"><input id="q" placeholder="搜索标题 / 作者 / 期刊…（回车搜索，直接点搜索显示最近阅读）"><button class="ghost" id="go">搜索</button></div>
   <div class="list" id="list"></div>
   <div class="actions">
+    <select id="style" style="border:1px solid #ddd8d2;border-radius:10px;padding:10px 12px;font-size:13.5px;background:#fff;color:#24242a;max-width:280px">
+      <option value="gbt7714-num">GB/T 7714-2015（顺序编码制）</option>
+      <option value="gbt7714-ad">GB/T 7714-2015（著者-出版年制）</option>
+      <option value="apa">APA 7th</option>
+      <option value="ieee">IEEE</option>
+    </select>
     <button class="primary" id="gen">生成参考文献列表</button>
     <button class="ghost" id="copy">复制</button>
     <span class="copied" id="copied">✓ 已复制，去 Word / WPS 里粘贴即可</span>
     <span class="count" id="count">已选 0 篇</span>
   </div>
-  <pre id="out">（生成的 GB/T 7714 参考文献会显示在这里）</pre>
+  <pre id="out">（生成的参考文献会显示在这里）</pre>
 </div>
 <script>
 const q = document.getElementById('q'), list = document.getElementById('list'),
@@ -80,13 +86,33 @@ document.getElementById('go').onclick = search;
 q.addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
 search();
 
+// 样式下拉：从桥接服务拉取全部可用样式（内置 12 种 + 已装 CSL 样式，万种可选）
+async function fillStyles() {
+  const sel = document.getElementById('style');
+  if (!sel) return;
+  try {
+    const r = await fetch('/styles');
+    const data = await r.json();
+    if (data.ok && data.styles?.length) {
+      sel.innerHTML = '';
+      for (const s of data.styles) {
+        const o = document.createElement('option');
+        o.value = s.id; o.textContent = s.name;
+        sel.append(o);
+      }
+    }
+  } catch (e) { /* 保底用静态选项 */ }
+}
+fillStyles();
+
 document.getElementById('gen').onclick = async () => {
   copied.style.display = 'none';
   const ids = [...picked.keys()].join(',');
   if (!ids) { out.textContent = '（先勾选文献再生成）'; return; }
-  const r = await fetch('/cite?ids=' + ids + '&style=gbt7714');
+  const style = document.getElementById('style')?.value || 'gbt7714-num';
+  const r = await fetch('/cite?ids=' + ids + '&style=' + encodeURIComponent(style));
   const data = await r.json();
-  out.textContent = data.text || '';
+  out.textContent = data.ok ? data.text : ('生成失败：' + (data.error || '未知错误'));
 };
 document.getElementById('copy').onclick = async () => {
   await navigator.clipboard.writeText(out.textContent);
@@ -126,9 +152,15 @@ export const WORD_TASKPANE_HTML = `<!doctype html>
 <body>
 <div class="wrap">
   <h1>CSPAPER 引文</h1>
-  <div class="sub">搜索文献库，在光标处插入 GB/T 7714 引用</div>
+  <div class="sub">搜索文献库，在光标处插入引用</div>
   <div class="search"><input id="q" placeholder="标题 / 作者 / 期刊"><button id="go">搜索</button></div>
   <div class="list" id="list"></div>
+  <select id="style" style="border:1px solid #ddd8d2;border-radius:8px;padding:8px 10px;font-size:12.5px;background:#fff;color:#24242a;width:100%;margin-bottom:6px">
+    <option value="gbt7714-num">GB/T 7714-2015（顺序编码制）</option>
+    <option value="gbt7714-ad">GB/T 7714-2015（著者-出版年制）</option>
+    <option value="apa">APA 7th</option>
+    <option value="ieee">IEEE</option>
+  </select>
   <button class="act primary" id="insCite">在光标处插入引用 [n]</button>
   <button class="act ghost" id="insRef">文末插入参考文献列表</button>
   <div id="msg"></div>
@@ -152,11 +184,31 @@ async function search() {
 document.getElementById('go').onclick = search;
 q.addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
 
+// 样式下拉：动态拉取全部可用样式（内置 + 已装 CSL）
+(async function fillStyles() {
+  const sel = document.getElementById('style');
+  if (!sel) return;
+  try {
+    const r = await fetch('/styles');
+    const data = await r.json();
+    if (data.ok && data.styles?.length) {
+      sel.innerHTML = '';
+      for (const s of data.styles) {
+        const o = document.createElement('option');
+        o.value = s.id; o.textContent = s.name;
+        sel.append(o);
+      }
+    }
+  } catch (e) { /* 静态选项保底 */ }
+})();
+
 async function citeText() {
   const ids = [...picked.keys()].join(',');
   if (!ids) { msg.style.color = '#a12c2c'; msg.textContent = '先勾选文献'; return null; }
-  const r = await fetch('/cite?ids=' + ids + '&style=gbt7714');
+  const style = document.getElementById('style')?.value || 'gbt7714-num';
+  const r = await fetch('/cite?ids=' + ids + '&style=' + encodeURIComponent(style));
   const data = await r.json();
+  if (!data.ok) { msg.style.color = '#a12c2c'; msg.textContent = data.error || '生成失败'; return null; }
   return data.text;
 }
 document.getElementById('insCite').onclick = async () => {

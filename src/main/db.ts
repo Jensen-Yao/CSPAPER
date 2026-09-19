@@ -17,6 +17,17 @@ export interface Paper {
   indexed: number
   added_at: string
   opened_at?: string | null
+  summary?: string | null
+  doi?: string | null
+  abstract?: string | null
+  item_type?: string | null
+  last_page?: number
+  read_seconds?: number
+  cited_by?: number | null
+  jcr?: string | null
+  csl?: string | null
+  // 标签名数组（listPapers 聚合填充，非 DB 列）
+  tags?: string[]
 }
 
 export type Theme = 'system' | 'light' | 'dark'
@@ -44,6 +55,12 @@ export interface Settings {
   models: string[]
   thinkingLevel: 'default' | 'off' | 'low' | 'medium' | 'high'
   profiles?: ProviderProfile[]
+  // 导入重命名模板（W9）：{author} {year} {title} 占位符
+  renameTemplate?: string
+  // 关闭窗口时最小化到托盘而非退出（W10）
+  closeToTray?: boolean
+  // 被停用的抓取脚本 id（W13）
+  disabledTranslators?: string[]
 }
 
 // 默认文献库：跟随平台放到「文档」目录（开发态 app 未 ready 前不能调 getPath，惰性求值）
@@ -66,7 +83,10 @@ const DEFAULTS: Settings = {
   theme: 'system',
   setupDone: false,
   models: [],
-  thinkingLevel: 'default'
+  thinkingLevel: 'default',
+  renameTemplate: '{title}',
+  closeToTray: false,
+  disabledTranslators: []
 }
 
 let db: Database.Database
@@ -109,10 +129,39 @@ export function initDb(): void {
   if (!cols.includes('pvec')) db.exec('ALTER TABLE papers ADD COLUMN pvec BLOB')
   if (!cols.includes('opened_at')) db.exec('ALTER TABLE papers ADD COLUMN opened_at TEXT')
   if (!cols.includes('summary')) db.exec('ALTER TABLE papers ADD COLUMN summary TEXT')
+  // v0.6.0：元数据扩展（DOI/摘要/条目类型）、阅读进度与统计、影响因子/被引、CSL-JSON 原文
+  for (const col of [
+    'doi TEXT',
+    'abstract TEXT',
+    'item_type TEXT',
+    'last_page INTEGER DEFAULT 0',
+    'read_seconds INTEGER DEFAULT 0',
+    'cited_by INTEGER',
+    'jcr TEXT',
+    'csl TEXT',
+    // 增量扫描门控：文件未变（mtime+size 相同）跳过 md 解析与 upsert
+    'file_mtime INTEGER',
+    'file_size INTEGER',
+    'md_mtime INTEGER',
+    'md_size INTEGER'
+  ]) {
+    if (!cols.includes(col.split(' ')[0])) db.exec(`ALTER TABLE papers ADD COLUMN ${col}`)
+  }
   // 导入去重指纹（内容 sha1 + 大小）
   db.exec(`CREATE TABLE IF NOT EXISTS import_fp(
     fp TEXT PRIMARY KEY,
     added_at TEXT DEFAULT (datetime('now'))
+  );`)
+  // 标签系统（对标 Zotero Style / actions-tags）
+  db.exec(`CREATE TABLE IF NOT EXISTS tags(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE,
+    color TEXT DEFAULT '#c4a882'
+  );
+  CREATE TABLE IF NOT EXISTS paper_tags(
+    paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,
+    tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+    UNIQUE(paper_id, tag_id)
   );`)
   // AI 文献卡片小结 / 对比表格
   db.exec(`CREATE TABLE IF NOT EXISTS compare_tables(
@@ -217,15 +266,35 @@ export function scanLibrary(libPath: string): ScanResult {
   const papersDir = path.join(libPath, 'papers')
   const roots = fs.existsSync(papersDir) ? [papersDir] : [libPath]
   const upsert = db.prepare(`
-    INSERT INTO papers(slug,title,authors,year,venue,category,path)
-    VALUES(@slug,@title,@authors,@year,@venue,@category,@path)
+    INSERT INTO papers(slug,title,authors,year,venue,category,path,doi)
+    VALUES(@slug,@title,@authors,@year,@venue,@category,@path,@doi)
     ON CONFLICT(path) DO UPDATE SET
       slug=excluded.slug, title=excluded.title, authors=excluded.authors,
-      year=excluded.year, venue=excluded.venue, category=excluded.category
+      year=excluded.year, venue=excluded.venue, category=excluded.category,
+      doi=COALESCE(NULLIF(excluded.doi,''), papers.doi)
   `)
   const exists = db.prepare('SELECT id FROM papers WHERE path=?')
   const slugOwner = db.prepare('SELECT id, path FROM papers WHERE slug=?')
   const alignPath = db.prepare('UPDATE papers SET path=? WHERE id=?')
+  const statUpd = db.prepare('UPDATE papers SET file_mtime=?, file_size=?, md_mtime=?, md_size=? WHERE id=?')
+  const catUpd = db.prepare('UPDATE papers SET category=? WHERE id=?')
+  // 增量门控索引：path（归一化）→ 已存行。文件与 md 的 mtime+size 都没变就跳过解析
+  const norm = (p: string): string => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
+  const existing = new Map<
+    string,
+    { id: number; category: string; file_mtime: number | null; file_size: number | null; md_mtime: number | null; md_size: number | null }
+  >()
+  for (const r of db.prepare('SELECT id, path, category, file_mtime, file_size, md_mtime, md_size FROM papers').all() as Array<{
+    id: number
+    path: string
+    category: string
+    file_mtime: number | null
+    file_size: number | null
+    md_mtime: number | null
+    md_size: number | null
+  }>) {
+    existing.set(norm(r.path), r)
+  }
   // 同一文件判定：resolve 归一化分隔符；Windows 再忽略大小写（iCloud 同步可能改写盘符/大小写）
   const samePath = (a: string, b: string): boolean =>
     process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b)
@@ -249,11 +318,51 @@ export function scanLibrary(libPath: string): ScanResult {
       }
     }
   }
-  const upsertOne = (params: Record<string, unknown>, pdf: string): void => {
+  const upsertOne = (params: Record<string, unknown>, pdf: string, mdPath: string, prevCat: string | undefined, fmTags: string): void => {
     try {
+      let pstat: fs.Stats | null = null
+      let mstat: fs.Stats | null = null
+      try {
+        pstat = fs.statSync(pdf)
+      } catch { /* pdf 已消失则照常走旧路径 */ }
+      try {
+        mstat = fs.statSync(mdPath)
+      } catch { /* md 缺失视为未变（md_mtime=0） */ }
+      const prev = existing.get(norm(pdf))
+      if (pstat && prev && prevCat !== undefined) {
+        const mt = Math.round(pstat.mtimeMs)
+        const mtMd = mstat ? Math.round(mstat.mtimeMs) : 0
+        // 文件与 md 都未变：跳过解析与 upsert（增量扫描的核心，千篇库省数百 ms）
+        if (prev.file_mtime === mt && prev.file_size === pstat.size && prev.md_mtime === mtMd && prev.md_size === (mstat?.size ?? 0)) {
+          if (prevCat !== params.category) catUpd.run(params.category, prev.id)
+          res.total++
+          return
+        }
+      }
       // 先判存在再 upsert：新路径算「新增」，已有路径算「更新」（重扫描据此通知界面刷新）
       const existed = !!exists.get(pdf)
-      upsert.run(params)
+      const r = upsert.run(params)
+      const id = existed ? ((exists.get(pdf) as { id: number }).id) : Number(r.lastInsertRowid)
+      statUpd.run(pstat ? Math.round(pstat.mtimeMs) : 0, pstat?.size ?? 0, mstat ? Math.round(mstat.mtimeMs) : 0, mstat?.size ?? 0, id)
+      // csl 侧车（translator 导入留下的完整 CSL-JSON）：重扫时保持 DB 元数据同步
+      try {
+        const dir = path.dirname(pdf)
+        const sidecar = path.join(dir, `${path.basename(dir)}.csl.json`)
+        const raw = fs.readFileSync(sidecar, 'utf8')
+        if (raw.length <= 200_000) {
+          const csl = JSON.parse(raw) as { abstract?: unknown; type?: unknown }
+          db.prepare('UPDATE papers SET csl=?, abstract=COALESCE(NULLIF(?,""), abstract), item_type=? WHERE id=?').run(
+            raw,
+            typeof csl.abstract === 'string' ? csl.abstract.slice(0, 4000) : '',
+            String(csl.type ?? ''),
+            id
+          )
+        }
+      } catch {
+        /* 无侧车文件（绝大多数条目） */
+      }
+      // md frontmatter 的 tags 落库（Zotero 导入/手写的标签自动生效）
+      syncPaperTags(id, fmTags)
       if (existed) res.updated++
       else res.added++
       res.total++
@@ -280,9 +389,13 @@ export function scanLibrary(libPath: string): ScanResult {
           year,
           venue: note.venue || '',
           category: path.basename(root) || 'inbox',
-          path: pdf
+          path: pdf,
+          doi: note.doi || ''
         },
-        pdf
+        pdf,
+        path.join(root, `${slug}.md`),
+        existing.get(norm(pdf))?.category,
+        note.tags ?? ''
       )
     }
     for (const cat of fs.readdirSync(root)) {
@@ -308,9 +421,13 @@ export function scanLibrary(libPath: string): ScanResult {
             year,
             venue: note.venue || '',
             category: cat.replace(/^\d+-/, ''),
-            path: pdf
+            path: pdf,
+            doi: note.doi || ''
           },
-          pdf
+          pdf,
+          path.join(d, `${slug}.md`),
+          existing.get(norm(pdf))?.category,
+          note.tags ?? ''
         )
       }
     }
@@ -332,7 +449,24 @@ export function scanLibrary(libPath: string): ScanResult {
 }
 
 export function listPapers(): Paper[] {
-  return db.prepare('SELECT * FROM papers ORDER BY category, year, slug').all() as unknown as Paper[]
+  const rows = db.prepare('SELECT * FROM papers ORDER BY category, year, slug').all() as unknown as Paper[]
+  // 标签聚合：一次查出全部映射，内存归并（比每行子查询快一个量级）
+  let byPaper = new Map<number, string[]>()
+  try {
+    const links = db
+      .prepare(
+        `SELECT pt.paper_id, t.name FROM paper_tags pt JOIN tags t ON t.id=pt.tag_id ORDER BY t.name`
+      )
+      .all() as Array<{ paper_id: number; name: string }>
+    byPaper = new Map()
+    for (const l of links) {
+      const arr = byPaper.get(l.paper_id) ?? []
+      arr.push(l.name)
+      byPaper.set(l.paper_id, arr)
+    }
+  } catch { /* tags 表尚未建好时忽略 */ }
+  for (const r of rows) r.tags = byPaper.get(r.id) ?? []
+  return rows
 }
 
 export function setStatus(id: number, status: string): void {
@@ -341,6 +475,98 @@ export function setStatus(id: number, status: string): void {
 
 export function markOpened(id: number): void {
   db.prepare("UPDATE papers SET opened_at=datetime('now') WHERE id=?").run(id)
+}
+
+// ---------- 阅读进度与时长（W2 / W7） ----------
+export function setLastPage(id: number, page: number): void {
+  db.prepare('UPDATE papers SET last_page=max(COALESCE(last_page,0),?) WHERE id=?').run(Math.max(1, Math.floor(page)), id)
+}
+
+export function addReadSeconds(id: number, seconds: number): void {
+  db.prepare('UPDATE papers SET read_seconds=COALESCE(read_seconds,0)+? WHERE id=?').run(Math.max(0, Math.floor(seconds)), id)
+}
+
+// ---------- 标签系统（W1，对标 Zotero Style / actions-tags） ----------
+export interface TagRow {
+  id: number
+  name: string
+  color: string
+  count: number
+}
+
+const TAG_COLORS = ['#c4a882', '#7a9e7e', '#b0654a', '#6b7fa3', '#a37f9e', '#8a8f6a', '#b08d57', '#7e9aa3']
+
+export function listTags(): TagRow[] {
+  return db
+    .prepare(
+      `SELECT t.id, t.name, t.color, COUNT(pt.paper_id) AS count
+       FROM tags t LEFT JOIN paper_tags pt ON pt.tag_id=t.id
+       GROUP BY t.id ORDER BY t.name`
+    )
+    .all() as TagRow[]
+}
+
+export function createTag(name: string, color?: string): TagRow {
+  const n = name.trim().slice(0, 40)
+  if (!n) throw new Error('标签名不能为空')
+  const c = color || TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)]
+  db.prepare('INSERT INTO tags(name,color) VALUES(?,?) ON CONFLICT(name) DO NOTHING').run(n, c)
+  const row = db.prepare('SELECT id, name, color FROM tags WHERE name=?').get(n) as { id: number; name: string; color: string }
+  return { ...row, count: 0 }
+}
+
+export function renameTag(id: number, name: string): void {
+  const n = name.trim().slice(0, 40)
+  if (!n) throw new Error('标签名不能为空')
+  db.prepare('UPDATE tags SET name=? WHERE id=?').run(n, id)
+}
+
+export function deleteTag(id: number): void {
+  db.prepare('DELETE FROM paper_tags WHERE tag_id=?').run(id)
+  db.prepare('DELETE FROM tags WHERE id=?').run(id)
+}
+
+export function setTagColor(id: number, color: string): void {
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error('颜色格式无效')
+  db.prepare('UPDATE tags SET color=? WHERE id=?').run(color, id)
+}
+
+export function paperTags(paperId: number): Array<{ id: number; name: string; color: string }> {
+  return db
+    .prepare('SELECT t.id, t.name, t.color FROM paper_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.paper_id=? ORDER BY t.name')
+    .all(paperId) as Array<{ id: number; name: string; color: string }>
+}
+
+export function addPaperTag(paperId: number, name: string, color?: string): TagRow {
+  const t = createTag(name, color)
+  db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id,tag_id) VALUES(?,?)').run(paperId, t.id)
+  const count = (db.prepare('SELECT COUNT(*) AS n FROM paper_tags WHERE tag_id=?').get(t.id) as { n: number }).n
+  return { ...t, count }
+}
+
+export function removePaperTag(paperId: number, tagId: number): void {
+  db.prepare('DELETE FROM paper_tags WHERE paper_id=? AND tag_id=?').run(paperId, tagId)
+}
+
+// md frontmatter tags 落库：全量替换该论文的标签（扫描驱动，md 是唯一事实来源）
+export function syncPaperTags(paperId: number, raw: string): void {
+  const names = raw
+    .split(/[,，;；]/)
+    .map((s) => s.trim())
+    .filter((s) => s && !s.startsWith('status/')) // status/xxx 是阅读状态标记，不进标签系统
+  const cur = paperTags(paperId)
+  const want = new Set(names)
+  const have = new Set(cur.map((t) => t.name))
+  let dirty = want.size !== cur.length || names.some((n) => !have.has(n))
+  if (!dirty) return
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM paper_tags WHERE paper_id=?').run(paperId)
+    for (const n of want) {
+      const t = createTag(n)
+      db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id,tag_id) VALUES(?,?)').run(paperId, t.id)
+    }
+  })
+  tx()
 }
 
 // ---------- 分类（目录）名集合：论文行已有的 + 手动新建的空分类 ----------

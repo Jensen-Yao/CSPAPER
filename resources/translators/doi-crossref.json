@@ -1,0 +1,27 @@
+{
+  "id": "doi-crossref",
+  "name": "DOI / Crossref",
+  "version": 1,
+  "type": "web",
+  "matches": ["doi.org", "crossref.org"],
+  "patterns": ["doi\\.org/", "api\\.crossref\\.org/works/"],
+  "note": "粘贴 DOI 链接（或含 DOI 的任何网址）时经 Crossref 官方 API 拉取权威题录。在线添加框里直接输入裸 DOI 也会走到这里。",
+  "steps": [
+    { "op": "template", "as": "urlfield", "value": "{url}" },
+    { "op": "regex", "from": "urlfield", "re": "(10\\.\\d{4,9}/[^#?\\s]+)", "as": "doi" },
+    { "op": "fetch", "url": "https://api.crossref.org/works/{doi}" },
+    { "op": "json", "path": "message.title.0", "as": "title" },
+    { "op": "jsonraw", "path": "message.author", "as": "_authors" },
+    { "op": "json", "path": "message.issued.date-parts.0.0", "as": "year" },
+    { "op": "json", "path": "message.container-title.0", "as": "venue", "ifEmpty": true },
+    { "op": "json", "path": "message.short-container-title.0", "as": "venue", "ifEmpty": true },
+    { "op": "json", "path": "message.publisher", "as": "publisher" },
+    { "op": "json", "path": "message.volume", "as": "volume" },
+    { "op": "json", "path": "message.issue", "as": "issue" },
+    { "op": "json", "path": "message.page", "as": "pages" },
+    { "op": "json", "path": "message.abstract", "as": "abstract" },
+    { "op": "json", "path": "message.type", "as": "itemType" },
+    { "op": "json", "path": "message.URL", "as": "url" }
+  ],
+  "transform": "const a = t._authors ? JSON.parse(t._authors) : []\nconst abs = (t.abstract || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim()\nreturn { authors: a.map(x => x.name || [x.given, x.family].filter(Boolean).join(' ')).join(', '), abstract: abs }"
+}

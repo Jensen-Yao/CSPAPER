@@ -28,6 +28,8 @@ interface Props {
   onFs: (delta: number) => void
   // 删除高亮（同步阅读器图层）
   onDeleteHighlight: (id: number) => void
+  // 详情面板内变更（状态/标签）后通知列表刷新
+  onPapersChanged?: () => void
 }
 
 interface Translation {
@@ -60,10 +62,22 @@ function splitBlocks(text: string): string[] {
 }
 
 const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
-  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs, onDeleteHighlight },
+  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs, onDeleteHighlight, onPapersChanged },
   ref
 ): JSX.Element {
-  const [tab, setTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'info'>('chat')
+  const [tab, setTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info'>('chat')
+  // 参考文献抓取（W4，对标 zotero-reference）
+  interface RefEntry {
+    title: string
+    authors?: string
+    year?: number | null
+    venue?: string
+    doi?: string
+    raw?: string
+  }
+  const [refs, setRefs] = useState<RefEntry[] | null>(null)
+  const [refsBusy, setRefsBusy] = useState(false)
+  const [refAbs, setRefAbs] = useState<Record<number, string>>({})
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -273,6 +287,9 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
         <div className={`side-tab ${tab === 'notes' ? 'active' : ''}`} onClick={() => setTab('notes')} title="本篇划词标注">
           标注
         </div>
+        <div className={`side-tab ${tab === 'refs' ? 'active' : ''}`} onClick={() => setTab('refs')} title="参考文献：抓取并可直接入库">
+          文献
+        </div>
         <div className={`side-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => setTab('info')} title="文献详情">
           详情
         </div>
@@ -316,10 +333,96 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
             </div>
           ))}
         </div>
+      ) : tab === 'refs' ? (
+        <div className="chat-scroll">
+          {!paper && <div className="bil-tip">打开论文后抓取其参考文献列表。</div>}
+          {paper && (
+            <>
+              <div className="refs-bar">
+                <button
+                  className="cmp-mini"
+                  disabled={refsBusy}
+                  onClick={() => {
+                    setRefsBusy(true)
+                    setRefs(null)
+                    setRefAbs({})
+                    void window.api
+                      .refsList(paper.id)
+                      .then((r) => setRefs(r.refs ?? []))
+                      .catch(() => setRefs([]))
+                      .finally(() => setRefsBusy(false))
+                  }}
+                >
+                  {refsBusy ? '抓取中…（首次约需 1-2 分钟）' : refs === null ? '抓取本篇参考文献' : '重新抓取'}
+                </button>
+                <span className="bil-tip" style={{ marginLeft: 8 }}>
+                  {refs ? `${refs.length} 条 · 来自文末解析` : ''}
+                </span>
+              </div>
+              {refs?.length === 0 && <div className="bil-tip">未解析到参考文献（可能正文未索引或格式特殊）。</div>}
+              {refs?.map((rf, i) => (
+                <div key={i} className="bil-pair ref-item">
+                  <div className="ref-no">[{i + 1}]</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ref-title">{rf.title || rf.raw?.slice(0, 100) || '（未解析）'}</div>
+                    <div className="ref-meta">
+                      {[rf.authors, rf.venue, rf.year].filter(Boolean).join(' · ')}
+                      {rf.doi ? ` · ${rf.doi}` : ''}
+                    </div>
+                    {refAbs[i] && <div className="ref-abs">{refAbs[i].slice(0, 500)}{refAbs[i].length > 500 ? '…' : ''}</div>}
+                    <div className="ref-ops">
+                      <button
+                        className="cmp-mini"
+                        onClick={() =>
+                          void navigator.clipboard.writeText(
+                            `${rf.authors ? rf.authors + '. ' : ''}${rf.title}.${rf.venue ? ` ${rf.venue},` : ''} ${rf.year ?? 'n.d.'}.${rf.doi ? ` doi:${rf.doi}.` : ''}`
+                          )
+                        }
+                      >
+                        复制
+                      </button>
+                      {rf.doi && !refAbs[i] && (
+                        <button
+                          className="cmp-mini"
+                          onClick={() =>
+                            void window.api
+                              .translatorsTranslate(`https://doi.org/${rf.doi}`)
+                              .then((r) => {
+                                const abs = (r.csl as { abstract?: string } | undefined)?.abstract
+                                setRefAbs((m) => ({ ...m, [i]: abs || '（未获取到摘要）' }))
+                              })
+                              .catch(() => setRefAbs((m) => ({ ...m, [i]: '（获取失败）' })))
+                          }
+                        >
+                          AI 摘要
+                        </button>
+                      )}
+                      <button
+                        className="cmp-mini"
+                        title="按题录加入文献库（记录来源为「引自本篇」）"
+                        onClick={() =>
+                          void window.api
+                            .refsImport(paper.id, i)
+                            .then((r) => {
+                              onPapersChanged?.()
+                              setRefAbs((m) => ({ ...m, [i]: r.ok ? `✓ 已入库（${r.slug}）` : `入库失败：${r.error}` }))
+                            })
+                            .catch((e) => setRefAbs((m) => ({ ...m, [i]: `入库失败：${String(e)}` })))
+                        }
+                      >
+                        入库
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
       ) : tab === 'info' ? (
         <div className="chat-scroll pd-embed">
           {paper ? (
-            <PaperDetailPanel paper={paper} embedded onSummarized={() => {}} />
+            <PaperDetailPanel paper={paper} embedded onSummarized={() => {}} onChanged={onPapersChanged} />
           ) : (
             <div className="bil-tip">打开论文后查看文献详情（信息 / AI 洞察 / 摘要 / 附件）。</div>
           )}

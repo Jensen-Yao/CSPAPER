@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { Paper } from './types'
-import { catLabel } from './LibraryPane'
+import { catLabel, statusMeta, withAlpha } from './LibraryPane'
 import PaperDetailPanel from './PaperDetailPanel'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
@@ -13,6 +13,8 @@ interface Props {
   onOpen: (p: Paper) => void
   onAddPapers: () => void
   onOpenRecords: () => void
+  onOpenOnline?: () => void
+  onPapersChanged?: () => void
 }
 
 // 缩略图缓存（进程内）：paperId → dataURL
@@ -112,7 +114,32 @@ function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s:
   )
 }
 
-export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onOpenRecords }: Props): JSX.Element {
+// 卡片右上角阅读状态角标（v0.6 五态；'-new' 特殊渲染为小圆点）
+function StatusBadge({ status }: { status: string }): JSX.Element {
+  const m = statusMeta(status)
+  return (
+    <span className="pcard-status" style={{ color: m.color, background: withAlpha(m.color, 0.1) }} title={`阅读状态：${m.label}`}>
+      {m.icon === '-new' ? <i className="sp-newdot" /> : m.icon}
+    </span>
+  )
+}
+
+export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onOpenRecords, onOpenOnline, onPapersChanged }: Props): JSX.Element {
+  // 标签名 → 颜色（卡片 hover 标签行用）
+  const [tagColors, setTagColors] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let on = true
+    window.api
+      .tagsList()
+      .then((ts) => {
+        if (on) setTagColors(Object.fromEntries(ts.map((t) => [t.name, t.color])))
+      })
+      .catch(() => {})
+    return () => {
+      on = false
+    }
+  }, [papers])
+
   // 按导入月份分组（最新月份在前）
   const groups = useMemo(() => {
     const m = new Map<string, Paper[]>()
@@ -148,6 +175,9 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
           <button className="btn ghost" onClick={onOpenRecords} title="导入从 CNKI / 万方等批量导出的题录文件">
             导入题录…
           </button>
+          <button className="btn ghost" onClick={onOpenOnline} title="DOI / arXiv / 链接 / 关键词在线检索抓取（Translators 脚本）">
+            🌐 在线添加
+          </button>
           <button className="btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
             ⬆ 上传文献
           </button>
@@ -181,6 +211,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                   }}
                   title="单击查看详情，双击进入阅读"
                 >
+                <StatusBadge status={p.status} />
                 <Thumb paper={p} />
                 <div className="pcard-body">
                   <div className="pcard-title">{p.title}</div>
@@ -192,6 +223,26 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                     </div>
                   </div>
                   <SummaryBlock paper={p} onDone={refresh} />
+                  {p.last_page != null && p.last_page > 0 && p.n_pages > 0 && p.last_page < p.n_pages && (
+                    <div className="pcard-prog" title={`读到第 ${p.last_page} 页，共 ${p.n_pages} 页`}>
+                      <i style={{ width: `${Math.round((p.last_page / p.n_pages) * 100)}%` }} />
+                    </div>
+                  )}
+                  {(p.tags?.length ?? 0) > 0 && (
+                    <div className="pcard-tags">
+                      {(p.tags ?? []).slice(0, 3).map((t) => (
+                        <span key={t} className="tag-chip" title={t}>
+                          <i className="tag-dot" style={{ background: tagColors[t] ?? '#98a2ab' }} />
+                          {t}
+                        </span>
+                      ))}
+                      {(p.tags ?? []).length > 3 && (
+                        <span className="tag-chip more" title={(p.tags ?? []).slice(3).join('、')}>
+                          +{(p.tags ?? []).length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -208,6 +259,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
             onOpen(p)
           }}
           onSummarized={refresh}
+          onChanged={onPapersChanged}
         />
       )}
     </div>

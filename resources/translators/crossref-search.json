@@ -1,0 +1,32 @@
+{
+  "id": "crossref-search",
+  "name": "Crossref 检索",
+  "version": 1,
+  "type": "search",
+  "note": "标题/关键词检索国际文献（Crossref 官方 API，免 Key）。",
+  "steps": [
+    {
+      "op": "fetch",
+      "url": "https://api.crossref.org/works?query={q}&rows=8&select=DOI,title,author,issued,container-title,abstract,URL,type,volume,issue,page,publisher"
+    },
+    {
+      "op": "jsonlist",
+      "path": "message.items",
+      "map": {
+        "doi": "DOI",
+        "title": "title.0",
+        "_authors": "author",
+        "year": "issued.date-parts.0.0",
+        "venue": "container-title.0",
+        "url": "URL",
+        "itemType": "type",
+        "abstract": "abstract",
+        "volume": "volume",
+        "issue": "issue",
+        "pages": "page",
+        "publisher": "publisher"
+      },
+      "rowTransform": "const a = t._authors ? JSON.parse(t._authors) : []\nconst abs = (t.abstract || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim()\nreturn { authors: a.map(x => x.name || [x.given, x.family].filter(Boolean).join(' ')).join(', '), abstract: abs }"
+    }
+  ]
+}

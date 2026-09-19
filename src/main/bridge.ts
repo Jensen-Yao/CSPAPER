@@ -11,7 +11,9 @@ import os from 'node:os'
 import { app } from 'electron'
 import { getDb, getSettings } from './db'
 import { importPapers, crossrefMeta } from './import'
-import { gbt7714, bibtex, type CiteRecord } from './cite'
+import { bibtex, type CiteRecord } from './cite'
+import { formatCite, listStyles } from './csl'
+import { matchScript, runWeb, importTranslated } from './translators'
 import { CITE_UI_HTML, WORD_TASKPANE_HTML } from './citeui'
 
 export const BRIDGE_PORT = 24517
@@ -92,25 +94,74 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, notif
     return json(res, 200, { ok: true, papers: rows })
   }
 
-  // 生成引文：GET /cite?ids=1,2&style=gbt7714|bibtex
+  // 生成引文：GET /cite?ids=1,2&style=gbt7714-num|apa|ieee|bibtex|<csl样式id>
+  // 样式表：内置 12 种（cite-formats）+ 已下载/导入的 .csl（需可选引擎）
   if (req.method === 'GET' && url.pathname === '/cite') {
     const ids = (url.searchParams.get('ids') ?? '')
       .split(',')
       .map((s) => parseInt(s, 10))
       .filter((n) => !isNaN(n))
     if (ids.length === 0) return json(res, 400, { ok: false, error: 'ids required' })
-    const rows = ids
-      .map((id) =>
-        db.prepare('SELECT id, title, authors, year, venue FROM papers WHERE id=?').get(id) as
-          | { id: number; title: string; authors: string; year: number | null; venue: string }
-          | undefined
-      )
-      .filter((r): r is { id: number; title: string; authors: string; year: number | null; venue: string } => !!r)
-      .map((r) => ({ ...r, itemType: 'journalArticle' }) as CiteRecord)
-    if (url.searchParams.get('style') === 'bibtex') {
+    const style = url.searchParams.get('style') || 'gbt7714-num'
+    if (style === 'bibtex') {
+      const rows = ids
+        .map((id) =>
+          db.prepare('SELECT id, title, authors, year, venue FROM papers WHERE id=?').get(id) as
+            | { id: number; title: string; authors: string; year: number | null; venue: string }
+            | undefined
+        )
+        .filter((r): r is { id: number; title: string; authors: string; year: number | null; venue: string } => !!r)
+        .map((r) => ({ ...r, itemType: 'journalArticle' }) as CiteRecord)
       return json(res, 200, { ok: true, text: rows.map((r) => bibtex(r)).join('\n\n') })
     }
-    return json(res, 200, { ok: true, text: rows.map((r, i) => gbt7714(r, i + 1)).join('\n') })
+    const r = await formatCite(ids, style)
+    if (!r.ok) return json(res, 422, { ok: false, error: r.error ?? '格式化失败' })
+    return json(res, 200, { ok: true, text: (r.items ?? []).join('\n') })
+  }
+
+  // 引文样式目录（cite-ui / word-taskpane 动态下拉用）：GET /styles
+  if (req.method === 'GET' && url.pathname === '/styles') {
+    return json(res, 200, { ok: true, styles: listStyles().map((s) => ({ id: s.id, name: s.name, kind: s.kind })) })
+  }
+
+  // 网页抓取题录（浏览器插件优先走这里，未命中脚本回退 citation_* 本地解析）：
+  // GET /translate?url=<页面地址>
+  if (req.method === 'GET' && url.pathname === '/translate') {
+    const target = (url.searchParams.get('url') ?? '').trim()
+    if (!target) return json(res, 400, { ok: false, error: 'url required' })
+    const s = matchScript(target)
+    if (!s) return json(res, 200, { ok: false, matched: false, error: 'no translator matched' })
+    const r = await runWeb(s, target)
+    return json(res, 200, { ok: r.ok, matched: true, translator: s.name, csl: r.csl, pdfPath: r.pdfPath, error: r.error })
+  }
+
+  // 抓取并直接入库（插件右键/弹窗「用脚本保存」）：POST /translate-import {url, category}
+  if (req.method === 'POST' && url.pathname === '/translate-import') {
+    if (!/application\/json/i.test(String(req.headers['content-type'] ?? ''))) {
+      return json(res, 415, { ok: false, error: 'content-type must be application/json' })
+    }
+    let body: { url?: string; category?: string } = {}
+    try {
+      body = JSON.parse(await readBody(req))
+    } catch {
+      return json(res, 400, { ok: false, error: 'invalid json' })
+    }
+    const target = (body.url ?? '').trim()
+    if (!target) return json(res, 400, { ok: false, error: 'url required' })
+    // 裸 DOI 兜底
+    let targetUrl = target
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      const doi = targetUrl.match(/10\.\d{4,9}\/[^\s]+/i)?.[0]
+      if (doi) targetUrl = `https://doi.org/${doi}`
+      else return json(res, 422, { ok: false, error: 'invalid url' })
+    }
+    const s = matchScript(targetUrl)
+    if (!s) return json(res, 200, { ok: false, matched: false, error: 'no translator matched' })
+    const r = await runWeb(s, targetUrl)
+    if (!r.ok || !r.csl) return json(res, 200, { ok: false, matched: true, error: r.error ?? '抓取失败' })
+    const imp = await importTranslated({ csl: r.csl, pdfPath: r.pdfPath, category: body.category, origin: targetUrl }, () => {})
+    if (imp.ok) notify('脚本抓取已入库', `${String((r.csl as { title?: string }).title ?? '').slice(0, 80)}（${s.name}）`)
+    return json(res, 200, { ...imp, matched: true, translator: s.name })
   }
 
   // 一键存入：POST /save-paper（浏览器插件调用）

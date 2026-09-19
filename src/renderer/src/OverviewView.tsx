@@ -1,31 +1,51 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Paper } from './types'
-import { catLabel } from './LibraryPane'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import type { Paper, TagRow } from './types'
+import { STATUS_KEYS, STATUS_META } from './types'
+import { catLabel, statusMeta, withAlpha } from './LibraryPane'
+import StatsView from './StatsView'
 
 interface Props {
   papers: Paper[]
   visible: boolean
-  tab: 'table' | 'graph'
-  onTabChange: (t: 'table' | 'graph') => void
+  tab: 'table' | 'graph' | 'stats'
+  onTabChange: (t: 'table' | 'graph' | 'stats') => void
   onOpen: (p: Paper) => void
   onRefresh: () => void
+  // v0.6 外部标签筛选（如左栏标签区联动传入）；与内部下拉叠加（内部优先）
+  externalTagFilter?: string | null
 }
 
-type SortKey = 'title' | 'authors' | 'year' | 'venue' | 'category' | 'status'
+type SortKey = 'title' | 'authors' | 'year' | 'venue' | 'category' | 'status' | 'cited'
+type ColKey = SortKey | 'tags' | 'progress' // tags / progress 仅作列头展示，不参与排序
 
-const COLS: Array<{ key: SortKey; label: string; w: string }> = [
-  { key: 'title', label: '标题', w: '34%' },
-  { key: 'authors', label: '作者', w: '20%' },
-  { key: 'year', label: '年份', w: '8%' },
-  { key: 'venue', label: '期刊 / 来源', w: '18%' },
-  { key: 'category', label: '分类', w: '12%' },
-  { key: 'status', label: '状态', w: '8%' }
+interface Col {
+  key: ColKey
+  label: string
+  w: string
+  sort?: boolean // false = 不可排序
+}
+
+const COLS: Col[] = [
+  { key: 'title', label: '标题', w: '25%' },
+  { key: 'authors', label: '作者', w: '13%' },
+  { key: 'year', label: '年份', w: '6%' },
+  { key: 'venue', label: '期刊 / 来源', w: '13%' },
+  { key: 'category', label: '分类', w: '8%' },
+  { key: 'status', label: '状态', w: '9%' },
+  { key: 'tags', label: '标签', w: '11%', sort: false },
+  { key: 'progress', label: '进度', w: '9%', sort: false },
+  { key: 'cited', label: '被引', w: '6%' }
 ]
+
+// 简单窗口化：行数超过该值时只渲染可视范围 ±OVERSCAN 行，用 spacer 行撑高度
+const WIN_THRESHOLD = 300
+const WIN_ROW_H = 36
+const WIN_OVERSCAN = 20
 
 const PALETTE = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
 
 // 纵览：Zotero 式文献总表 + 知识网络（同类/同作者/共现关联的力导向图）
-export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh }: Props): JSX.Element {
+export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh, externalTagFilter }: Props): JSX.Element {
   const [sortKey, setSortKey] = useState<SortKey>('title')
   const [asc, setAsc] = useState(true)
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -36,11 +56,62 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
   const [batchCat, setBatchCat] = useState('')
   const [batchBusy, setBatchBusy] = useState(false)
 
+  // ---------- 标签（v0.6） ----------
+  const [tags, setTags] = useState<TagRow[]>([])
+  useEffect(() => {
+    let on = true
+    window.api
+      .tagsList()
+      .then((t) => {
+        if (on) setTags(t)
+      })
+      .catch(() => {})
+    return () => {
+      on = false
+    }
+  }, [papers])
+  const tagColorMap = useMemo(() => new Map(tags.map((t) => [t.name, t.color])), [tags])
+  const tagColor = (name: string): string => tagColorMap.get(name) ?? '#98a2ab'
+  const [tagFilter, setTagFilter] = useState('')
+  const effTag = tagFilter || externalTagFilter || ''
+
+  // ---------- 阅读状态五态（v0.6）：乐观更新本地覆盖，setStatus 后 onRefresh 同步 ----------
+  const [statusOverride, setStatusOverride] = useState<Record<number, string>>({})
+  useEffect(() => setStatusOverride({}), [papers])
+  const [statusMenu, setStatusMenu] = useState<{ id: number; x: number; y: number } | null>(null)
+  const applyStatus = async (id: number, st: string): Promise<void> => {
+    setStatusMenu(null)
+    setStatusOverride((o) => ({ ...o, [id]: st }))
+    try {
+      await window.api.setStatus(id, st)
+    } catch (e) {
+      alert(String(e))
+    }
+    onRefresh()
+  }
+
+  // ---------- 被引（v0.6）：对当前筛选后的可见行批量更新 ----------
+  const [citedBusy, setCitedBusy] = useState(false)
+  const doCitedUpdate = async (): Promise<void> => {
+    if (citedBusy || filtered.length === 0) return
+    setCitedBusy(true)
+    try {
+      await window.api.citedUpdate(filtered.map((p) => p.id))
+      onRefresh()
+    } catch (e) {
+      alert(String(e))
+    } finally {
+      setCitedBusy(false)
+    }
+  }
+
   const filtered = useMemo(() => {
-    const cf = catFilter, sf = statusFilter
-    if (!cf && !sf) return papers
-    return papers.filter((p) => (!cf || p.category === cf) && (!sf || p.status === sf))
-  }, [papers, catFilter, statusFilter])
+    const cf = catFilter, sf = statusFilter, tf = effTag
+    if (!cf && !sf && !tf) return papers
+    return papers.filter(
+      (p) => (!cf || p.category === cf) && (!sf || p.status === sf) && (!tf || (p.tags ?? []).includes(tf))
+    )
+  }, [papers, catFilter, statusFilter, effTag])
 
   const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
 
@@ -59,14 +130,66 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
 
   const sorted = useMemo(() => {
     const arr = [...filtered]
+    const val = (p: Paper): string | number => {
+      if (sortKey === 'cited') return p.cited_by ?? -1
+      return (p[sortKey] ?? '') as string | number
+    }
     arr.sort((a, b) => {
-      const va = (a[sortKey] ?? '') as string | number | null
-      const vb = (b[sortKey] ?? '') as string | number | null
-      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va ?? '').localeCompare(String(vb ?? ''), 'zh')
+      const va = val(a)
+      const vb = val(b)
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'zh')
       return asc ? cmp : -cmp
     })
     return arr
   }, [filtered, sortKey, asc])
+
+  // ---------- 简单窗口化：>300 行时只渲染可视范围 ±20 行（spacer 行撑高度） ----------
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const windowing = sorted.length > WIN_THRESHOLD
+  const [range, setRange] = useState<[number, number]>([0, WIN_THRESHOLD + WIN_OVERSCAN * 2])
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || !windowing) {
+      setRange([0, sorted.length])
+      return
+    }
+    const calc = (): void => {
+      const s = Math.max(0, Math.floor(el.scrollTop / WIN_ROW_H) - WIN_OVERSCAN)
+      const e = Math.min(sorted.length, s + Math.ceil(el.clientHeight / WIN_ROW_H) + WIN_OVERSCAN * 2)
+      setRange([s, e])
+    }
+    calc()
+    el.addEventListener('scroll', calc, { passive: true })
+    return () => el.removeEventListener('scroll', calc)
+  }, [windowing, sorted.length])
+
+  // ---------- 行内渲染小件 ----------
+  // 标签列：圆点 + 名，最多 3 个，超出折叠为 +N
+  const tagChips = (p: Paper): JSX.Element => {
+    const ts = p.tags ?? []
+    if (ts.length === 0) return <span className="ov-dim">—</span>
+    return (
+      <div className="tag-chips">
+        {ts.slice(0, 3).map((t) => (
+          <span key={t} className="tag-chip" title={t}>
+            <i className="tag-dot" style={{ background: tagColor(t) }} />
+            {t}
+          </span>
+        ))}
+        {ts.length > 3 && (
+          <span className="tag-chip more" title={ts.slice(3).join('、')}>
+            +{ts.length - 3}
+          </span>
+        )}
+      </div>
+    )
+  }
+  // 进度列：last_page/n_pages 细进度条（无页数或未开始不显示）
+  const progOf = (p: Paper): { pct: number; title: string } | null => {
+    if (!p.n_pages || !p.last_page || p.last_page <= 0) return null
+    const pct = Math.max(0, Math.min(100, Math.round((p.last_page / p.n_pages) * 100)))
+    return { pct, title: `${p.last_page} / ${p.n_pages} 页 · ${pct}%` }
+  }
 
   const toggleRow = async (p: Paper): Promise<void> => {
     if (expanded === p.id) return setExpanded(null)
@@ -90,6 +213,9 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
         <button className={`ov-tab ${tab === 'graph' ? 'on' : ''}`} onClick={() => onTabChange('graph')}>
           ✦ 知识网络
         </button>
+        <button className={`ov-tab ${tab === 'stats' ? 'on' : ''}`} onClick={() => onTabChange('stats')}>
+          ▤ 统计
+        </button>
         <span className="ov-count">{papers.length} 篇</span>
       </div>
       {tab === 'table' ? (
@@ -106,11 +232,34 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             </select>
             <select className="ov-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">全部状态</option>
-              <option value="unread">未读</option>
-              <option value="reading">在读</option>
-              <option value="read">已读</option>
+              {STATUS_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {STATUS_META[k].label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="ov-filter"
+              value={effTag}
+              onChange={(e) => setTagFilter(e.target.value)}
+              title="按标签筛选"
+            >
+              <option value="">全部标签</option>
+              {tags.map((t) => (
+                <option key={t.id} value={t.name}>
+                  {t.name}（{t.count}）
+                </option>
+              ))}
             </select>
             <span style={{ flex: 1 }} />
+            <button
+              className="btn ghost"
+              disabled={citedBusy || filtered.length === 0}
+              title="联网更新当前可见文献的被引数"
+              onClick={() => void doCitedUpdate()}
+            >
+              {citedBusy ? '更新中…' : '更新被引'}
+            </button>
             {checked.size > 0 && (
               <>
                 <span className="ov-batch-label">已选 {checked.size} 篇</span>
@@ -131,8 +280,8 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               </>
             )}
           </div>
-          <div className="ov-table-wrap">
-          <table className="ov-table">
+          <div className="ov-table-wrap" ref={wrapRef}>
+          <table className={`ov-table ${windowing ? 'win' : ''}`}>
             <thead>
               <tr>
                 <th style={{ width: 34 }}>
@@ -143,7 +292,19 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                   />
                 </th>
                 {COLS.map((c) => (
-                  <th key={c.key} style={{ width: c.w }} className="sortable" onClick={() => (sortKey === c.key ? setAsc(!asc) : (setSortKey(c.key), setAsc(true)))}>
+                  <th
+                    key={c.key}
+                    style={{ width: c.w }}
+                    className={c.sort === false ? '' : 'sortable'}
+                    onClick={() => {
+                      if (c.key === 'tags' || c.key === 'progress') return
+                      if (sortKey === c.key) setAsc(!asc)
+                      else {
+                        setSortKey(c.key)
+                        setAsc(true)
+                      }
+                    }}
+                  >
                     {c.label}
                     {sortKey === c.key && <span className="ov-arrow">{asc ? '↑' : '↓'}</span>}
                   </th>
@@ -151,9 +312,14 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               </tr>
             </thead>
             <tbody>
-              {sorted.map((p) => (
-                <>
-                  <tr key={p.id} onClick={() => void toggleRow(p)} title="点击展开附件与信息；双击打开阅读" onDoubleClick={() => onOpen(p)}>
+              {range[0] > 0 && (
+                <tr className="ov-spacer" style={{ height: range[0] * WIN_ROW_H }}>
+                  <td colSpan={COLS.length + 1} />
+                </tr>
+              )}
+              {sorted.slice(range[0], range[1]).map((p) => (
+                <Fragment key={p.id}>
+                  <tr onClick={() => void toggleRow(p)} title="点击展开附件与信息；双击打开阅读" onDoubleClick={() => onOpen(p)}>
                     <td className="ov-check">
                       <input
                         type="checkbox"
@@ -175,11 +341,43 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                     <td>{p.venue || '—'}</td>
                     <td>{catLabel(p.category)}</td>
                     <td>
-                      <span className={`ov-st st-${p.status}`}>{p.status === 'read' ? '已读' : p.status === 'reading' ? '在读' : '未读'}</span>
+                      {(() => {
+                        const m = statusMeta(statusOverride[p.id] ?? p.status)
+                        return (
+                          <span
+                            className="status-pill"
+                            style={{ color: m.color, background: withAlpha(m.color, 0.12), borderColor: withAlpha(m.color, 0.28) }}
+                            title="点击选择阅读状态"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setStatusMenu({ id: p.id, x: e.clientX, y: e.clientY })
+                            }}
+                          >
+                            {m.icon === '-new' ? <i className="sp-newdot" /> : <span className="sp-ico">{m.icon}</span>}
+                            <span>{m.label}</span>
+                          </span>
+                        )
+                      })()}
                     </td>
+                    <td>{tagChips(p)}</td>
+                    <td>
+                      {(() => {
+                        const pr = progOf(p)
+                        if (!pr) return null
+                        return (
+                          <div className="prog-wrap" title={pr.title}>
+                            <div className="prog-bar">
+                              <i style={{ width: `${pr.pct}%` }} />
+                            </div>
+                            <span className="prog-text">{pr.pct}%</span>
+                          </div>
+                        )
+                      })()}
+                    </td>
+                    <td className="ov-cited">{p.cited_by ?? '—'}</td>
                   </tr>
                   {expanded === p.id && (
-                    <tr key={`${p.id}-x`} className="ov-expand">
+                    <tr className="ov-expand">
                       <td />
                       <td colSpan={COLS.length}>
                         <div className="ov-detail">
@@ -205,14 +403,50 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
+              {range[1] < sorted.length && (
+                <tr className="ov-spacer" style={{ height: (sorted.length - range[1]) * WIN_ROW_H }}>
+                  <td colSpan={COLS.length + 1} />
+                </tr>
+              )}
             </tbody>
           </table>
           </div>
         </>
-      ) : (
+      ) : tab === 'graph' ? (
         <KnowledgeGraph papers={papers} visible={visible} onOpen={onOpen} />
+      ) : (
+        <StatsView visible={visible && tab === 'stats'} onOpen={(id) => { const p = papers.find((x) => x.id === id); if (p) onOpen(p) }} />
+      )}
+
+      {/* 阅读状态五选一小浮层 */}
+      {statusMenu && (
+        <>
+          <div className="status-menu-mask" onMouseDown={() => setStatusMenu(null)} />
+          <div
+            className="status-menu"
+            style={{
+              left: Math.max(6, Math.min(statusMenu.x, window.innerWidth - 140)),
+              top: Math.max(6, Math.min(statusMenu.y, window.innerHeight - 190))
+            }}
+          >
+            {STATUS_KEYS.map((k) => {
+              const m = STATUS_META[k]
+              const cur = statusOverride[statusMenu.id] ?? papers.find((x) => x.id === statusMenu.id)?.status ?? ''
+              return (
+                <button
+                  key={k}
+                  className={`status-menu-item ${cur === k ? 'on' : ''}`}
+                  onClick={() => void applyStatus(statusMenu.id, k)}
+                >
+                  {m.icon === '-new' ? <i className="sp-newdot" /> : <span className="sp-ico">{m.icon}</span>}
+                  <span>{m.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

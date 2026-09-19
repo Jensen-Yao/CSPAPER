@@ -1,0 +1,27 @@
+{
+  "id": "academic-journals",
+  "name": "通用学术页（citation_*）",
+  "version": 1,
+  "type": "web",
+  "matches": ["mdpi.com", "tandfonline.com", "acs.org", "oup.com", "cambridge.org", "scitation.org", "aip.org", "aps.org", "frontiersin.org", "plos.org", "sagepub.com", "spiedigitallibrary.org", "sciengine.com", "scholar.cnki.net", "cell.com"],
+  "patterns": ["/doi/", "/article/", "/articles/", "/abstract/", "/doc/"],
+  "note": "遵循 citation_* 元数据规范的出版社通用脚本：MDPI、T&F、ACS、OUP、Cambridge、APS/AIP、SAGE、SPIE 等。遇到新站点可复制本脚本只改 matches 与 patterns。",
+  "steps": [
+    { "op": "fetch" },
+    { "op": "meta", "pick": "citation_title", "as": "title" },
+    { "op": "css", "selector": "h1", "attr": "text", "as": "title", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_author", "as": "authors", "multi": true },
+    { "op": "meta", "pick": "citation_journal_title", "as": "venue" },
+    { "op": "meta", "pick": "citation_conference_title", "as": "venue", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_date", "as": "year", "re": "(\\d{4})" },
+    { "op": "meta", "pick": "citation_publication_date", "as": "year", "re": "(\\d{4})", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_online_date", "as": "year", "re": "(\\d{4})", "ifEmpty": true },
+    { "op": "meta", "pick": "citation_doi", "as": "doi" },
+    { "op": "meta", "pick": "citation_volume", "as": "volume" },
+    { "op": "meta", "pick": "citation_issue", "as": "issue" },
+    { "op": "meta", "pick": "citation_firstpage", "as": "pages" },
+    { "op": "meta", "pick": "citation_abstract", "as": "abstract" },
+    { "op": "meta", "pick": "citation_pdf_url", "as": "_pdfurl" },
+    { "op": "download", "url": "{_pdfurl}" }
+  ]
+}
