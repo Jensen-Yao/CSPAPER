@@ -789,9 +789,16 @@ export function topicClusters(category?: string): TopicCluster[] {
   // 并查集（论文级：两篇共享 ≥1 关键词即连边，按共享关键词数加权）
   const parent = new Map<number, number>()
   for (const r of rows) parent.set(r.id, r.id)
+  // 路径减半：cur 必须向祖先推进，否则合并过的节点会原地打转死循环（曾致主进程 100% 卡死）
   const find = (x: number): number => {
-    while (parent.get(x) !== x) parent.set(x, parent.get(parent.get(x)!)!)
-    return parent.get(x)!
+    let cur = x
+    while (parent.get(cur) !== cur) {
+      const p = parent.get(cur)!
+      const g = parent.get(p) ?? p
+      parent.set(cur, g)
+      cur = g
+    }
+    return cur
   }
   const kwPapers = new Map<string, number[]>()
   for (const [pid, kws] of kwOf) for (const k of kws) (kwPapers.get(k) ?? kwPapers.set(k, []).get(k)!).push(pid)

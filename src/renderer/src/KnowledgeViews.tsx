@@ -1021,6 +1021,15 @@ function TopicGalaxyView({
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
   }, [])
+  // topics 加载后 boxRef 才挂载，需补测一次真实容器尺寸（否则按 900×560 默认值布局会错位）
+  useEffect(() => {
+    if (topics === null) return
+    const el = boxRef.current
+    if (el && el.clientWidth > 0 && (el.clientWidth !== box.w || el.clientHeight !== box.h)) {
+      setBox({ w: el.clientWidth, h: el.clientHeight })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topics])
 
   const placed = useMemo(() => (topics ? packTopics(topics, box.w, box.h, seed) : []), [topics, box, seed])
   const selTopic = topics?.find((t) => t.label === selLabel) ?? null
