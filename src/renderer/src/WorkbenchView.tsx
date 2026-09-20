@@ -43,19 +43,12 @@ interface Props {
 }
 
 const TEMPLATES: Array<{ label: string; goal: string }> = [
-  { label: '📋 主题调研', goal: '调研主题：「」。检索相关文献，筛选最相关的 5-8 篇导入文献库，阅读后生成一篇中文综述（存入 AI 知识库）。' },
-  { label: '📖 精读论文', goal: '精读库内一篇文献（用 list_library 找到并告诉我 id）：阅读全文，写结构化精读笔记（研究问题/方法/结论/局限/启发）写入我的笔记，最后给出 3 个值得追问的问题。' },
-  { label: '📊 多文对比', goal: '对比库内同一分类下的多篇文献：生成方法/数据/结论三维度对比表，并写 300 字对比结论。' },
-  { label: '🌙 睡眠日报', goal: '执行「睡眠科研日报」技能：按库内关键词检索最新文献，相关性排序，产出今日日报并存入 AI 知识库。' }
+  { label: '主题调研', goal: '调研主题：「」。检索相关文献，筛选最相关的 5-8 篇导入文献库，阅读后生成一篇中文综述（存入 AI 知识库）。' },
+  { label: '精读论文', goal: '精读库内一篇文献（用 list_library 找到并告诉我 id）：阅读全文，写结构化精读笔记（研究问题/方法/结论/局限/启发）写入我的笔记，最后给出 3 个值得追问的问题。' },
+  { label: '多文对比', goal: '对比库内同一分类下的多篇文献：生成方法/数据/结论三维度对比表，并写 300 字对比结论。' },
+  { label: '睡眠日报', goal: '执行「睡眠科研日报」技能：按库内关键词检索最新文献，相关性排序，产出今日日报并存入 AI 知识库。' }
 ]
 
-const TOOL_ICON: Record<string, string> = {
-  search_papers: '🌐', search_library: '📚', list_library: '📄', import_paper: '⬇️',
-  read_paper: '📖', ask_paper: '💬', write_note: '✏️', make_synthesis: '🧩',
-  compare_papers: '📊', cite_format: '📑', add_tag: '🏷️', set_status: '🔘',
-  ai_annotate: '🧠', use_skill: '🎯', arxiv_recent: '🛰️', knowledge_graph: '🕸️', related_papers: '🔗'
-}
-const toolIcon = (t?: string): string => (t && TOOL_ICON[t]) || (t?.startsWith('mcp__') ? '🔌' : '⚙️')
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   'awaiting-confirm': { label: '待确认计划', cls: 'pending' },
@@ -251,7 +244,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
             setNav('tasks')
           }}
         >
-          ＋ 新任务
+          + 新任务
         </button>
         <nav className="wb-nav">
           {(
@@ -348,40 +341,46 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
               }}
             >
-              {task.events.map((ev, i) => (
-                <div key={i} className={`wb-card ${ev.kind} ${ev.ok === false ? 'fail' : ''}`}>
-                  <div className="wb-card-head">
-                    <span className="wb-card-icon">{ev.kind === 'artifact' ? '📦' : toolIcon(ev.tool)}</span>
-                    <span className="wb-card-title">
-                      {ev.kind === 'step' && `已执行 ${ev.tool}`}
-                      {ev.kind === 'artifact' && `产出：${ev.artifact?.title ?? ''}`}
-                      {ev.kind === 'text' && '智能体输出'}
-                      {ev.kind === 'done' && '任务完成'}
-                      {ev.kind === 'error' && '出错了'}
-                      {ev.kind === 'cancelled' && '已中止'}
-                      {ev.kind === 'status' && (ev.text ?? '进行中')}
-                      {ev.kind === 'plan' && '执行计划'}
-                    </span>
-                    {ev.ok != null && <span className={`wb-card-state ${ev.ok ? 'ok' : 'bad'}`}>{ev.ok ? '✓' : '✗'}</span>}
-                    {ev.ms != null && <span className="wb-ev-ms">{ev.ms}ms</span>}
-                  </div>
-                  {ev.text && ev.kind !== 'status' && (
-                    <div className="wb-card-body ellipsis-2" title={ev.text}>
-                      {ev.text}
+              {task.events.map((ev, i) => {
+                if (ev.kind === 'status') {
+                  return (
+                    <div key={i} className="wb-ev">
+                      <div className="wb-ev-line">
+                        <i className="wb-spin-inline" />
+                        <span className="wb-ev-text dim">{ev.text}</span>
+                      </div>
                     </div>
-                  )}
-                  {ev.artifact && (
-                    <button className="wb-artifact" onClick={() => openArtifact(ev.artifact!)}>
-                      在文献库中查看 →
-                    </button>
-                  )}
-                </div>
-              ))}
+                  )
+                }
+                if (ev.kind === 'text') {
+                  return (
+                    <div key={i} className="wb-ev">
+                      <div className="wb-ev-text">{ev.text}</div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={i} className={`wb-ev ${ev.kind} ${ev.ok === false ? 'fail' : ''}`}>
+                    <div className="wb-ev-line">
+                      {ev.kind === 'step' && <span className="wb-ev-tool">{ev.tool}</span>}
+                      {ev.kind === 'artifact' && <span className="wb-ev-tool">artifact</span>}
+                      {ev.ok != null && <span className={`wb-ev-state ${ev.ok ? 'ok' : 'bad'}`}>{ev.ok ? '[ok]' : '[fail]'}</span>}
+                      {ev.ms != null && <span className="wb-ev-ms">{ev.ms}ms</span>}
+                    </div>
+                    {ev.text && <div className="wb-ev-text">{ev.text}</div>}
+                    {ev.artifact && (
+                      <button className="wb-artifact" onClick={() => openArtifact(ev.artifact!)}>
+                        在文献库中查看 →
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
               {task.status === 'running' && (
-                <div className="wb-card running">
-                  <div className="wb-card-head">
-                    <i className="wb-spin" />
-                    <span className="wb-card-title">智能体正在执行…</span>
+                <div className="wb-ev">
+                  <div className="wb-ev-line">
+                    <i className="wb-spin-inline" />
+                    <span className="wb-ev-text dim">执行中…</span>
                   </div>
                 </div>
               )}
@@ -396,7 +395,6 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
         ) : (
           <div className="wb-center-empty">
             <div className="wb-hero">
-              <div className="wb-hero-art">✦</div>
               <div className="wb-hero-text">今天要研究什么？</div>
             </div>
           </div>
@@ -436,11 +434,11 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
             />
             <div className="wb-compose-bar">
               <button className="wb-tool-btn" title="任务模板" onClick={() => setShowTemplates((v) => !v)}>
-                ＋
+                +
               </button>
               <div className="wb-model-wrap">
                 <button className="wb-model-chip" title="智能体使用的模型（可切换）" onClick={() => setModelOpen((v) => !v)}>
-                  🧠 {models[0] ? models[0].slice(0, 22) : '未配置模型'}
+                  {models[0] ? models[0].slice(0, 22) : '未配置模型'}
                 </button>
                 {modelOpen && (
                   <>
@@ -500,7 +498,6 @@ function SkillsPane(): JSX.Element {
         {(skills ?? []).map((sk) => (
           <div key={sk.name} className="wb-card">
             <div className="wb-card-head">
-              <span className="wb-card-icon">🎯</span>
               <span className="wb-card-title">{sk.name}</span>
               <span className={`wb-task-status ${sk.source === 'builtin' ? 'done' : 'running'}`}>{sk.source === 'builtin' ? '内置' : '用户'}</span>
             </div>
@@ -616,7 +613,6 @@ function McpPane(): JSX.Element {
       {(st?.results ?? []).map((r) => (
         <div key={r.server} className="wb-card">
           <div className="wb-card-head">
-            <span className="wb-card-icon">🔌</span>
             <span className="wb-card-title">{r.server}</span>
             <span style={{ flex: 1 }} />
             <span className={`wb-task-status ${r.ok ? 'done' : 'error'}`}>{r.ok ? `✓ ${r.tools} 工具` : '连接失败'}</span>
@@ -627,7 +623,6 @@ function McpPane(): JSX.Element {
       {(st?.tools ?? []).length > 0 && (
         <div className="wb-card">
           <div className="wb-card-head">
-            <span className="wb-card-icon">🧰</span>
             <span className="wb-card-title">已挂载 MCP 工具</span>
           </div>
           <div className="wb-card-body">{(st!.tools ?? []).map((t) => t.fullName).join('、')}</div>

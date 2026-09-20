@@ -188,7 +188,9 @@ function buildTools(t: AgentTask) {
     emit(t, { kind: 'status', text: `正在执行 ${name}：${argsSummary}` })
     try {
       const r = await fn()
-      emit(t, { kind: 'step', tool: name, text: argsSummary, ok: true, ms: Date.now() - t0 })
+      const preview = typeof r === 'string' ? r.slice(0, 600) : ''
+      const flat = preview.split('\n').join(' ')
+      emit(t, { kind: 'step', tool: name, text: argsSummary + (flat ? ' → ' + flat : ''), ok: true, ms: Date.now() - t0 })
       return r
     } catch (e) {
       emit(t, { kind: 'step', tool: name, text: argsSummary, ok: false, ms: Date.now() - t0 })
