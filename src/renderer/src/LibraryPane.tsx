@@ -74,7 +74,6 @@ export default function LibraryPane({
   onAddPapers,
   onNewChat,
   onMovePaper,
-  onReindex,
   onBack,
   onFwd,
   canBack,
@@ -373,7 +372,7 @@ export default function LibraryPane({
   return (
     <div className="library" style={{ width }}>
       <div className="lib-func">
-        {/* 阅读 / 对话 模式切换（Kimi Workspace 式分段控件） */}
+        {/* 阅读 / 对话 两个内容模式（对比/纵览/统计/笔记/网页 已上顶栏快捷区） */}
         <div className="mode-toggle">
           <button className={mode === 'read' ? 'on' : ''} onClick={() => onModeChange('read')} title="论文阅读（PDF + 翻译 + 问答）">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -387,36 +386,6 @@ export default function LibraryPane({
               <path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.6A8 8 0 1 1 21 12z" />
             </svg>
             对话
-          </button>
-          <button className={mode === 'compare' ? 'on' : ''} onClick={() => onModeChange('compare')} title="多篇文献横向对比（AI 提取要点 + 页码出处）">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M3 10h18M9 4v16M15 4v16" />
-            </svg>
-            对比
-          </button>
-          <button className={mode === 'overview' ? 'on' : ''} onClick={() => onModeChange('overview')} title="文献总表与知识网络">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="6" cy="6" r="2.6" />
-              <circle cx="18" cy="7" r="2.6" />
-              <circle cx="12" cy="17" r="2.6" />
-              <path d="M7.8 7.6L10.5 15M16.6 9l-3.2 6M8.6 6.4l6.8 .4" />
-            </svg>
-            纵览
-          </button>
-          <button className={mode === 'notes' ? 'on' : ''} onClick={() => onModeChange('notes')} title="我的笔记与划词标注（全库聚合）">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 4h11l3 3v13H5z" />
-              <path d="M8.5 9.5h7M8.5 13h7M8.5 16.5h4.5" />
-            </svg>
-            笔记
-          </button>
-          <button className={mode === 'web' ? 'on' : ''} onClick={() => onModeChange('web')} title="内置文献浏览器（知网 / arXiv 等站点直达，一键保存入库）">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z" />
-            </svg>
-            网页
           </button>
         </div>
         <div className="nav-row">
@@ -445,11 +414,7 @@ export default function LibraryPane({
             {/Mac/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}
           </button>
         </div>
-        <div className="func-row">
-          <button className="mini-btn" onClick={onReindex} title="清空并重建全库索引">
-            重建索引
-          </button>
-        </div>
+        {/* 重建索引入口收敛到 文件菜单 / 命令面板 / 设置（侧栏不再常驻，减少堆叠） */}
       </div>
       <div className="lib-files">
         {/* 文件区子标签：不透明背景，滚动内容不会从后面穿过去 */}

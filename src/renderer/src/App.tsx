@@ -123,6 +123,7 @@ export default function App(): JSX.Element {
   const [overviewTab, setOverviewTab] = useState<'table' | 'graph' | 'stats'>('table')
   const [onlineOpen, setOnlineOpen] = useState(false)
   const [findSignal, setFindSignal] = useState(0)
+  const [sideTab, setSideTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info'>('chat')
   const [pageNo, setPageNo] = useState(1)
   const [appStatus, setAppStatus] = useState<Awaited<ReturnType<typeof window.api.appStatus>> | null>(null)
   const isMac = /Mac/.test(navigator.platform)
@@ -634,6 +635,41 @@ export default function App(): JSX.Element {
         <div className="tb-title">CSPAPER</div>
         <div className="tb-drag" />
         <div className="tb-side tb-right">
+          {/* 顶栏快捷区：工具类模式全局直达（内容模式 阅读/对话 留在左栏） */}
+          <div className="tb-quick">
+            <button className={`tb-q ${mode === 'compare' ? 'on' : ''}`} title="AI 对比表格" onClick={() => setMode('compare')}>
+              ▦<span>对比</span>
+            </button>
+            <button
+              className={`tb-q ${mode === 'overview' && overviewTab !== 'stats' ? 'on' : ''}`}
+              title="纵览（文献表格 / 知识体系）"
+              onClick={() => {
+                setMode('overview')
+                setOverviewTab('table')
+              }}
+            >
+              ☰<span>纵览</span>
+            </button>
+            <button
+              className={`tb-q ${mode === 'overview' && overviewTab === 'stats' ? 'on' : ''}`}
+              title="统计仪表盘"
+              onClick={() => {
+                setMode('overview')
+                setOverviewTab('stats')
+              }}
+            >
+              ▤<span>统计</span>
+            </button>
+            <button className={`tb-q ${mode === 'notes' ? 'on' : ''}`} title="笔记中心" onClick={() => setMode('notes')}>
+              ✎<span>笔记</span>
+            </button>
+            <button className={`tb-q ${mode === 'web' ? 'on' : ''}`} title="文献浏览器（学术搜索）" onClick={() => setMode('web')}>
+              ◉<span>网页</span>
+            </button>
+            <button className="tb-q" title="在线添加文献（DOI / arXiv / 关键词）" onClick={() => setOnlineOpen(true)}>
+              ＋<span>添加</span>
+            </button>
+          </div>
           {mode === 'read' && (
             <button
               className={`icon-btn tb-toggle ${showSide ? 'on' : ''}`}
@@ -725,8 +761,8 @@ export default function App(): JSX.Element {
                 }}
               />
             )}
-            {/* 问答面板常驻：隐藏时保留聊天与翻译记录 */}
-            <div className={`side-wrap ${showSide ? '' : 'pane-hidden'}`}>
+            {/* 问答面板常驻 + 右缘功能竖轨：面板收起时轨道仍可点击展开 */}
+            <div className="side-wrap">
               <SidePanel
                 ref={sideControl}
                 width={sideWidth}
@@ -736,6 +772,8 @@ export default function App(): JSX.Element {
                 onJump={jumpTo}
                 onDeleteHighlight={onDeleteHighlight}
                 onPapersChanged={refreshPapers}
+                collapsed={!showSide}
+                onTabChange={setSideTab}
                 models={models}
                 model={model}
                 thinking={thinking}
@@ -744,6 +782,26 @@ export default function App(): JSX.Element {
                 fs={chatFs}
                 onFs={changeFs}
               />
+              <div className="side-rail">
+                <button className="side-rail-btn" title={showSide ? '收起面板' : '展开面板'} onClick={() => setShowSide((v) => !v)}>
+                  {showSide ? '»' : '«'}
+                </button>
+                {([['chat', '问', '问答'], ['translate', '译', '翻译'], ['full', '全', '全文翻译'], ['notes', '标', '划词标注'], ['refs', '献', '参考文献'], ['info', '详', '文献详情']] as const).map(
+                  ([k, label, tip]) => (
+                    <button
+                      key={k}
+                      className={`side-rail-btn ${sideTab === k && showSide ? 'on' : ''}`}
+                      title={tip}
+                      onClick={() => {
+                        setShowSide(true)
+                        sideControl.current?.openTab(k)
+                      }}
+                    >
+                      {label}
+                    </button>
+                  )
+                )}
+              </div>
             </div>
           </div>
           {/* 对话区：同样常驻，保留对话历史 */}

@@ -27,20 +27,19 @@ interface Col {
 }
 
 const COLS: Col[] = [
-  { key: 'title', label: '标题', w: '25%' },
+  // 标签并入标题单元格下方、进度并入状态单元格下方：9 列减到 7 列，标题拿回呼吸空间
+  { key: 'title', label: '标题 / 标签', w: '34%' },
   { key: 'authors', label: '作者', w: '13%' },
   { key: 'year', label: '年份', w: '6%' },
-  { key: 'venue', label: '期刊 / 来源', w: '13%' },
-  { key: 'category', label: '分类', w: '8%' },
-  { key: 'status', label: '状态', w: '9%' },
-  { key: 'tags', label: '标签', w: '11%', sort: false },
-  { key: 'progress', label: '进度', w: '9%', sort: false },
+  { key: 'venue', label: '期刊 / 来源', w: '14%' },
+  { key: 'category', label: '分类', w: '9%' },
+  { key: 'status', label: '状态 / 进度', w: '13%' },
   { key: 'cited', label: '被引', w: '6%' }
 ]
 
 // 简单窗口化：行数超过该值时只渲染可视范围 ±OVERSCAN 行，用 spacer 行撑高度
 const WIN_THRESHOLD = 300
-const WIN_ROW_H = 36
+const WIN_ROW_H = 44
 const WIN_OVERSCAN = 20
 
 const PALETTE = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
@@ -166,9 +165,9 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
 
   // ---------- 行内渲染小件 ----------
   // 标签列：圆点 + 名，最多 3 个，超出折叠为 +N
-  const tagChips = (p: Paper): JSX.Element => {
+  const tagChips = (p: Paper): JSX.Element | null => {
     const ts = p.tags ?? []
-    if (ts.length === 0) return <span className="ov-dim">—</span>
+    if (ts.length === 0) return null
     return (
       <div className="tag-chips">
         {ts.slice(0, 3).map((t) => (
@@ -336,44 +335,45 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                         }
                       />
                     </td>
-                    <td className="ov-title">{p.title}</td>
+                    <td className="ov-title">
+                      <div className="ov-title-main ellipsis">{p.title}</div>
+                      {tagChips(p)}
+                    </td>
                     <td>{p.authors || '—'}</td>
                     <td>{p.year ?? '—'}</td>
                     <td>{p.venue || '—'}</td>
                     <td>{catLabel(p.category)}</td>
                     <td>
-                      {(() => {
-                        const m = statusMeta(statusOverride[p.id] ?? p.status)
-                        return (
-                          <span
-                            className="status-pill"
-                            style={{ color: m.color, background: withAlpha(m.color, 0.12), borderColor: withAlpha(m.color, 0.28) }}
-                            title="点击选择阅读状态"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setStatusMenu({ id: p.id, x: e.clientX, y: e.clientY })
-                            }}
-                          >
-                            {<i className="sp-newdot" style={{ background: m.color }} />}
-                            <span>{m.label}</span>
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td>{tagChips(p)}</td>
-                    <td>
-                      {(() => {
-                        const pr = progOf(p)
-                        if (!pr) return null
-                        return (
-                          <div className="prog-wrap" title={pr.title}>
-                            <div className="prog-bar">
-                              <i style={{ width: `${pr.pct}%` }} />
+                      <div className="ov-status-cell">
+                        {(() => {
+                          const m = statusMeta(statusOverride[p.id] ?? p.status)
+                          return (
+                            <span
+                              className="status-pill"
+                              style={{ color: m.color, background: withAlpha(m.color, 0.12), borderColor: withAlpha(m.color, 0.28) }}
+                              title="点击选择阅读状态"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setStatusMenu({ id: p.id, x: e.clientX, y: e.clientY })
+                              }}
+                            >
+                              {<i className="sp-newdot" style={{ background: m.color }} />}
+                              <span>{m.label}</span>
+                            </span>
+                          )
+                        })()}
+                        {(() => {
+                          const pr = progOf(p)
+                          if (!pr) return null
+                          return (
+                            <div className="prog-wrap" title={pr.title}>
+                              <div className="prog-bar">
+                                <i style={{ width: `${pr.pct}%` }} />
+                              </div>
                             </div>
-                            <span className="prog-text">{pr.pct}%</span>
-                          </div>
-                        )
-                      })()}
+                          )
+                        })()}
+                      </div>
                     </td>
                     <td className="ov-cited">{p.cited_by ?? '—'}</td>
                   </tr>

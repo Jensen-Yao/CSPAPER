@@ -45,7 +45,7 @@ try {
   }
 
   // 纵览-表格
-  await page.locator('.mode-toggle button', { hasText: '纵览' }).click()
+  await page.locator('.tb-q', { hasText: '纵览' }).click()
   await wait(2500)
   await shot('06-table')
   // 纵览-知识网络
@@ -58,7 +58,7 @@ try {
   await shot('08-stats')
 
   // 笔记中心
-  await page.locator('.mode-toggle button', { hasText: '笔记' }).click()
+  await page.locator('.tb-q', { hasText: '笔记' }).click()
   await wait(3000)
   await shot('09-notes')
 

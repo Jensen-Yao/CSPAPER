@@ -10,6 +10,7 @@ export interface SideControl {
   quote: (text: string) => void
   reset: () => void
   openFulltext: () => void
+  openTab: (t: 'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info') => void
 }
 
 interface Props {
@@ -30,6 +31,10 @@ interface Props {
   onDeleteHighlight: (id: number) => void
   // 详情面板内变更（状态/标签）后通知列表刷新
   onPapersChanged?: () => void
+  // 面板折叠（折叠后由右侧功能竖轨重新展开）
+  collapsed?: boolean
+  // 当前 tab 变化上报（右侧功能竖轨高亮用）
+  onTabChange?: (t: 'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info') => void
 }
 
 interface Translation {
@@ -62,10 +67,11 @@ function splitBlocks(text: string): string[] {
 }
 
 const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
-  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs, onDeleteHighlight, onPapersChanged },
+  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs, onDeleteHighlight, onPapersChanged, collapsed, onTabChange },
   ref
 ): JSX.Element {
   const [tab, setTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info'>('chat')
+  useEffect(() => onTabChange?.(tab), [tab])
   // 参考文献抓取（W4，对标 zotero-reference）
   interface RefEntry {
     title: string
@@ -136,6 +142,9 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const scrollBottom = () => setTimeout(() => scrollRef.current?.scrollTo({ top: 1e9, behavior: 'smooth' }), 50)
 
   useImperativeHandle(ref, () => ({
+    openTab(t: 'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info') {
+      setTab(t)
+    },
     translate(text: string, context: string) {
       ctxRef.current = context || pageContext
       setTab('translate')
@@ -269,7 +278,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   }
 
   return (
-    <div className="side" style={{ width }}>
+    <div className={`side ${collapsed ? "side-collapsed" : ""}`} style={{ width: collapsed ? 0 : width }}>
       <div className="side-tabs">
         <div className={`side-tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
           问答
@@ -293,22 +302,28 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
         <div className={`side-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => setTab('info')} title="文献详情">
           详情
         </div>
-        <button className="side-new-chat" title="新对话：清空问答记录与上下文" onClick={reset}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 21c-4.4 0-8-3.1-8-7 0-2.2 1.2-4.2 3-5.5V4l3.2 1.8c.6-.1 1.2-.2 1.8-.2 4.4 0 8 3.1 8 7s-3.6 7-8 7z" />
-            <path d="M12 7.5v5M9.5 10h5" />
-          </svg>
-          新对话
-        </button>
-        <div className="fs-ctl" title={`字号（当前 ${fs}px，问答/翻译/对话共用）`}>
-          <button onClick={() => onFs(-1)} title="减小字号">
-            A−
-          </button>
-          <button onClick={() => onFs(1)} title="增大字号">
-            A+
-          </button>
-        </div>
+        {/* 新对话 / 字号控件移入问答 tab 内的对话工具条（tab 栏只留 6 个内容页签） */}
       </div>
+      {tab === 'chat' && (
+        <div className="chat-toolbar">
+          <button className="side-new-chat" title="新对话：清空问答记录与上下文" onClick={reset}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 21c-4.4 0-8-3.1-8-7 0-2.2 1.2-4.2 3-5.5V4l3.2 1.8c.6-.1 1.2-.2 1.8-.2 4.4 0 8 3.1 8 7s-3.6 7-8 7z" />
+              <path d="M12 7.5v5M9.5 10h5" />
+            </svg>
+            新对话
+          </button>
+          <span style={{ flex: 1 }} />
+          <div className="fs-ctl" title={`字号（当前 ${fs}px，问答/翻译/对话共用）`}>
+            <button onClick={() => onFs(-1)} title="减小字号">
+              A−
+            </button>
+            <button onClick={() => onFs(1)} title="增大字号">
+              A+
+            </button>
+          </div>
+        </div>
+      )}
       {tab === 'notes' ? (
         <div className="chat-scroll">
           {!paper && <div className="bil-tip">打开论文后查看本篇划词标注。</div>}
