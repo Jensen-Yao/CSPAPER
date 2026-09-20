@@ -49,19 +49,8 @@ export interface ZoteroOutcome {
   error?: string
 }
 
-const PDF_TYPES = new Set([
-  'journalArticle',
-  'conferencePaper',
-  'preprint',
-  'report',
-  'thesis',
-  'book',
-  'bookSection',
-  'manuscript',
-  'document',
-  'dictionaryEntry',
-  'encyclopediaArticle'
-])
+// 排除的技术性条目类型：其余一切有标题的条目（期刊/会议/书籍/网页/报告/专利/报纸/标准…）都可导入
+const SKIP_TYPES = new Set(['attachment', 'note', 'annotation'])
 
 function eqName(a: string, b: string): boolean {
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
@@ -146,10 +135,10 @@ export function previewZotero(dataDirRaw?: string): ZoteroPreviewResult {
       .prepare(
         `SELECT i.itemID AS itemID, i.key AS key, it.typeName AS typeName
          FROM items i JOIN itemTypes it ON it.itemTypeID = i.itemTypeID
-         WHERE it.typeName IN (${[...PDF_TYPES].map(() => '?').join(',')})
+         WHERE it.typeName NOT IN (${[...SKIP_TYPES].map(() => '?').join(',')})
            AND NOT EXISTS (SELECT 1 FROM deletedItems d WHERE d.itemID = i.itemID)`
       )
-      .all(...PDF_TYPES) as ZoteroRow[]
+      .all(...SKIP_TYPES) as ZoteroRow[]
 
     const fieldStmt = db.prepare(
       `SELECT f.fieldName AS name, v.value AS value

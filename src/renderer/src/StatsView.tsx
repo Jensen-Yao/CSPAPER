@@ -29,11 +29,70 @@ const VIEWS: Array<{ key: ViewKey; label: string; title: string }> = [
   { key: 'rank', label: '排行', title: '作者排行 · 前 15' }
 ]
 
-const PALETTE = ['#b08d57', '#7a9e7e', '#b0654a', '#6b7fa3', '#a37f9e', '#8a8f6a', '#7e9aa3', '#c4a882', '#a3675e', '#9e8f6b']
-// 频次梯度色板（暖墨家族，深 → 浅）：气泡图按名次取色
-const RAMP = ['#5f4526', '#8a6a3f', '#b08d57', '#cfae74', '#e6d7b8']
-const HEAT_LIGHT = ['rgba(60,50,35,0.07)', '#e3d4b2', '#d3b276', '#b08d57', '#7c5f33']
-const HEAT_DARK = ['rgba(255,255,255,0.05)', '#4a3f2b', '#6d5a3a', '#96784a', '#c9a86a']
+// ---------- 配色风格（可选，词云与全部图表共用） ----------
+interface StatPalette {
+  name: string
+  tree: string[]
+  ramp: string[]
+  accent: string
+  cloudHi: string
+  cloudSecond: string
+  heatLight: string[]
+  heatDark: string[]
+}
+const PALETTES: Record<string, StatPalette> = {
+  warm: {
+    name: '暖墨',
+    tree: ['#b08d57', '#7a9e7e', '#b0654a', '#6b7fa3', '#a37f9e', '#8a8f6a', '#7e9aa3', '#c4a882', '#a3675e', '#9e8f6b'],
+    ramp: ['#5f4526', '#8a6a3f', '#b08d57', '#cfae74', '#e6d7b8'],
+    accent: '#b0654a',
+    cloudHi: '#b0654a',
+    cloudSecond: '#8a6a3e',
+    heatLight: ['rgba(60,50,35,0.07)', '#e3d4b2', '#d3b276', '#b08d57', '#7c5f33'],
+    heatDark: ['rgba(255,255,255,0.05)', '#4a3f2b', '#6d5a3a', '#96784a', '#c9a86a']
+  },
+  ink: {
+    name: '墨蓝',
+    tree: ['#31456e', '#4a6b9e', '#6b86b8', '#8ba3c9', '#37597a', '#5d7a94', '#7e99b3', '#49678a', '#6f89a8', '#93a9c4'],
+    ramp: ['#24365c', '#3d567f', '#5a77a3', '#8aa3c4', '#c3d2e4'],
+    accent: '#3d567f',
+    cloudHi: '#31456e',
+    cloudSecond: '#4a6b9e',
+    heatLight: ['rgba(30,42,70,0.07)', '#c6d3e6', '#9db3d1', '#6b86b8', '#31456e'],
+    heatDark: ['rgba(255,255,255,0.05)', '#2c3a55', '#41537a', '#5a77a3', '#8aa3c4']
+  },
+  celadon: {
+    name: '青瓷',
+    tree: ['#2e6b5e', '#43857a', '#5da091', '#82b8a9', '#4a7a5f', '#6f9a80', '#93b9a1', '#3e6e6a', '#5c9a8a', '#7fb098'],
+    ramp: ['#1f4f43', '#33685a', '#4f8474', '#7aa694', '#b3cdc1'],
+    accent: '#33685a',
+    cloudHi: '#2e6b5e',
+    cloudSecond: '#43857a',
+    heatLight: ['rgba(25,60,50,0.07)', '#c2ddd2', '#93c1b0', '#5da091', '#2e6b5e'],
+    heatDark: ['rgba(255,255,255,0.05)', '#24443c', '#33685a', '#4f8474', '#7aa694']
+  },
+  crimson: {
+    name: '绛红',
+    tree: ['#8a2f36', '#a84a4f', '#c26b6b', '#d99590', '#7a3a52', '#a05a6e', '#c08a94', '#8a4a4a', '#b06a5e', '#d4a09a'],
+    ramp: ['#5c1f26', '#8a2f36', '#b05c5c', '#d3948c', '#eec4bc'],
+    accent: '#a84a4f',
+    cloudHi: '#8a2f36',
+    cloudSecond: '#a84a4f',
+    heatLight: ['rgba(90,30,35,0.07)', '#eccfd0', '#d9a3a3', '#c26b6b', '#8a2f36'],
+    heatDark: ['rgba(255,255,255,0.05)', '#4a2428', '#6e343a', '#a84a4f', '#c26b6b']
+  },
+  violet: {
+    name: '紫藤',
+    tree: ['#5b3a72', '#74528f', '#8f6ba8', '#ab8ac0', '#6a4a8a', '#8a6a9e', '#a98aba', '#75558a', '#9a7ab0', '#b8a0cc'],
+    ramp: ['#3f2755', '#5b3a72', '#7d5c96', '#a288b8', '#cbb5d6'],
+    accent: '#74528f',
+    cloudHi: '#5b3a72',
+    cloudSecond: '#74528f',
+    heatLight: ['rgba(60,35,90,0.07)', '#d8cbe6', '#b49ac9', '#8f6ba8', '#5b3a72'],
+    heatDark: ['rgba(255,255,255,0.05)', '#35244a', '#4c3666', '#74528f', '#8f6ba8']
+  }
+}
+const PAL_KEYS = Object.keys(PALETTES)
 
 const fmtHours = (s: number): string => (s >= 3600 ? `${(s / 3600).toFixed(1)} 小时` : s >= 60 ? `${Math.round(s / 60)} 分钟` : `${s} 秒`)
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v))
@@ -43,12 +102,12 @@ function hexRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
 }
-function rampColor(t: number): string {
-  const x = clamp(t, 0, 1) * (RAMP.length - 1)
-  const i = Math.min(RAMP.length - 2, Math.floor(x))
+function rampColor(t: number, ramp: string[]): string {
+  const x = clamp(t, 0, 1) * (ramp.length - 1)
+  const i = Math.min(ramp.length - 2, Math.floor(x))
   const f = x - i
-  const a = hexRgb(RAMP[i])
-  const b = hexRgb(RAMP[i + 1])
+  const a = hexRgb(ramp[i])
+  const b = hexRgb(ramp[i + 1])
   const c = a.map((v, k) => Math.round(v + (b[k] - v) * f))
   return `rgb(${c[0]},${c[1]},${c[2]})`
 }
@@ -112,9 +171,88 @@ interface Circle {
   i: number
 }
 
+// ---------- 真·词云布局：中心螺旋 + 碰撞检测 + 少量竖排 + 频次渐变色 ----------
+interface CloudWord {
+  key: string
+  w: string
+  n: number
+  x: number
+  y: number
+  size: number
+  w2: number // 半宽
+  h: number
+  rot: boolean
+  bold: boolean
+  color: string
+}
+let cloudCache: { key: string; placed: CloudWord[] } = { key: '', placed: [] }
+
+function mixLight(hex: string, f: number): string {
+  const [r, g, b] = hexRgb(hex)
+  const m = (v: number): number => Math.round(v + (255 - v) * f)
+  return `rgb(${m(r)},${m(g)},${m(b)})`
+}
+function cloudColor(rank: number, total: number, dark: boolean, pal: StatPalette): string {
+  if (rank === 0) return dark ? mixLight(pal.cloudHi, 0.35) : pal.cloudHi
+  if (rank === 1) return dark ? mixLight(pal.cloudSecond, 0.28) : pal.cloudSecond
+  if (rank === 2) return dark ? mixLight(pal.accent, 0.2) : pal.accent
+  const f = total <= 4 ? 0.5 : Math.min(1, rank / (total - 1))
+  const a = dark ? hexRgb(mixLight(pal.cloudSecond, 0.3)) : hexRgb(pal.ramp[2])
+  const b = dark ? [150, 142, 132] : hexRgb(pal.ramp[4])
+  const mix = (x: number, y: number): number => Math.round(x + (y - x) * f)
+  return `rgb(${mix(a[0], b[0])},${mix(a[1], b[1])},${mix(a[2], b[2])})`
+}
+
+function layoutCloud(g: CanvasRenderingContext2D, words: Array<{ w: string; n: number }>, W: number, H: number, dark: boolean, pal: StatPalette): CloudWord[] {
+  const placed: CloudWord[] = []
+  if (words.length === 0 || W < 80 || H < 80) return placed
+  const max = words[0].n || 1
+  const cx = W / 2
+  const cy = H / 2
+  const FONT = '"Microsoft YaHei", "PingFang SC", sans-serif'
+  const sizeOf = (rank: number, n: number): number => (rank === 0 ? 1.35 : 1) * (13 + 34 * Math.sqrt(n / max))
+  // 面积估算：整体缩放防止大画布塞不下
+  const est = words.reduce((a, wd, i) => a + Math.pow(13 + 34 * Math.sqrt(wd.n / max), 1.9) * (i < 6 ? 2.6 : 1.2), 0)
+  let scale = est > W * H * 0.55 ? Math.sqrt((W * H * 0.55) / est) : 1
+  const collides = (c: CloudWord): boolean => {
+    for (const q of placed) {
+      const cw = ((c.rot ? c.h : c.w2 * 2) + (q.rot ? q.h : q.w2 * 2)) / 2 + 7
+      const ch = ((c.rot ? c.w2 * 2 : c.h) + (q.rot ? q.w2 * 2 : q.h)) / 2 + 6
+      if (Math.abs(c.x - q.x) < cw && Math.abs(c.y - q.y) < ch) return true
+    }
+    return false
+  }
+  for (let i = 0; i < words.length; i++) {
+    const wd = words[i]
+    let size = Math.max(11, sizeOf(i, wd.n) * scale)
+    const rot = i > 2 && i % 6 === 4 && size < 30 // 少量中频词竖排增添云感
+    let placedW: CloudWord | null = null
+    for (let pass = 0; pass < 3 && !placedW; pass++) {
+      g.font = `${size}px ${FONT}`
+      const w2 = g.measureText(wd.w).width / 2
+      for (let t = 0; t < 820; t++) {
+        const rad = t * 2.4
+        const ang = t * 0.32 + (i % 7) * 0.85
+        const x = cx + rad * Math.cos(ang) * 1.3
+        const y = cy + rad * Math.sin(ang) * 0.82
+        const cand: CloudWord = { key: `c${i}`, w: wd.w, n: wd.n, x, y, size, w2, h: size, rot, bold: i < 4, color: cloudColor(i, words.length, dark, pal) }
+        const halfW = rot ? cand.h : cand.w2
+        const halfH = rot ? cand.w2 : cand.h
+        if (x - halfW < 6 || x + halfW > W - 6 || y - halfH < 6 || y + halfH > H - 6) continue
+        if (!collides(cand)) {
+          placedW = cand
+          break
+        }
+      }
+      if (!placedW) size *= 0.8 // 放不下整体缩小再试
+    }
+    if (placedW) placed.push(placedW)
+  }
+  return placed
+}
+
 // 从中心螺旋放置防重叠（放不下则缩小半径重试）
-function layoutCircles(words: Array<{ w: string; n: number }>, W: number, H: number): Circle[] {
-  const out: Circle[] = []
+function layoutCircles(words: Array<{ w: string; n: number }>, W: number, H: number): Circle[] {  const out: Circle[] = []
   const max = words[0].n || 1
   const cx = W / 2
   const cy = H / 2
@@ -208,6 +346,16 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
   const [ex, setEx] = useState<StatsExtra | null>(null)
   const [papers, setPapers] = useState<Paper[]>([])
   const [view, setView] = useState<ViewKey>('cloud')
+  const [palKey, setPalKey] = useState<string>(() => localStorage.getItem('st2.palette') ?? 'warm')
+  const pal = PALETTES[palKey] ?? PALETTES.warm
+  const pickPal = (k: string): void => {
+    setPalKey(k)
+    try {
+      localStorage.setItem('st2.palette', k)
+    } catch {
+      /* 忽略 */
+    }
+  }
   const [popup, setPopup] = useState<{ title: string; items: Paper[] } | null>(null)
 
   const stageRef = useRef<HTMLCanvasElement>(null)
@@ -285,7 +433,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
     }
   }
 
-  // ---------- 词云：横排流式，按频次定字号，色板轮换 ----------
+  // ---------- 词云：真·云状布局（中心螺旋摆放 + 少量竖排 + 频次渐变色） ----------
   const drawCloud = (): void => {
     const cv = stageRef.current
     if (!cv) return
@@ -293,44 +441,35 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
     const paint = (g: CanvasRenderingContext2D, W: number, H: number): void => {
       hits.length = 0
       const tc = themeColors()
-      const words = ov?.words.slice(0, 60) ?? []
+      const dark = document.documentElement.dataset.theme === 'dark'
+      const words = ov?.words.slice(0, 48) ?? []
       if (words.length === 0) {
         drawEmpty(g, W, H, '标题词云会随文献增多而生成。')
         return
       }
-      const max = words[0].n || 1
-      let x = 16
-      let y = 38
-      let lineH = 34
-      words.forEach((wd, i) => {
-        const size = Math.round(12 + 22 * Math.sqrt(wd.n / max))
-        g.font = `${size}px sans-serif`
-        const tw = g.measureText(wd.w).width
-        if (x + tw > W - 16) {
-          x = 16
-          y += lineH + 8
-          lineH = size + 8
-        }
-        if (y > H - 8) return
-        const key = `c${i}`
-        const hov = hoverRef.current === key
-        g.globalAlpha = hov ? 1 : 0.78 + 0.22 * (wd.n / max)
-        g.fillStyle = hov ? tc.text : PALETTE[i % PALETTE.length]
-        g.fillText(wd.w, x, y)
+      // 布局缓存：画布尺寸或词表变化才重排
+      const key = `${palKey}:${W}x${H}:${words.length}:${words[0].w}`
+      if (cloudCache.key !== key) cloudCache = { key, placed: layoutCloud(g, words, W, H, dark, pal) }
+      for (const p of cloudCache.placed) {
+        g.save()
+        g.translate(p.x, p.y)
+        if (p.rot) g.rotate(Math.PI / 2)
+        const hov = hoverRef.current === p.key
+        g.globalAlpha = hov ? 1 : 0.95
+        g.font = `${p.bold ? 700 : 400} ${p.size}px "Microsoft YaHei", "PingFang SC", sans-serif`
+        g.fillStyle = hov ? (dark ? '#f2e9dc' : '#2f2620') : p.color
+        g.fillText(p.w, -p.w2, p.size * 0.36)
+        g.restore()
         g.globalAlpha = 1
-        if (hov) {
-          g.fillStyle = tc.text
-          g.fillRect(x, y + 3, tw, 2)
-        }
+        const bw = (p.rot ? p.h : p.w2 * 2) + 4
+        const bh = (p.rot ? p.w2 * 2 : p.h) + 4
         hits.push({
-          contains: (px, py) => px >= x - 2 && px <= x + tw + 2 && py >= y - size * 0.9 && py <= y + 6,
-          key,
-          tip: `${wd.w} × ${wd.n}`,
-          pick: () => openWord(wd.w)
+          contains: (px, py) => Math.abs(px - p.x) <= bw / 2 && Math.abs(py - p.y) <= bh / 2,
+          key: p.key,
+          tip: `${p.w} × ${p.n}`,
+          pick: () => openWord(p.w)
         })
-        x += tw + 12
-        lineH = Math.max(lineH, size + 8)
-      })
+      }
       const hv = hits.find((h) => h.key === hoverRef.current)
       if (hv) drawTip(g, W, hv.tip)
     }
@@ -363,7 +502,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
         const hov = hoverRef.current === `b${c.i}`
         g.beginPath()
         g.arc(c.x, c.y, hov ? c.r + 1.5 : c.r, 0, Math.PI * 2)
-        g.fillStyle = rampColor(t)
+        g.fillStyle = rampColor(t, pal.ramp)
         g.fill()
         if (hov) {
           g.strokeStyle = tc.text
@@ -420,7 +559,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       const rects: TreeMapRect[] = []
       layoutTree(items, 0, 0, W, H, rects)
       for (const rc of rects) {
-        const col = PALETTE[rc.item.i % PALETTE.length]
+        const col = pal.tree[rc.item.i % pal.tree.length]
         const hov = hoverRef.current === `t${rc.item.i}`
         g.globalAlpha = hov ? 1 : 0.92
         g.fillStyle = col
@@ -516,7 +655,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       // 各关键词折线
       const anyHover = (hoverRef.current ?? '').startsWith('p')
       series.forEach((s, si) => {
-        const col = PALETTE[si % PALETTE.length]
+        const col = pal.tree[si % pal.tree.length]
         const map = new Map(s.years.map((p) => [p.y, p.n]))
         const active = hoverRef.current?.startsWith(`p${si}_`) ?? false
         g.globalAlpha = anyHover && !active ? 0.3 : 1
@@ -557,7 +696,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       const legendTop = Math.max(padT + 8, Math.round(H / 2 - (series.length * 17) / 2))
       series.forEach((s, si) => {
         const ly = legendTop + si * 17
-        g.fillStyle = PALETTE[si % PALETTE.length]
+        g.fillStyle = pal.tree[si % pal.tree.length]
         g.fillRect(W - padR + 16, ly - 8, 9, 9)
         g.fillStyle = tc.dim
         g.font = '11px sans-serif'
@@ -596,7 +735,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       const today = new Date()
       const endSunday = new Date(today)
       endSunday.setDate(today.getDate() + (6 - ((today.getDay() + 6) % 7)))
-      const ramp = tc.dark ? HEAT_DARK : HEAT_LIGHT
+      const ramp = tc.dark ? pal.heatDark : pal.heatLight
       const months: Array<{ x: number; label: string }> = []
       let lastMonth = -1
       for (let c = 0; c < WEEKS; c++) {
@@ -690,7 +829,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
         g.font = '12px sans-serif'
         g.fillText(trunc(r.author, Math.floor(nameW / 12)), 6, y + rowH / 2 + 4, nameW - 8)
         const w = Math.max(3, (barW * r.n) / max)
-        g.fillStyle = hov ? PALETTE[2] : PALETTE[i % PALETTE.length]
+        g.fillStyle = hov ? pal.accent : pal.tree[i % pal.tree.length]
         g.beginPath()
         g.roundRect(barX, y + (rowH - bh) / 2, w, bh, 4)
         g.fill()
@@ -755,7 +894,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
           g.fillText(r.ym.slice(2), padL + i * bw + 1, H - 6)
         }
       })
-      g.strokeStyle = '#b0654a'
+      g.strokeStyle = pal.accent
       g.lineWidth = 1.6
       g.beginPath()
       rows.forEach((r, i) => {
@@ -769,7 +908,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       g.fillRect(W - 152, 6, 8, 8)
       g.fillStyle = tc.dim
       g.fillText('导入', W - 141, 13)
-      g.strokeStyle = '#b0654a'
+      g.strokeStyle = pal.accent
       g.beginPath()
       g.moveTo(W - 106, 10)
       g.lineTo(W - 94, 10)
@@ -800,7 +939,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
         g.font = '11.5px sans-serif'
         g.fillText(trunc(r.title, 30), 4, y + rowH * 0.68, labelW - 6)
         const w = Math.max(2, ((W - barX - 64) * r.seconds) / max)
-        g.fillStyle = PALETTE[2]
+        g.fillStyle = pal.accent
         g.beginPath()
         g.roundRect(barX, y + rowH * 0.26, w, rowH * 0.48, 3)
         g.fill()
@@ -843,7 +982,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
   useEffect(() => {
     hoverRef.current = null
     drawStage()
-  }, [view, ov, ex])
+  }, [view, ov, ex, palKey])
 
   // 数据到达 → 下方两图重绘
   useEffect(() => {
@@ -854,10 +993,10 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
   if (!visible) return null
   const readPct = ov && ov.totalPapers > 0 ? Math.round((ov.readingPapers / ov.totalPapers) * 100) : 0
   const cards: Array<{ num: string; label: string; color: string }> = [
-    { num: ov ? String(ov.totalPapers) : '—', label: '文献总数', color: PALETTE[0] },
-    { num: ov ? fmtHours(ov.totalReadSeconds) : '—', label: '累计阅读时长', color: PALETTE[2] },
-    { num: ov ? String(ov.readingPapers) : '—', label: ov ? `在读 · 占 ${readPct}%` : '在读', color: PALETTE[1] },
-    { num: ov ? String(ov.statuses.find((s) => s.status === 'read')?.count ?? 0) : '—', label: '已读完', color: PALETTE[3] }
+    { num: ov ? String(ov.totalPapers) : '—', label: '文献总数', color: pal.tree[0] },
+    { num: ov ? fmtHours(ov.totalReadSeconds) : '—', label: '累计阅读时长', color: pal.accent },
+    { num: ov ? String(ov.readingPapers) : '—', label: ov ? `在读 · 占 ${readPct}%` : '在读', color: pal.tree[1] },
+    { num: ov ? String(ov.statuses.find((s) => s.status === 'read')?.count ?? 0) : '—', label: '已读完', color: pal.tree[3] }
   ]
 
   return (
@@ -880,6 +1019,18 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
             {VIEWS.map((v) => (
               <button key={v.key} className={`st2-chip ${view === v.key ? 'on' : ''}`} onClick={() => setView(v.key)}>
                 {v.label}
+              </button>
+            ))}
+            <span className="st2-pal-sep" />
+            {PAL_KEYS.map((k) => (
+              <button
+                key={k}
+                className={`st2-pal ${palKey === k ? 'on' : ''}`}
+                title={`配色风格：${PALETTES[k].name}`}
+                onClick={() => pickPal(k)}
+              >
+                <i style={{ background: PALETTES[k].accent }} />
+                {PALETTES[k].name}
               </button>
             ))}
           </div>

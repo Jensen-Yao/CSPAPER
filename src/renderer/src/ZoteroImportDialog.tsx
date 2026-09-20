@@ -108,7 +108,7 @@ export default function ZoteroImportDialog({ initialCats, onClose, onFinished }:
         const ok = outs.filter((o) => o.ok && !o.skipped).length
         const skip = outs.filter((o) => o.skipped).length
         const fail = outs.length - ok - skip
-        setDoneSummary(`成功导入 ${ok} 篇${skip ? ` · 跳过已存在 ${skip} 篇` : ''}${fail > 0 ? ` · 失败 ${fail} 篇` : ''}`)
+        setDoneSummary(`成功导入 ${ok} 篇${skip ? ` · 跳过已存在 ${skip} 篇` : ''}${fail > 0 ? ` · 失败 ${fail} 篇` : ''}（Zotero 共发现 ${rows.length} 篇）`)
         setPhase('done')
       })
       .catch((e) => {

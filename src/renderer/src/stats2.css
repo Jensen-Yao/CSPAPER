@@ -256,3 +256,24 @@ html[data-theme='dark'] .st2-panel {
 html[data-theme='dark'] .st2-chip.on {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
+
+/* 滚动兜底：无论 flex 高度如何解析，统计页都可滚动 */
+.ov-host { position: relative; }
+.st2-view {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  overscroll-behavior: contain;
+}
+
+/* 配色选择器 */
+.st2-pal-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+.st2-pal {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text-dim);
+  border-radius: 14px; padding: 4px 10px; font-size: 11.5px; cursor: pointer; font-family: inherit;
+  transition: all 0.15s ease;
+}
+.st2-pal i { width: 9px; height: 9px; border-radius: 50%; }
+.st2-pal:hover { border-color: var(--accent); color: var(--text); transform: translateY(-1px); }
+.st2-pal.on { border-color: var(--accent); color: var(--text); background: rgba(176, 141, 87, 0.12); font-weight: 600; }

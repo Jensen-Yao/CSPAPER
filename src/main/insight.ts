@@ -510,12 +510,32 @@ export interface GraphEdge {
   w: number
 }
 
+// 中文停用词（Intl.Segmenter 分词后仍会出现的通用词）
+const ZH_STOP = new Set([
+  '研究', '方法', '分析', '基于', '系统', '综述', '应用', '技术', '一种', '及其', '面向', '问题', '影响', '进展',
+  '模型', '框架', '结果', '本文', '提出', '通过', '进行', '以及', '可以', '不同', '具有', '相关', '领域', '工作',
+  '论文', '提供', '重要', '有效', '主要', '作为', '关于', '表明', '采用', '结合', '实现', '考虑', '提高', '减少',
+  '利用', '方面', '情况', '过程', '条件', '性能', '结构', '功能', '特性', '方案', '设计', '优化', '改进'
+])
+const EN_STOP_INSIGHT = new Set([
+  'the', 'and', 'for', 'with', 'based', 'from', 'into', 'onto', 'via', 'using', 'under', 'over', 'between', 'among',
+  'research', 'study', 'method', 'methods', 'approach', 'approaches', 'analysis', 'model', 'models', 'modeling',
+  'framework', 'frameworks', 'system', 'systems', 'journal', 'international', 'proceedings', 'conference',
+  'university', 'press', 'review', 'applied', 'result', 'results', 'paper', 'papers', 'propose', 'proposed',
+  'novel', 'toward', 'towards', 'ieee', 'access', 'springer', 'elsevier', 'science', 'nature'
+])
+// 中文用 Intl.Segmenter 真分词（不再产生"的电/务规"式二字组碎片），英文按词并滤停用词
+const zhSeg = new Intl.Segmenter('zh', { granularity: 'word' })
 const tokenize = (text: string): string[] => {
   const t = (text || '').toLowerCase()
   const terms: string[] = []
-  for (const w of t.match(/[a-z0-9][a-z0-9-]{1,}/g) ?? []) terms.push(w)
-  const cjk = t.replace(/[^\u4e00-\u9fff]/g, '')
-  for (let i = 0; i < cjk.length - 1; i++) terms.push(cjk.slice(i, i + 2))
+  for (const w of t.match(/[a-z][a-z0-9-]{2,}/g) ?? []) {
+    if (!EN_STOP_INSIGHT.has(w)) terms.push(w)
+  }
+  for (const s of zhSeg.segment(t)) {
+    const v = s.segment
+    if (/^[\u4e00-\u9fff]{2,}$/.test(v) && !ZH_STOP.has(v)) terms.push(v)
+  }
   return terms
 }
 

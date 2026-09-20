@@ -47,16 +47,8 @@ const STOP_WORDS = new Set(['the', 'of', 'for', 'and', 'a', 'an', 'in', 'on', 't
 function titleWords(titles: string[]): Array<{ w: string; n: number }> {
   const freq = new Map<string, number>()
   for (const raw of titles) {
-    const t = (raw || '').toLowerCase()
-    for (const w of t.match(/[a-zA-Z]{3,}/g) ?? []) {
-      if (STOP_WORDS.has(w)) continue
-      freq.set(w, (freq.get(w) ?? 0) + 1)
-    }
-    const cjk = t.replace(/[^\u4e00-\u9fff]/g, '')
-    for (let i = 0; i < cjk.length - 1; i++) {
-      const bi = cjk.slice(i, i + 2)
-      freq.set(bi, (freq.get(bi) ?? 0) + 1)
-    }
+    // 与词云同一套真分词（Intl.Segmenter），不再产生二字组碎片
+    for (const w of wordsOfTitle(raw)) freq.set(w, (freq.get(w) ?? 0) + 1)
   }
   return [...freq.entries()]
     .filter(([w]) => !/^\d+$/.test(w))
@@ -135,14 +127,14 @@ export interface WordYear {
 const EN_STOP = STOP_WORDS
 const CJK_STOP2 = new Set(['研究', '方法', '分析', '基于', '系统', '综述', '应用', '技术', '一种', '及其', '面向', '问题'])
 
+const zhSegStats = new Intl.Segmenter('zh', { granularity: 'word' })
 function wordsOfTitle(title: string): string[] {
   const t = (title || '').toLowerCase()
   const out: string[] = []
   for (const w of t.match(/[a-z][a-z-]{2,}/g) ?? []) if (!EN_STOP.has(w)) out.push(w)
-  const cjk = t.replace(/[^\u4e00-\u9fff]/g, '')
-  for (let i = 0; i < cjk.length - 1; i++) {
-    const g = cjk.slice(i, i + 2)
-    if (!CJK_STOP2.has(g)) out.push(g)
+  for (const s of zhSegStats.segment(t)) {
+    const v = s.segment
+    if (/^[\u4e00-\u9fff]{2,}$/.test(v) && !CJK_STOP2.has(v)) out.push(v)
   }
   return out
 }
