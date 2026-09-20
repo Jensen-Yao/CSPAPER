@@ -856,8 +856,8 @@ export default function App(): JSX.Element {
       </div>
 
       <div className="statusbar">
-        <span className="chip">{appStatus ? `${appStatus.papers} 篇 · ${appStatus.categories} 类` : ''}</span>
-        <span className="ellipsis" style={{ maxWidth: 420 }}>{statusLeft}</span>
+        <span className="chip">📚 {appStatus ? `${appStatus.papers} 篇 · ${appStatus.categories} 类` : ''}</span>
+        <span className="chip ellipsis" style={{ maxWidth: 420 }}>⚡ {statusLeft}</span>
         <span style={{ flex: 1 }} />
         <span
           className={`chip bridge-chip ${appStatus?.bridge.running ? 'on' : 'off'}`}
@@ -867,7 +867,7 @@ export default function App(): JSX.Element {
           {appStatus?.bridge.running ? '● 服务就绪' : '○ 服务离线'}
         </span>
         <span className="chip" title={llmChip} onClick={() => void refreshLlmChip()}>
-          {llmChip || `${settings?.model ?? ''}${settings ? ` · ${PROVIDER_LABEL[settings.provider] ?? ''}` : ''}`}
+          🔑 {llmChip || `${settings?.model ?? ''}${settings ? ` · ${PROVIDER_LABEL[settings.provider] ?? ''}` : ''}`}
         </span>
       </div>
 

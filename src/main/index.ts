@@ -54,7 +54,10 @@ function overlayColors(theme: string): { color: string; symbolColor: string } {
 function trayIcon(): Electron.NativeImage {
   const p = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'build/icon.png')
   const img = nativeImage.createFromPath(p)
-  return img.isEmpty() ? nativeImage.createEmpty() : img.resize({ width: 16, height: 16 })
+  if (img.isEmpty()) return nativeImage.createEmpty()
+  // 托盘 16px 缩放；个别环境缩放得到空图时退回原图（Windows 会自行缩放）
+  const small = img.resize({ width: 16, height: 16 })
+  return small.isEmpty() ? img : small
 }
 
 // 常驻托盘（W10，对标 Keep Zotero）：开启「关闭时最小化到托盘」后点 X 不退出，插件仍可一键保存
@@ -62,7 +65,8 @@ function ensureTray(): void {
   if (tray) return
   try {
     tray = new Tray(trayIcon())
-  } catch {
+  } catch (e) {
+    console.error('[tray] 创建失败:', String(e))
     return // 平台不支持托盘（个别 Linux 桌面）就静默跳过
   }
   tray.setToolTip('CSPAPER')
@@ -80,6 +84,7 @@ function ensureTray(): void {
     ])
   )
   tray.on('click', () => showMainWindow())
+  console.log('[tray] 托盘图标已创建')
 }
 
 function showMainWindow(): void {
@@ -106,6 +111,8 @@ function createWindow(): void {
     minHeight: 640,
     backgroundColor: '#26221e',
     title: 'CSPAPER',
+    // 开发态/Windows 任务栏与窗口图标（打包后由 electron-builder 的 build/icon 提供）
+    icon: path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'build/icon.png'),
     titleBarStyle: process.platform === 'linux' ? 'default' : 'hidden',
     ...(process.platform === 'win32'
       ? { titleBarOverlay: { ...overlayColors('system'), height: 40 } }
@@ -128,7 +135,8 @@ function createWindow(): void {
   win.on('focus', () => maybeRescan('focus', 60_000))
   // 关闭最小化到托盘（W10）：设置开启且非真正退出时隐藏窗口
   win.on('close', (e) => {
-    if (quitting || !dbmod.getSettings().closeToTray) return
+    // 托盘不存在时绝不藏窗（否则应用"消失"找不回）；仅当「关闭到托盘」开启且托盘已就绪时隐藏
+    if (quitting || !tray || !dbmod.getSettings().closeToTray) return
     e.preventDefault()
     win!.hide()
   })
@@ -138,6 +146,8 @@ function createWindow(): void {
 }
 
 app.setName('CSPAPER')
+// Windows 任务栏分组 / 托盘通知需要 AppUserModelId（与 appId 一致）
+app.setAppUserModelId('com.jensenyao.cspaper')
 
 applyDataDir()
 migrateLegacyData()
