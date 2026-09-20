@@ -44,7 +44,7 @@ try {
   await jsClick('.wb-nav-item', '自动化')
   await wait(1500)
   await shot('w3-work-auto')
-  await jsClick('.wb-nav-item', 'MCP')
+  await jsClick('.wb-nav-item', '插件市场')
   await wait(1500)
   await shot('w4-work-mcp')
 
@@ -58,7 +58,7 @@ try {
     await wait(5000)
     await shot('p2-reader')
   }
-  await jsClick('.top-switch button', '纵览')
+  await jsClick('.tb-q', '纵览')
   await wait(2500)
   await shot('p3-overview')
   await jsClick('.ov-tab', '知识')

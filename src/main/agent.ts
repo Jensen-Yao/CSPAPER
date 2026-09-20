@@ -488,9 +488,14 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
       stopWhen: stepCountIs(maxSteps),
       tools,
       onStepFinish: (st) => {
-        stepsDone++
+        // 步收尾：该步全文写入当前流块（同 sid 原地替换滚动尾巴），再开新块
         const text = st.text?.trim()
-        if (text) emit(t, { kind: 'text', text: text.slice(0, 2000), sid: stepsDone - 1 })
+        if (text) {
+          lastEmitAt = Date.now()
+          emit(t, { kind: 'text', text: text.slice(0, 2000), sid: 100000 + stepsDone, stream: true })
+        }
+        stepsDone++
+        stepText = ''
       },
       system:
         '你是 CSPAPER 科研智能体。严格按照以下已确认的计划逐步执行（每步调用对应工具，参数已给定可直接用；' +
@@ -504,6 +509,7 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
     let stepText = ''
     let lastEmitAt = 0
     const flush = (force: boolean): void => {
+      if (!stepText.trim()) return
       const now = Date.now()
       if (!force && now - lastEmitAt < 400) return
       lastEmitAt = now

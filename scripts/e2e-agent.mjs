@@ -101,17 +101,29 @@ try {
   await jsClick('.top-switch button', 'Work')
   await wait(1500)
 
+  // 权限切到「执行前确认」（验证新权限菜单），再输入目标发送
+  await page.evaluate(() => {
+    const pill = [...document.querySelectorAll('.wb-pill')].find((b) => b.textContent.includes('完全访问'))
+    if (pill) pill.click()
+  })
+  await wait(400)
+  await page.evaluate(() => {
+    const item = [...document.querySelectorAll('.wb-pop-item')].find((b) => b.textContent.includes('执行前确认'))
+    if (item) item.click()
+  })
+  await wait(400)
+
   // 输入目标并发送
   await page.fill('.wb-compose-input', '检索 resilience 相关文献，浏览库内文献，并对前两篇生成综述')
   await page.click('.wb-send')
   await wait(3000)
 
   // 计划卡出现 → 确认执行
-  const hasRun = await page.locator('text=确认并执行计划').count()
+  const hasRun = await page.locator('text=确认并执行').count()
   console.log('PLAN-CARD', hasRun > 0 ? 'shown' : 'missing')
   await page.screenshot({ path: path.join(ROOT, 'ui-audit', 'e2e-plan.png') })
   if (hasRun) {
-    await page.locator('text=确认并执行计划').click()
+    await page.locator('text=确认并执行').first().click()
     // 等待完成（最多 40s）
     for (let i = 0; i < 20; i++) {
       await wait(2000)
@@ -119,7 +131,7 @@ try {
       if (st !== '执行中') { console.log('FINAL-STATUS', st); break }
     }
     await page.screenshot({ path: path.join(ROOT, 'ui-audit', 'e2e-done.png') })
-    const timeline = await page.evaluate(() => document.querySelector('.wb-timeline')?.textContent?.slice(0, 400) ?? '')
+    const timeline = await page.evaluate(() => document.querySelector('.wb-doc')?.textContent?.slice(0, 400) ?? '')
     console.log('TIMELINE', timeline.slice(0, 300))
   }
   await page.screenshot({ path: path.join(ROOT, 'ui-audit', 'e2e-final.png') })
