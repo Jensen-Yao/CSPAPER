@@ -178,6 +178,8 @@ app.whenReady().then(() => {
   registerKnowledgeIpc()
   registerIntegrateIpc()
   registerAgentIpc(ctx)
+  // 预热 MCP 连接（若用户配置了 mcp.json）
+  void import('./mcp').then((m) => m.connectAll()).catch(() => {})
   registerZoteroApiIpc(ctx)
   // 内置浏览器会话：独立分区 + Connector 扩展 + PDF 下载自动入库
   setupWebSession((title, detail) => send('app:notice', { title, detail }))

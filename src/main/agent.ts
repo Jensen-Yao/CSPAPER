@@ -1,7 +1,9 @@
 // 科研工作台 Agent 内核（v0.9）：基于 Vercel AI SDK（MIT）的工具调用循环。
 // 计划-确认-执行：目标 → LLM 产 JSON 计划（chatStream）→ 用户确认 → streamText + tools 自动执行。
 // 端点不支持 function calling 时自动降级 ReAct 文本协议。全程事件持久化（agent_tasks 表）可回放。
-import { streamText, tool, stepCountIs } from 'ai'
+import fs from 'node:fs'
+import path from 'node:path'
+import { streamText, tool, stepCountIs, dynamicTool } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { z } from 'zod'
 import { getDb, getSettings, listPapers } from './db'
@@ -10,6 +12,9 @@ import { hybridSearch, extractPagesCached } from './ingest'
 import { searchAll, matchScript, runWeb, extractDoi, importTranslated } from './translators'
 import { synthesizePapers, generateCells, createCompare, getMyNotesText, saveMyNotesText } from './insight'
 import { formatCite } from './csl'
+import { listMcpTools, callMcpTool } from './mcp'
+import { listSkills, skillBody } from './skills'
+import { addPaperTag } from './db'
 
 export interface PlanStep {
   tool: string
@@ -95,6 +100,20 @@ function loadTask(id: string): AgentTask | null {
 }
 
 // ---------- 计划生成（chatStream，不依赖 function calling） ----------
+function mcpToolMenu(): string {
+  const ts = listMcpTools()
+  if (ts.length === 0) return ''
+  const head = '\n外部 MCP 工具（名称需完整使用）：\n'
+  return head + ts.map((t) => `${t.fullName} ${t.description ? '— ' + t.description.slice(0, 80) : ''}`).join('\n')
+}
+
+function skillMenu(): string {
+  const sk = listSkills()
+  if (sk.length === 0) return ''
+  const head = '\n研究技能（用 use_skill 加载说明书后按流程执行）：\n'
+  return head + sk.map((x) => `${x.name} — ${x.description.slice(0, 80)}`).join('\n')
+}
+
 const TOOL_MENU = [
   'search_papers {query} — 联网检索学术文献（Crossref/OpenAlex/arXiv）',
   'search_library {query, category?} — 在本地文献库全文+向量检索',
@@ -176,7 +195,28 @@ function buildTools(t: AgentTask) {
     emit(t, { kind: 'artifact', artifact: a, text: a?.title })
   }
 
+  const mcp: Record<string, ReturnType<typeof dynamicTool>> = {}
+  for (const mt of listMcpTools()) {
+    mcp[mt.fullName] = dynamicTool({
+      description: `[MCP:${mt.server}] ${mt.description || mt.name}`,
+      inputSchema: (mt.inputSchema ?? { type: 'object', properties: {} }) as Parameters<typeof dynamicTool>[0]['inputSchema'],
+      execute: async (input: unknown) => {
+        const t0 = Date.now()
+        emit(t, { kind: 'status', text: `正在执行 ${mt.fullName}` })
+        try {
+          const out = await callMcpTool(mt.fullName, (input ?? {}) as Record<string, unknown>)
+          emit(t, { kind: 'step', tool: mt.fullName, text: 'MCP 调用成功', ok: true, ms: Date.now() - t0 })
+          return cap(out)
+        } catch (e) {
+          emit(t, { kind: 'step', tool: mt.fullName, text: String(e).slice(0, 120), ok: false, ms: Date.now() - t0 })
+          return `MCP 调用失败：${String(e).slice(0, 200)}`
+        }
+      }
+    })
+  }
+
   return {
+    ...mcp,
     search_papers: tool({
       description: '联网检索学术文献（Crossref/OpenAlex 等），返回题录列表',
       inputSchema: z.object({ query: z.string().describe('检索词：标题/关键词/DOI') }),
@@ -334,6 +374,61 @@ function buildTools(t: AgentTask) {
             return (r.items ?? []).join('\n')
           })
         )
+    }),
+    add_tag: tool({
+      description: '给某篇文献打标签（标签不存在会自动创建）',
+      inputSchema: z.object({ paperId: z.number(), tag: z.string() }),
+      execute: async ({ paperId, tag }) =>
+        cap(
+          await step('add_tag', `${paperTitle(paperId)} ← ${tag}`, async () => {
+            addPaperTag(paperId, tag)
+            return '标签已添加'
+          })
+        )
+    }),
+    set_status: tool({
+      description: '修改阅读状态：todo(稍后读)/unread(待读)/reading(在读)/read(已读)/paused(暂不读)',
+      inputSchema: z.object({ paperId: z.number(), status: z.enum(['todo', 'unread', 'reading', 'read', 'paused']) }),
+      execute: async ({ paperId, status }) =>
+        cap(
+          await step('set_status', `${paperTitle(paperId)} → ${status}`, async () => {
+            getDb().prepare('UPDATE papers SET status=? WHERE id=?').run(status, paperId)
+            return '状态已更新'
+          })
+        )
+    }),
+    ai_annotate: tool({
+      description: '把一段 AI 标注/批注追加到文献的 md 笔记（含时间戳）',
+      inputSchema: z.object({ paperId: z.number(), text: z.string() }),
+      execute: async ({ paperId, text }) =>
+        cap(
+          await step('ai_annotate', `${paperTitle(paperId)}`, async () => {
+            const p = listPapers().find((x) => x.id === paperId)
+            if (!p) throw new Error('论文不存在')
+            const dir = path.dirname(p.path)
+            const mdPath = path.join(dir, `${p.slug}.md`)
+            fs.appendFileSync(mdPath, `
+## AI 标注（${new Date().toLocaleString('zh-CN')}）
+
+${text}
+`)
+            return '标注已追加'
+          })
+        )
+    }),
+    use_skill: tool({
+      description: '加载一个研究技能的完整说明书（加载后按说明书组合工具执行）。可用技能见系统提示',
+      inputSchema: z.object({ name: z.string().describe('技能名') }),
+      execute: async ({ name }) =>
+        cap(
+          await step('use_skill', name, async () => {
+            const sk = skillBody(name)
+            if (!sk) throw new Error(`技能不存在：${name}（可用：${listSkills().map((x) => x.name).join('、')}）`)
+            return `【技能：${sk.name}】说明书如下，请严格按其流程组合工具执行：
+
+${sk.body}`
+          })
+        )
     })
   }
 }
@@ -366,7 +461,7 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
         if (text) emit(t, { kind: 'text', text: text.slice(0, 2000) })
       },
       system:
-        '你是 CSPAPER 科研工作台的执行代理。严格按照以下已确认的计划逐步执行（每步调用对应工具，参数已给定可直接用；' +
+        '你是 CSPAPER 科研智能体。严格按照以下已确认的计划逐步执行（每步调用对应工具，参数已给定可直接用；' +
         '若某步失败，调整参数重试一次或跳过并在最后说明）。完成后输出最终总结（做了什么、产物在哪、未尽事项），中文。\n\n执行计划：\n' +
         planText +
         '\n\n文献库分类与论文 id 可通过 list_library 查询。',
@@ -434,7 +529,7 @@ async function reactFallback(t: AgentTask, signal: AbortSignal): Promise<string>
     {
       role: 'system',
       content:
-        '你是科研执行代理。严格按已确认计划执行。每轮只输出以下格式之一：\n' +
+        '你是 CSPAPER 科研智能体。严格按已确认计划执行。每轮只输出以下格式之一：\n' +
         'Thought: 思考\nAction: 工具名\nAction Input: {"参数": "值"}\n或\nFinal Answer: 最终总结\n\n可用工具：\n' +
         TOOL_MENU +
         '\n\n已确认计划：\n' +

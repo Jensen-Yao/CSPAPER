@@ -248,6 +248,16 @@ const api = {
   // ---------- Paper 补强（v0.9） ----------
   exportBibtex: (ids: number[]) => ipcRenderer.invoke('export:bibtex', ids),
 
+  // ---------- 技能 / 自动化 / MCP（v0.10） ----------
+  agentMcpStatus: () => ipcRenderer.invoke('agent:mcp-status'),
+  agentMcpOpenConfig: () => ipcRenderer.invoke('agent:mcp-open-config'),
+  agentSkills: () => ipcRenderer.invoke('agent:skills'),
+  agentSkillsOpenDir: () => ipcRenderer.invoke('agent:skills-open-dir'),
+  agentAutoList: () => ipcRenderer.invoke('agent:auto-list'),
+  agentAutoCreate: (name: string, goal: string, minutes: number) => ipcRenderer.invoke('agent:auto-create', name, goal, minutes),
+  agentAutoRemove: (id: number) => ipcRenderer.invoke('agent:auto-remove', id),
+  agentAutoToggle: (id: number, enabled: boolean) => ipcRenderer.invoke('agent:auto-toggle', id, enabled),
+
   // ---------- 内置浏览器 + 一键安装（v0.7） ----------
   webSavePage: (url: string, category?: string) => ipcRenderer.invoke('web:save-page', url, category),
   extOpenFolder: () => ipcRenderer.invoke('ext:open-folder'),

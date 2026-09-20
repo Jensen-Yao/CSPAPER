@@ -399,6 +399,14 @@ declare global {
       zoteroApiVerify: (userId: string, apiKey: string) => Promise<{ ok: boolean; error?: string; items?: number }>
       zoteroApiSync: (mode: 'full' | 'incremental') => Promise<{ ok: boolean }>
       onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string }) => void) => () => void
+      agentMcpStatus: () => Promise<{ results: Array<{ server: string; ok: boolean; tools: number; error?: string }>; tools: Array<{ fullName: string; server: string; description: string }>; configPath: string }>
+      agentMcpOpenConfig: () => Promise<boolean>
+      agentSkills: () => Promise<Array<{ name: string; description: string; source: 'builtin' | 'user' }>>
+      agentSkillsOpenDir: () => Promise<boolean>
+      agentAutoList: () => Promise<Array<{ id: number; name: string; goal: string; interval_minutes: number; enabled: number; last_run_at: string | null; last_result: string | null }>>
+      agentAutoCreate: (name: string, goal: string, minutes: number) => Promise<unknown>
+      agentAutoRemove: (id: number) => Promise<boolean>
+      agentAutoToggle: (id: number, enabled: boolean) => Promise<boolean>
       onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } } }) => void) => () => void
       // ---------- 知识体系 + 统计扩展（v0.7） ----------
       graphKeywords: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number; papers: number[] }>; edges: Array<{ a: string; b: string; w: number }> }>
