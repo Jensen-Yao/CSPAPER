@@ -97,10 +97,9 @@ function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s:
 
   if (!val) {
     return (
-      <div className="card-sum">
-        <span className="sum-label">AI 小结</span>
-        <button className="sum-gen" disabled={busy} onClick={() => void gen()}>
-          {busy ? '生成中…' : '生成小结'}
+      <div className="card-sum card-sum-empty">
+        <button className="sum-gen-link" disabled={busy} onClick={() => void gen()}>
+          {busy ? '分析中…' : '✦ 生成 AI 小结'}
         </button>
         {err && <span className="sum-err">{err}</span>}
       </div>

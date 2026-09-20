@@ -2048,3 +2048,29 @@ html[data-theme='dark'] .ov-adv { background: rgba(255,255,255,0.04); }
 .pd-similar-item:hover { border-color: var(--accent, #b08d57); }
 .pd-similar-title { font-size: 12px; font-weight: 600; color: var(--text); }
 .pd-similar-snippet { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* ---------- AI 小结空态轻量化 ---------- */
+.card-sum-empty { padding: 6px 0; }
+.sum-gen-link {
+  border: 0; background: transparent; color: var(--text-dim); font-size: 12px;
+  cursor: pointer; font-family: inherit; padding: 2px 0; transition: color 0.12s ease;
+}
+.sum-gen-link:hover:not(:disabled) { color: var(--accent, #b08d57); }
+.sum-gen-link:disabled { opacity: 0.6; }
+
+/* ---------- 全局间距统一（v0.11 美化） ---------- */
+/* 左栏分组：按钮区/搜索区/文件区之间留呼吸空间 */
+.lib-func { gap: 10px; padding: 12px 12px 8px; }
+.lib-files { padding-top: 4px; }
+/* 侧栏 tab 精致化 */
+.side-tab { font-size: 12.5px; letter-spacing: 0.3px; }
+.side-tab.active { font-weight: 600; }
+/* 纵览 tab 一致化 */
+.ov-tab { transition: all 0.14s var(--ease); }
+.ov-tab:hover { border-color: var(--text-dim); }
+/* 导入对话框按钮间距 */
+.modal-actions { padding: 14px 18px; gap: 10px; }
+/* 右侧栏面板间距 */
+.side-tabs { padding: 0 10px 0 12px; }
+/* 状态栏与主内容分隔更清晰 */
+.statusbar { border-top: 1px solid var(--border); }
