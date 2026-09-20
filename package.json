@@ -71,6 +71,10 @@
           ]
         }
       ]
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
     }
   },
   "dependencies": {
