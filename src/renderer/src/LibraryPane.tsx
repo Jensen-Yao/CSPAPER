@@ -409,7 +409,7 @@ export default function LibraryPane({
           新建对话
         </button>
         <div className="search-wrap">
-          <input className="searchbox" placeholder="搜索" value={q} onChange={(e) => onSetQ(e.target.value)} />
+          <input className="searchbox" placeholder="搜索标题 / 正文 / 笔记…" value={q} onChange={(e) => onSetQ(e.target.value)} />
           <button className="kbd-hint" title="命令面板（搜索文献 / 执行命令）" onClick={onOpenPalette}>
             {/Mac/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}
           </button>
