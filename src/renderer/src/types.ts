@@ -411,7 +411,7 @@ declare global {
       agentAutoCreate: (name: string, goal: string, minutes: number) => Promise<unknown>
       agentAutoRemove: (id: number) => Promise<boolean>
       agentAutoToggle: (id: number, enabled: boolean) => Promise<boolean>
-      onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } } }) => void) => () => void
+      onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; sid?: number; stream?: boolean; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } }; replace?: boolean }) => void) => () => void
       // ---------- 知识体系 + 统计扩展（v0.7） ----------
       graphKeywords: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number; papers: number[] }>; edges: Array<{ a: string; b: string; w: number }> }>
       graphAuthors: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number }>; edges: Array<{ a: string; b: string; w: number }> }>

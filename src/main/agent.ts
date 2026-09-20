@@ -29,6 +29,8 @@ export interface AgentEvent {
   text?: string
   ok?: boolean
   ms?: number
+  sid?: number // 流式流 id：同 sid 的 text 事件在 UI 上原地替换（ZCode 式流式输出）
+  stream?: boolean
   artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string }
 }
 
@@ -87,9 +89,15 @@ function saveTask(t: AgentTask): void {
 
 function emit(t: AgentTask, ev: Omit<AgentEvent, 't'>): void {
   const full: AgentEvent = { t: Date.now(), ...ev }
-  t.events.push(full)
+  // 流式增量：与上一条事件同 sid 时原地替换（持久化与 UI 都只保留一份，防止刷屏膨胀）
+  const last = t.events[t.events.length - 1]
+  if (ev.stream && last && last.kind === 'text' && last.sid != null && last.sid === full.sid) {
+    t.events[t.events.length - 1] = full
+  } else {
+    t.events.push(full)
+  }
   saveTask(t)
-  send('agent:event', { taskId: t.id, event: full })
+  send('agent:event', { taskId: t.id, event: full, replace: !!(ev.stream && last && last.kind === 'text' && last.sid === full.sid) })
 }
 
 function loadTask(id: string): AgentTask | null {
@@ -473,8 +481,9 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
       stopWhen: stepCountIs(maxSteps),
       tools,
       onStepFinish: (st) => {
+        stepsDone++
         const text = st.text?.trim()
-        if (text) emit(t, { kind: 'text', text: text.slice(0, 2000) })
+        if (text) emit(t, { kind: 'text', text: text.slice(0, 2000), sid: stepsDone - 1 })
       },
       system:
         '你是 CSPAPER 科研智能体。严格按照以下已确认的计划逐步执行（每步调用对应工具，参数已给定可直接用；' +
@@ -483,10 +492,21 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
         '\n\n文献库分类与论文 id 可通过 list_library 查询。',
       messages: [{ role: 'user', content: `任务目标：${t.goal}` }]
     })
-    // 消费流（工具循环由 SDK 驱动）
-    for await (const _ of result.textStream) {
-      /* 文本增量已在 onStepFinish 汇总，这里仅驱动流 */
+    // 消费流：工具循环由 SDK 驱动；文本增量节流 400ms 流式推送（ZCode 式实时输出）
+    let stepsDone = 0
+    let stepText = ''
+    let lastEmitAt = 0
+    const flush = (force: boolean): void => {
+      const now = Date.now()
+      if (!force && now - lastEmitAt < 400) return
+      lastEmitAt = now
+      emit(t, { kind: 'text', text: stepText.slice(-1600), sid: 100000 + stepsDone, stream: true })
     }
+    for await (const delta of result.textStream) {
+      stepText += delta
+      flush(false)
+    }
+    flush(true)
     const answer = await result.text
     t.answer = answer
     t.status = 'done'

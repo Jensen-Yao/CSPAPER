@@ -16,6 +16,8 @@ interface AgentEvent {
   text?: string
   ok?: boolean
   ms?: number
+  sid?: number
+  stream?: boolean
   artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string }
 }
 interface TaskSummary {
@@ -108,7 +110,21 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   const refreshTasks = (): void => {
     void window.api.agentTasks().then((ts) => setTasks(ts as unknown as TaskSummary[])).catch(() => {})
   }
-  const loadTask = (id: string): void => {
+  type ApiEvent = Parameters<Parameters<typeof window.api.onAgentEvent>[0]>[0]['event']
+  const loadTask = (id: string, ev?: ApiEvent): void => {
+    // 流式增量：同 sid 的 text 事件直接原地改本地状态（不重新拉全量，保证流式手感）
+    if (ev && ev.stream && ev.sid != null && task && task.id === id) {
+      setTask((cur) => {
+        if (!cur) return cur
+        const arr = [...cur.events] as AgentEvent[]
+        const li = arr.length - 1
+        const incoming = ev as unknown as AgentEvent
+        if (li >= 0 && arr[li].kind === 'text' && arr[li].sid === incoming.sid) arr[li] = incoming
+        else arr.push(incoming)
+        return { ...cur, events: arr }
+      })
+      return
+    }
     void window.api
       .agentTask(id)
       .then((t0) => {
@@ -122,8 +138,9 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   useEffect(() => {
     if (!visible) return
     refreshTasks()
-    return window.api.onAgentEvent(({ taskId }) => {
-      if (taskId === selId) loadTask(taskId)
+    return window.api.onAgentEvent(({ taskId, event, replace }) => {
+      if (taskId === selId && event && replace) loadTask(taskId, event)
+      else if (taskId === selId) loadTask(taskId)
       refreshTasks()
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

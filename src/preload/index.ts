@@ -230,7 +230,7 @@ const api = {
   agentCancel: (id: string) => ipcRenderer.invoke('agent:cancel', id),
   agentTasks: () => ipcRenderer.invoke('agent:tasks'),
   agentTask: (id: string) => ipcRenderer.invoke('agent:task', id),
-  onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } } }) => void) => {
+  onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; sid?: number; stream?: boolean; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } }; replace?: boolean }) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p as never)
     ipcRenderer.on('agent:event', h)
     return () => ipcRenderer.removeListener('agent:event', h)
