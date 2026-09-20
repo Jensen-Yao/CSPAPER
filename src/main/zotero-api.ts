@@ -136,6 +136,18 @@ export interface SyncResult {
 }
 
 const eqKey = (dirName: string, key: string): boolean => dirName.toLowerCase().endsWith(`-${key.toLowerCase()}`)
+function findDupAcrossDirs(libPapers: string, key: string): string | null {
+  try {
+    for (const cat of fs.readdirSync(libPapers)) {
+      const catDir = path.join(libPapers, cat)
+      if (!fs.statSync(catDir).isDirectory()) continue
+      for (const slug of fs.readdirSync(catDir)) {
+        if (eqKey(slug, key)) return path.join(catDir, slug)
+      }
+    }
+  } catch { /* ignore */ }
+  return null
+}
 
 export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
   const s = getSettings()
@@ -205,7 +217,8 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       const collectionsOf = (it.data.collections ?? []).map((k) => collName.get(k)).filter(Boolean) as string[]
       const catName = collectionsOf[0] || 'inbox'
       const dir = upsertDir(catName)
-      const existing = fs.existsSync(dir) ? fs.readdirSync(dir).find((d) => eqKey(d, it.key)) : undefined
+      const existing = fs.existsSync(dir) ? fs.readdirSync(dir).find((d) => eqKey(d, it.key))
+        : (fs.existsSync(libPapers) ? findDupAcrossDirs(libPapers, it.key) : undefined)
       if (existing) {
         res.skipped++
         continue
@@ -226,8 +239,18 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       let pdfKey: string | null = null
       let pdfName = 'paper.pdf'
       try {
-        const r = await zotFetch(userId, apiKey, `items/${it.key}/children`, new URLSearchParams({ limit: '100' }))
-        const children = r.json as ApiChild[]
+        // children 分页拉取（超 100 条标注/笔记时全量采集）
+        let children: ApiChild[] = []
+        let cStart = 0
+        for (;;) {
+          const cParams = new URLSearchParams({ limit: '100', start: String(cStart) })
+          const cr = await zotFetch(userId, apiKey, `items/${it.key}/children`, cParams)
+          const page = cr.json as ApiChild[]
+          children.push(...page)
+          if (page.length < 100) break
+          cStart += 100
+        }
+        const r = { json: children }
         for (const ch of children) {
           const d = ch.data
           if (d.itemType === 'note' && d.note) notes.push(stripHtml(d.note))

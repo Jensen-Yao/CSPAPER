@@ -338,7 +338,7 @@ export default function LibraryPane({
       className={`paper-item ${p.id === activeId ? 'active' : ''}`}
       draggable
       onDragStart={(e) => onRowDragStart(e, p)}
-      onClick={() => onOpen(p)}
+      onClick={() => (snippet ? onOpenHit?.(p, snippet) : onOpen(p))}
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()

@@ -101,6 +101,14 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const [bilAuto, setBilAuto] = useState(false)
   const bilCancel = useRef(false)
   const bilPageDone = useRef(new Set<number>())
+  // 切论文时重置全文翻译状态（防止显示旧论文的翻译内容）
+  useEffect(() => {
+    setBil([])
+    setBilPage(0)
+    setBilRunning(false)
+    bilCancel.current = false
+    bilPageDone.current.clear()
+  }, [paper?.id])
   // 最新值的 ref 镜像（供 imperative 方法读取）
   const bilRunRef = useRef(false)
   bilRunRef.current = bilRunning
