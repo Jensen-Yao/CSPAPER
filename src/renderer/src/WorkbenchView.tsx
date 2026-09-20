@@ -320,6 +320,11 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 ⤓ 报告
               </button>
             </div>
+            {task.status === 'awaiting-confirm' && (
+              <button className='wb-run' style={{ flexShrink: 0, alignSelf: 'flex-start' }} disabled={busy} onClick={() => void runTask()}>
+                ▶ 确认并执行计划（{task.plan.length} 步）
+              </button>
+            )}
             {progress.length > 0 && (
               <div className="wb-progress-card">
                 <div className="wb-progress-title">
@@ -341,7 +346,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
               }}
             >
-              {task.events.map((ev, i) => {
+              {task.events.filter((e) => e.kind !== 'plan').map((ev, i) => {
                 if (ev.kind === 'status') {
                   return (
                     <div key={i} className="wb-ev">
