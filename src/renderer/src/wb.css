@@ -138,3 +138,4 @@
 .wb-card-title { font-size: 13px; font-weight: 600; min-width: 0; }
 .wb-card-body { font-size: 12px; line-height: 1.6; color: var(--text-dim); margin-top: 4px; word-break: break-word; }
 .wb-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
+.wb-hero-sub { font-size: 13px; color: var(--text-dim); margin-top: 10px; }

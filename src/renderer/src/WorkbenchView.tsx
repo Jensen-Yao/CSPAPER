@@ -401,6 +401,9 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
           <div className="wb-center-empty">
             <div className="wb-hero">
               <div className="wb-hero-text">今天要研究什么？</div>
+              <div className="wb-hero-sub">
+                库内 {papers.length} 篇文献 · 输入目标或选择模板，智能体自动执行
+              </div>
             </div>
           </div>
         )}
