@@ -72,6 +72,15 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     setOpenPersist(next)
   }
   const [sumBusy, setSumBusy] = useState(false)
+  // 相似文献（papers:similar 混合检索）
+  const [similar, setSimilar] = useState<Array<{ id: number; title: string; snippet: string }>>([])
+  useEffect(() => {
+    if (!paper?.id) return
+    void window.api
+      .papersSimilar(paper.id)
+      .then((r) => setSimilar(r ?? []))
+      .catch(() => setSimilar([]))
+  }, [paper?.id])
   const [summary, setSummary] = useState(paper.summary ?? '')
   const [sumErr, setSumErr] = useState('')
 
@@ -468,6 +477,33 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                 </div>
                 {citeErr && <div className="pd-cite-err">{citeErr}</div>}
               </div>
+            )}
+            {sec(
+              'similar',
+              '🔗',
+              '相似文献',
+              similar.length === 0 ? (
+                <div className="pd-dim">库内暂无明显相关的其他文献。</div>
+              ) : (
+                <div className="pd-similar">
+                  {similar.map((r) => (
+                    <button
+                      key={r.id}
+                      className="pd-similar-item"
+                      title={r.snippet}
+                      onClick={() => {
+                        void window.api.listPapers().then((ps) => {
+                          const target = ps.find((x) => x.id === r.id)
+                          if (target) onOpen?.(target)
+                        })
+                      }}
+                    >
+                      <div className="pd-similar-title">{r.title}</div>
+                      <div className="pd-similar-snippet ellipsis">{r.snippet}</div>
+                    </button>
+                  ))}
+                </div>
+              )
             )}
             {sec(
               'mine',

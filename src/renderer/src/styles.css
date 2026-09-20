@@ -2041,3 +2041,10 @@ html[data-theme='dark'] .top-switch { background: rgba(255,255,255,0.06); }
 .ov-adv-del { border: 1px solid var(--border); border-left: 0; background: var(--bg); border-radius: 0 6px 6px 0; padding: 5px 7px; font-size: 11px; cursor: pointer; color: var(--text-dim); }
 .ov-adv-del:hover { color: #b0654a; }
 html[data-theme='dark'] .ov-adv { background: rgba(255,255,255,0.04); }
+
+/* 相似文献 */
+.pd-similar { display: flex; flex-direction: column; gap: 6px; }
+.pd-similar-item { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: transparent; cursor: pointer; text-align: left; font-family: inherit; transition: border-color 0.12s ease; }
+.pd-similar-item:hover { border-color: var(--accent, #b08d57); }
+.pd-similar-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.pd-similar-snippet { font-size: 11px; color: var(--text-dim); margin-top: 2px; }

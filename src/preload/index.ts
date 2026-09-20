@@ -223,6 +223,7 @@ const api = {
   statsExtra: () => ipcRenderer.invoke('stats:extra'),
 
   // ---------- 工作台 Agent（v0.9） ----------
+  papersSimilar: (id: number) => ipcRenderer.invoke('papers:similar', id),
   agentPlan: (goal: string) => ipcRenderer.invoke('agent:plan', goal),
   agentUpdatePlan: (id: string, plan: unknown) => ipcRenderer.invoke('agent:update-plan', id, plan),
   agentRun: (id: string) => ipcRenderer.invoke('agent:run', id),

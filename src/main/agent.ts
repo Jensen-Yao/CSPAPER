@@ -449,12 +449,28 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
 
   try {
     const provider = createOpenAICompatible({ name: s.provider || 'cspaper', baseURL: s.apiBase, apiKey: s.apiKey })
+    // 智能体独立模型绑定：设置里可给 agent 配更强模型（缺省回落对话模型）
+    const agentModel = s.agentModel || s.model
+    const maxSteps = Math.max(4, Math.min(60, s.agentMaxSteps || 24))
     const tools = buildTools(t)
     const planText = t.plan.map((p, i) => `${i + 1}. [${p.tool}] ${p.purpose}（参数：${JSON.stringify(p.args)}）`).join('\n')
+    // 库上下文注入：开局告知库里有什么（分类/数量/最近文献），agent 决策更贴合用户实际
+    const all = listPapers()
+    const catCounts = new Map<string, number>()
+    for (const p of all) catCounts.set(p.category, (catCounts.get(p.category) ?? 0) + 1)
+    const libCtx =
+      `当前文献库概况：共 ${all.length} 篇。分类：` +
+      [...catCounts.entries()].map(([c, n]) => `${c}(${n})`).join('、') +
+      '。最近导入：' +
+      all
+        .slice(0, 5)
+        .map((p) => `#${p.id}《${p.title.slice(0, 40)}》`)
+        .join('；') +
+      '。'
     const result = streamText({
-      model: provider(s.model),
+      model: provider(agentModel),
       abortSignal: ac.signal,
-      stopWhen: stepCountIs(MAX_STEPS),
+      stopWhen: stepCountIs(maxSteps),
       tools,
       onStepFinish: (st) => {
         const text = st.text?.trim()
@@ -538,7 +554,9 @@ async function reactFallback(t: AgentTask, signal: AbortSignal): Promise<string>
     { role: 'user', content: `任务目标：${t.goal}` }
   ]
   let budget = BUDGET_CHARS
-  for (let i = 0; i < MAX_STEPS && !signal.aborted; i++) {
+  const agentModel = getSettings().agentModel || getSettings().model
+  const maxSteps = Math.max(4, Math.min(60, getSettings().agentMaxSteps || 24))
+  for (let i = 0; i < maxSteps && !signal.aborted; i++) {
     let out = ''
     for await (const d of chatStream(history)) out += d
     const { action, final } = parseReAct(out)

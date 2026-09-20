@@ -200,6 +200,16 @@ app.whenReady().then(() => {
   }
   // 每次打开软件都重扫工作区：个人云（iCloud 等）多设备同步可能带来新文献
   rescanLibrary('startup')
+  // Zotero 自动增量同步：配置了凭据且开关开启时，启动后静默拉取变更
+  if (dbmod.getSettings().zoteroAutoSync && dbmod.getSettings().zoteroUserId && dbmod.getSettings().zoteroApiKey) {
+    void import('./zotero-api')
+      .then((m) =>
+        m.syncZotero({ mode: 'incremental' }).then((r) => {
+          if (r.ok && r.imported > 0) send('app:notice', { title: 'Zotero 自动同步完成', detail: `新增/更新 ${r.imported} 条` })
+        })
+      )
+      .catch(() => {})
+  }
   // 兜底定时扫描：应用长时间开着、窗口一直没重新聚焦的网盘同步场景
   setInterval(() => maybeRescan('timer', 4 * 60_000), 4 * 60_000)
   app.on('activate', () => {

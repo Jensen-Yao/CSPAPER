@@ -61,6 +61,9 @@ export interface Settings {
   disabledTranslators?: string[]
   zoteroUserId?: string
   zoteroApiKey?: string
+  zoteroAutoSync?: boolean
+  agentModel?: string
+  agentMaxSteps?: number
 }
 
 // 标签（W1）
@@ -382,6 +385,7 @@ declare global {
       venuesImportCsv: () => Promise<{ imported: number } | null>
       exportBibtex: (ids: number[]) => Promise<{ ok: boolean; count?: number; path?: string; error?: string }>
       // ---------- 工作台 Agent（v0.9） ----------
+      papersSimilar: (id: number) => Promise<Array<{ id: number; title: string; snippet: string }>>
       agentPlan: (goal: string) => Promise<{ id: string; goal: string; status: string; plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>; events: unknown[]; answer: string }>
       agentUpdatePlan: (id: string, plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>) => Promise<unknown>
       agentRun: (id: string) => Promise<{ ok: boolean }>

@@ -64,6 +64,11 @@ export interface Settings {
   // Zotero Web API（v0.9）：云端同步
   zoteroUserId?: string
   zoteroApiKey?: string
+  // 启动时自动执行 Zotero 增量同步（v0.11）
+  zoteroAutoSync?: boolean
+  // 智能体（v0.11）：独立模型绑定与护栏参数
+  agentModel?: string
+  agentMaxSteps?: number
 }
 
 // 默认文献库：跟随平台放到「文档」目录（开发态 app 未 ready 前不能调 getPath，惰性求值）
@@ -91,7 +96,10 @@ const DEFAULTS: Settings = {
   closeToTray: false,
   disabledTranslators: [],
   zoteroUserId: '',
-  zoteroApiKey: ''
+  zoteroApiKey: '',
+  zoteroAutoSync: false,
+  agentModel: '',
+  agentMaxSteps: 24
 }
 
 let db: Database.Database

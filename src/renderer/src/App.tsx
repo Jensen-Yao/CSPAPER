@@ -704,6 +704,7 @@ export default function App(): JSX.Element {
           <WorkbenchView
             visible
             papers={papers}
+            models={models}
             onOpenPaper={(p) => {
               setTopMode('paper')
               openPaperFromTree(p)
@@ -716,6 +717,7 @@ export default function App(): JSX.Element {
               setTopMode('paper')
               setMode('notes')
             }}
+            onOpenSettings={() => setShowSettings(true)}
           />
         )}
         {topMode === 'paper' && (

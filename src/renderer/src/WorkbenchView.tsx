@@ -1,5 +1,6 @@
-// 科研工作台（v0.9，Codex Work 式）：任务列表 | 目标→计划卡→执行时间线→产物区
-import { useEffect, useRef, useState } from 'react'
+// 科研智能体工作台（v0.11）：布局对标 Codex（左任务历史栏 + 中央 hero + 底部合成器），
+// 事件流卡片语言对标 OpenHands（每步一张卡：工具图标 + 标题 + 可展开观察 + 状态点）。
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Paper } from './types'
 import './wb.css'
 
@@ -32,29 +33,27 @@ interface TaskFull extends TaskSummary {
 interface Props {
   visible: boolean
   papers: Paper[]
+  models: string[]
   onOpenPaper: (p: Paper) => void
   onOpenCompare: () => void
   onOpenNotes: () => void
+  onOpenSettings: () => void
 }
-
-const TOOLS = ['search_papers', 'search_library', 'list_library', 'import_paper', 'read_paper', 'ask_paper', 'write_note', 'make_synthesis', 'compare_papers', 'cite_format']
 
 const TEMPLATES: Array<{ label: string; goal: string }> = [
-  { label: '主题调研', goal: '调研主题：「」。检索相关文献，筛选最相关的 5-8 篇导入文献库，阅读后生成一篇中文综述（存入 AI 知识库）。' },
-  { label: '精读论文', goal: '精读库内一篇文献（用 list_library 找到后告诉我 id 前先确认）：阅读全文，写结构化阅读笔记（研究问题/方法/结论/局限/对我启发）写入我的笔记，并总结 3 个值得追问的问题。' },
-  { label: '多文对比综述', goal: '对比库内同一分类下的多篇文献（用 list_library 查询）：生成方法/数据/结论三维度对比表，并写 300 字对比结论写入相关文献的笔记。' }
+  { label: '📋 主题调研', goal: '调研主题：「」。检索相关文献，筛选最相关的 5-8 篇导入文献库，阅读后生成一篇中文综述（存入 AI 知识库）。' },
+  { label: '📖 精读论文', goal: '精读库内一篇文献（用 list_library 找到并告诉我 id）：阅读全文，写结构化精读笔记（研究问题/方法/结论/局限/启发）写入我的笔记，最后给出 3 个值得追问的问题。' },
+  { label: '📊 多文对比', goal: '对比库内同一分类下的多篇文献：生成方法/数据/结论三维度对比表，并写 300 字对比结论。' },
+  { label: '🌙 睡眠日报', goal: '执行「睡眠科研日报」技能：按库内关键词检索最新文献，相关性排序，产出今日日报并存入 AI 知识库。' }
 ]
 
-const KIND_META: Record<string, { icon: string; label: string }> = {
-  plan: { icon: '📋', label: '计划' },
-  status: { icon: '⏳', label: '进行' },
-  step: { icon: '⚙️', label: '工具' },
-  text: { icon: '💬', label: '输出' },
-  artifact: { icon: '📦', label: '产物' },
-  done: { icon: '✅', label: '完成' },
-  error: { icon: '❌', label: '错误' },
-  cancelled: { icon: '⏹', label: '已中止' }
+const TOOL_ICON: Record<string, string> = {
+  search_papers: '🌐', search_library: '📚', list_library: '📄', import_paper: '⬇️',
+  read_paper: '📖', ask_paper: '💬', write_note: '✏️', make_synthesis: '🧩',
+  compare_papers: '📊', cite_format: '📑', add_tag: '🏷️', set_status: '🔘',
+  ai_annotate: '🧠', use_skill: '🎯', arxiv_recent: '🛰️', knowledge_graph: '🕸️', related_papers: '🔗'
 }
+const toolIcon = (t?: string): string => (t && TOOL_ICON[t]) || (t?.startsWith('mcp__') ? '🔌' : '⚙️')
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   'awaiting-confirm': { label: '待确认计划', cls: 'pending' },
@@ -64,14 +63,36 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   cancelled: { label: '已中止', cls: 'error' }
 }
 
-const AUTOS: Array<{ label: string; minutes: number }> = [
-  { label: '每天', minutes: 1440 },
-  { label: '每 6 小时', minutes: 360 },
-  { label: '每 30 分钟', minutes: 30 }
-]
+function dateGroupOf(createdAt: string): string {
+  const d = new Date(createdAt.includes('T') ? createdAt : createdAt.replace(' ', 'T') + 'Z')
+  const now = new Date()
+  const day = 86400000
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  if (d.getTime() >= startToday) return '今天'
+  if (d.getTime() >= startToday - day) return '昨天'
+  if (d.getTime() >= startToday - 7 * day) return '近 7 天'
+  return '更早'
+}
+function dayLabel(iso: string): string {
+  return iso.replace('T', ' ').slice(5, 16)
+}
+// 计划进度：把 step 事件按顺序匹配到计划步骤
+function planProgress(plan: PlanStep[], events: AgentEvent[]): Array<{ step: PlanStep; done: boolean }> {
+  const done = plan.map(() => false)
+  let pi = 0
+  for (const ev of events) {
+    if (ev.kind !== 'step' || !ev.tool) continue
+    while (pi < plan.length && plan[pi].tool !== ev.tool) pi++
+    if (pi < plan.length) {
+      done[pi] = true
+      pi++
+    }
+  }
+  return plan.map((step, i) => ({ step, done: done[i] }))
+}
 
-export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenCompare, onOpenNotes }: Props): JSX.Element | null {
-  const [pane, setPane] = useState<'tasks' | 'skills' | 'auto' | 'mcp'>('tasks')
+export default function WorkbenchView({ visible, papers, models, onOpenPaper, onOpenCompare, onOpenNotes, onOpenSettings }: Props): JSX.Element | null {
+  const [nav, setNav] = useState<'tasks' | 'skills' | 'auto' | 'mcp'>('tasks')
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [selId, setSelId] = useState<string | null>(null)
   const [task, setTask] = useState<TaskFull | null>(null)
@@ -79,16 +100,14 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [editPlan, setEditPlan] = useState<PlanStep[] | null>(null)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [modelOpen, setModelOpen] = useState(false)
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const autoScroll = useRef(true)
 
   const refreshTasks = (): void => {
-    void window.api
-      .agentTasks()
-      .then((ts) => setTasks(ts as unknown as TaskSummary[]))
-      .catch(() => {})
+    void window.api.agentTasks().then((ts) => setTasks(ts as unknown as TaskSummary[])).catch(() => {})
   }
-
   const loadTask = (id: string): void => {
     void window.api
       .agentTask(id)
@@ -103,7 +122,6 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
   useEffect(() => {
     if (!visible) return
     refreshTasks()
-    // 实时事件：当前任务 append-only 刷新，任务列表同步状态
     return window.api.onAgentEvent(({ taskId }) => {
       if (taskId === selId) loadTask(taskId)
       refreshTasks()
@@ -111,13 +129,6 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, selId])
 
-  useEffect(() => {
-    if (!visible) return
-    const iv = setInterval(refreshTasks, 4000)
-    return () => clearInterval(iv)
-  }, [visible])
-
-  // 时间线自动滚动（用户上滚时暂停）
   useEffect(() => {
     const el = timelineRef.current
     if (el && autoScroll.current) el.scrollTop = el.scrollHeight
@@ -130,8 +141,9 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
     try {
       const t = await window.api.agentPlan(goal.trim())
       setSelId(t.id)
-      setTask({ ...t, plan: t.plan } as TaskFull)
+      setTask({ ...(t as unknown as TaskFull), plan: t.plan })
       setEditPlan(t.plan)
+      setNav('tasks')
       refreshTasks()
     } catch (e) {
       setErr(String(e).slice(0, 160))
@@ -139,7 +151,6 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
       setBusy(false)
     }
   }
-
   const runTask = async (): Promise<void> => {
     if (!selId || !editPlan) return
     setBusy(true)
@@ -151,13 +162,11 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
       setBusy(false)
     }
   }
-
   const cancelTask = async (): Promise<void> => {
     if (!selId) return
     await window.api.agentCancel(selId)
     loadTask(selId)
   }
-
   const openArtifact = (a: NonNullable<AgentEvent['artifact']>): void => {
     if (a.paperId) {
       const p = papers.find((x) => x.id === a.paperId)
@@ -170,194 +179,196 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
     if (a.kind === 'table') return onOpenCompare()
     if (a.kind === 'note') return onOpenNotes()
   }
+  const exportReport = (): void => {
+    if (!task) return
+    const md = [
+      '# CSPAPER 任务报告', '',
+      `- **目标：** ${task.goal}`,
+      `- **状态：** ${STATUS_META[task.status]?.label ?? task.status}`,
+      `- **时间：** ${task.createdAt}`, '',
+      '## 执行计划',
+      ...task.plan.map((p, i) => `${i + 1}. [${p.tool}] ${p.purpose}`), '',
+      '## 执行记录',
+      ...task.events
+        .filter((e) => e.kind === 'step' || e.kind === 'artifact')
+        .map((e) => `- ${e.kind === 'artifact' ? '📦' : '⚙️'} ${e.tool ?? ''} ${e.text ?? ''}${e.ms != null ? `（${e.ms}ms）` : ''}`), '',
+      '## 总结',
+      task.answer || '（无）'
+    ].join('\n')
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `CSPAPER-任务报告-${task.id}.md`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+  }
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, TaskSummary[]>()
+    for (const t of tasks) {
+      const g = dateGroupOf(t.createdAt)
+      const arr = groups.get(g) ?? []
+      arr.push(t)
+      groups.set(g, arr)
+    }
+    return [...groups.entries()]
+  }, [tasks])
+  const progress = useMemo(() => (task ? planProgress(task.plan, task.events) : []), [task])
+  const doneCount = progress.filter((p) => p.done).length
 
   if (!visible) return null
-  const status = task?.status ?? ''
-  const showTimeline = task && task.events.length > 0
 
   return (
     <div className="wb-host">
-      {/* 左：分区导航 + 任务/技能/自动化/MCP */}
-      <div className="wb-tasks">
-        <div className="wb-pane-nav">
-          {(['tasks', 'skills', 'auto', 'mcp'] as const).map((k) => (
-            <button key={k} className={`wb-pane-btn ${pane === k ? 'on' : ''}`} onClick={() => setPane(k)}>
-              {k === 'tasks' ? '任务' : k === 'skills' ? '技能' : k === 'auto' ? '自动化' : 'MCP'}
+      {/* ---------- 左栏 ---------- */}
+      <div className="wb-side">
+        <div className="wb-brand">
+          <span className="wb-brand-mark">⚡</span>
+          <span className="wb-brand-name">科研智能体</span>
+        </div>
+        <button
+          className="wb-new"
+          onClick={() => {
+            setSelId(null)
+            setTask(null)
+            setNav('tasks')
+          }}
+        >
+          ＋ 新任务
+        </button>
+        <nav className="wb-nav">
+          {(
+            [
+              ['tasks', '⏺', '任务'],
+              ['skills', '🎯', '技能'],
+              ['auto', '⏰', '自动化'],
+              ['mcp', '🔌', 'MCP']
+            ] as const
+          ).map(([k, icon, label]) => (
+            <button key={k} className={`wb-nav-item ${nav === k ? 'on' : ''}`} onClick={() => setNav(k)}>
+              <span className="wb-nav-icon">{icon}</span>
+              {label}
             </button>
           ))}
+        </nav>
+        <div className="wb-side-sep" />
+        <div className="wb-history">
+          {nav === 'tasks' &&
+            grouped.map(([g, list]) => (
+              <div key={g}>
+                <div className="wb-group">{g}</div>
+                {list.map((t) => (
+                  <button
+                    key={t.id}
+                    className={`wb-hist ${selId === t.id ? 'on' : ''}`}
+                    onClick={() => {
+                      setSelId(t.id)
+                      loadTask(t.id)
+                    }}
+                  >
+                    <span className={`wb-hist-dot ${t.status}`} />
+                    <span className="wb-hist-goal ellipsis">{t.goal}</span>
+                    <span className="wb-hist-time">{dayLabel(t.createdAt)}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
         </div>
-        <div className="wb-task-list">
-          {pane === 'tasks' && (
-            <>
-              {tasks.length === 0 && <div className="wb-dim">还没有任务——在右侧输入研究目标开始。</div>}
-              {tasks.map((t) => (
-                <button
-                  key={t.id}
-                  className={`wb-task-card ${selId === t.id ? 'on' : ''}`}
-                  onClick={() => {
-                    setSelId(t.id)
-                    loadTask(t.id)
-                  }}
-                >
-                  <div className="wb-task-goal ellipsis">{t.goal}</div>
-                  <div className={`wb-task-status ${STATUS_META[t.status]?.cls ?? ''}`}>{STATUS_META[t.status]?.label ?? t.status}</div>
-                </button>
-              ))}
-            </>
-          )}
-          {pane === 'skills' && <SkillsPane />}
-          {pane === 'auto' && <AutoPane />}
-          {pane === 'mcp' && <McpPane />}
+        <div className="wb-side-foot">
+          <button className="wb-nav-item" onClick={onOpenSettings}>
+            <span className="wb-nav-icon">⚙️</span>
+            设置
+          </button>
         </div>
       </div>
 
-      {/* 右：目标 / 计划 / 时间线 / 产物 */}
-      <div className="wb-main">
-        {!task && (
-          <div className="wb-hero">
-            <div className="wb-hero-title">给一个研究目标，我来执行</div>
-            <div className="wb-hero-sub">检索文献 · 精读 · 写笔记 · 综述 · 对比 —— 产物自动入库</div>
-            <textarea
-              className="wb-goal"
-              value={goal}
-              rows={4}
-              placeholder="例如：调研「虚拟惯量控制」近两年的研究进展，筛选 5 篇最相关文献导入并生成综述"
-              onChange={(e) => setGoal(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void newTask()
-              }}
-            />
-            <div className="wb-templates">
-              {TEMPLATES.map((tp) => (
-                <button key={tp.label} className="wb-chip" onClick={() => setGoal(tp.goal)}>
-                  {tp.label}
-                </button>
-              ))}
-            </div>
-            <button className="wb-go" disabled={busy || !goal.trim()} onClick={() => void newTask()}>
-              {busy ? '规划中…' : '生成执行计划'}
-            </button>
-            {err && <div className="wb-err">{err}</div>}
+      {/* ---------- 中央 ---------- */}
+      <div className="wb-center">
+        {nav !== 'tasks' ? (
+          <div className="wb-pane-full">
+            {nav === 'skills' && <SkillsPane />}
+            {nav === 'auto' && <AutoPane />}
+            {nav === 'mcp' && <McpPane />}
           </div>
-        )}
-
-        {task && (
-          <div className="wb-detail">
-            <div className="wb-detail-head">
-              <button
-                className="wb-back"
-                title="返回任务列表"
-                onClick={() => {
-                  setSelId(null)
-                  setTask(null)
-                }}
-              >
-                ←
-              </button>
-              <div className="wb-goal-text ellipsis" title={task.goal}>
+        ) : task ? (
+          <div className="wb-run-view">
+            <div className="wb-run-head">
+              <span className={`wb-status-pill ${task.status}`}>
+                {task.status === 'running' && <i className="wb-spin" />}
+                {STATUS_META[task.status]?.label}
+              </span>
+              <span className="wb-run-goal ellipsis" title={task.goal}>
                 {task.goal}
-              </div>
-              <span className={`wb-task-status ${STATUS_META[task.status]?.cls ?? ''}`}>{STATUS_META[task.status]?.label ?? task.status}</span>
+              </span>
+              <span style={{ flex: 1 }} />
               {task.status === 'running' && (
-                <button className="wb-stop" onClick={() => void cancelTask()}>
+                <button className="wb-mini danger" onClick={() => void cancelTask()}>
                   ⏹ 中止
                 </button>
               )}
+              <button className="wb-mini" title="导出任务报告 (Markdown)" onClick={exportReport}>
+                ⤓ 报告
+              </button>
             </div>
-
-            {/* 计划卡：待确认时可编辑 */}
-            {editPlan && task.status === 'awaiting-confirm' && (
-              <div className="wb-plan">
-                <div className="wb-plan-head">
-                  执行计划（可调整后确认）
-                  <span style={{ flex: 1 }} />
-                  <button
-                    className="wb-mini"
-                    onClick={() => setEditPlan([...editPlan, { tool: 'search_papers', args: { query: '' }, purpose: '' }])}
-                  >
-                    ＋ 加一步
-                  </button>
+            {progress.length > 0 && (
+              <div className="wb-progress-card">
+                <div className="wb-progress-title">
+                  执行计划 <span>{doneCount}/{progress.length}</span>
                 </div>
-                {editPlan.map((st, i) => (
-                  <div key={i} className="wb-plan-step">
-                    <select
-                      className="wb-plan-tool"
-                      value={st.tool}
-                      onChange={(e) => setEditPlan(editPlan.map((x, j) => (j === i ? { ...x, tool: e.target.value } : x)))}
-                    >
-                      {TOOLS.map((tl) => (
-                        <option key={tl} value={tl}>
-                          {tl}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="wb-plan-purpose"
-                      value={st.purpose}
-                      placeholder="这一步做什么"
-                      onChange={(e) => setEditPlan(editPlan.map((x, j) => (j === i ? { ...x, purpose: e.target.value } : x)))}
-                    />
-                    <input
-                      className="wb-plan-args"
-                      value={JSON.stringify(st.args)}
-                      placeholder='{"query": "..."}'
-                      onChange={(e) => {
-                        try {
-                          const args = JSON.parse(e.target.value)
-                          setEditPlan(editPlan.map((x, j) => (j === i ? { ...x, args } : x)))
-                        } catch {
-                          /* 输入中暂不解析 */
-                        }
-                      }}
-                    />
-                    <button className="wb-mini danger" title="删除此步" onClick={() => setEditPlan(editPlan.filter((_x, j) => j !== i))}>
-                      ✕
-                    </button>
+                {progress.map((p, i) => (
+                  <div key={i} className={`wb-progress-step ${p.done ? 'done' : ''}`}>
+                    <i>{p.done ? '✓' : i + 1}</i>
+                    <span className="ellipsis">{p.step.purpose || p.step.tool}</span>
                   </div>
                 ))}
-                <div className="wb-plan-actions">
-                  <button className="wb-run" disabled={busy} onClick={() => void runTask()}>
-                    {busy ? '…' : '▶ 确认并执行'}
-                  </button>
-                </div>
               </div>
             )}
-
-            {/* 执行时间线 + 产物 */}
-            {showTimeline && (
-              <div
-                className="wb-timeline"
-                ref={timelineRef}
-                onScroll={(e) => {
-                  const el = e.currentTarget
-                  autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-                }}
-              >
-                {task.events.map((ev, i) => {
-                  const m = KIND_META[ev.kind] ?? { icon: '·', label: ev.kind }
-                  return (
-                    <div key={i} className={`wb-ev ${ev.kind} ${ev.ok === false ? 'fail' : ''}`}>
-                      <span className="wb-ev-icon">{m.icon}</span>
-                      <div className="wb-ev-body">
-                        <div className="wb-ev-line">
-                          {ev.kind === 'step' && <b className="wb-ev-tool">{ev.tool}</b>}
-                          {ev.text && <span className="ellipsis">{ev.text}</span>}
-                          {ev.ms != null && <span className="wb-ev-ms">{ev.ms}ms</span>}
-                        </div>
-                        {ev.artifact && (
-                          <button className="wb-artifact" onClick={() => openArtifact(ev.artifact!)}>
-                            📦 {ev.artifact.title} — 点击查看
-                          </button>
-                        )}
-                      </div>
+            <div
+              className="wb-timeline"
+              ref={timelineRef}
+              onScroll={(e) => {
+                const el = e.currentTarget
+                autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+              }}
+            >
+              {task.events.map((ev, i) => (
+                <div key={i} className={`wb-card ${ev.kind} ${ev.ok === false ? 'fail' : ''}`}>
+                  <div className="wb-card-head">
+                    <span className="wb-card-icon">{ev.kind === 'artifact' ? '📦' : toolIcon(ev.tool)}</span>
+                    <span className="wb-card-title">
+                      {ev.kind === 'step' && `已执行 ${ev.tool}`}
+                      {ev.kind === 'artifact' && `产出：${ev.artifact?.title ?? ''}`}
+                      {ev.kind === 'text' && '智能体输出'}
+                      {ev.kind === 'done' && '任务完成'}
+                      {ev.kind === 'error' && '出错了'}
+                      {ev.kind === 'cancelled' && '已中止'}
+                      {ev.kind === 'status' && (ev.text ?? '进行中')}
+                      {ev.kind === 'plan' && '执行计划'}
+                    </span>
+                    {ev.ok != null && <span className={`wb-card-state ${ev.ok ? 'ok' : 'bad'}`}>{ev.ok ? '✓' : '✗'}</span>}
+                    {ev.ms != null && <span className="wb-ev-ms">{ev.ms}ms</span>}
+                  </div>
+                  {ev.text && ev.kind !== 'status' && (
+                    <div className="wb-card-body ellipsis-2" title={ev.text}>
+                      {ev.text}
                     </div>
-                  )
-                })}
-                {task.status === 'running' && <div className="wb-ev status"><span className="wb-ev-icon">⏳</span><div className="wb-ev-body">执行中…</div></div>}
-              </div>
-            )}
-
-            {/* 最终总结 */}
+                  )}
+                  {ev.artifact && (
+                    <button className="wb-artifact" onClick={() => openArtifact(ev.artifact!)}>
+                      在文献库中查看 →
+                    </button>
+                  )}
+                </div>
+              ))}
+              {task.status === 'running' && (
+                <div className="wb-card running">
+                  <div className="wb-card-head">
+                    <i className="wb-spin" />
+                    <span className="wb-card-title">智能体正在执行…</span>
+                  </div>
+                </div>
+              )}
+            </div>
             {task.answer && task.status === 'done' && (
               <div className="wb-answer">
                 <div className="wb-answer-head">执行总结</div>
@@ -365,12 +376,90 @@ export default function WorkbenchView({ visible, papers, onOpenPaper, onOpenComp
               </div>
             )}
           </div>
+        ) : (
+          <div className="wb-center-empty">
+            <div className="wb-hero">
+              <div className="wb-hero-art">✦</div>
+              <div className="wb-hero-text">今天要研究什么？</div>
+            </div>
+          </div>
         )}
+
+        {/* 底部合成器 */}
+        <div className={`wb-composer ${nav !== 'tasks' ? 'ws-hidden' : ''}`}>
+          {showTemplates && (
+            <div className="wb-templates-pop">
+              {TEMPLATES.map((tp) => (
+                <button
+                  key={tp.label}
+                  className="wb-template-item"
+                  onClick={() => {
+                    setGoal(tp.goal)
+                    setShowTemplates(false)
+                  }}
+                >
+                  {tp.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="wb-compose-card">
+            <textarea
+              className="wb-compose-input"
+              value={goal}
+              rows={2}
+              placeholder={task && task.status === 'running' ? '任务执行中…' : '给科研智能体一个目标：检索文献、精读、写笔记、综述、对比…'}
+              onChange={(e) => setGoal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && task?.status !== 'running') {
+                  e.preventDefault()
+                  void newTask()
+                }
+              }}
+            />
+            <div className="wb-compose-bar">
+              <button className="wb-tool-btn" title="任务模板" onClick={() => setShowTemplates((v) => !v)}>
+                ＋
+              </button>
+              <div className="wb-model-wrap">
+                <button className="wb-model-chip" title="智能体使用的模型（可切换）" onClick={() => setModelOpen((v) => !v)}>
+                  🧠 {models[0] ? models[0].slice(0, 22) : '未配置模型'}
+                </button>
+                {modelOpen && (
+                  <>
+                    <div className="wb-model-mask" onClick={() => setModelOpen(false)} />
+                    <div className="wb-model-list">
+                      {models.length === 0 && <div className="wb-model-item dim">请在设置里配置模型</div>}
+                      {models.map((m) => (
+                        <button
+                          key={m}
+                          className="wb-model-item"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void window.api.saveSettings({ agentModel: m })
+                            setModelOpen(false)
+                          }}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <span style={{ flex: 1 }} />
+              <span className="wb-access">自主执行 · 产物入库</span>
+              <button className="wb-send" disabled={!goal.trim() || busy} title="生成执行计划" onClick={() => void newTask()}>
+                ↑
+              </button>
+            </div>
+            {err && <div className="wb-err">{err}</div>}
+          </div>
+        </div>
       </div>
     </div>
   )
 }
-
 
 // ---------- 技能面板 ----------
 function SkillsPane(): JSX.Element {
@@ -379,18 +468,29 @@ function SkillsPane(): JSX.Element {
     void window.api.agentSkills().then(setSkills).catch(() => setSkills([]))
   }, [])
   return (
-    <div className="wb-pane">
-      <div className="wb-dim">技能 = 可复用的研究工作流说明书。agent 在任务中按需用 use_skill 加载并照做。</div>
-      {(skills ?? []).map((sk) => (
-        <div key={sk.name} className="wb-task-card" style={{ cursor: 'default' }}>
-          <div className="wb-task-goal">{sk.name}</div>
-          <div className="wb-dim" style={{ padding: 0 }}>{sk.description || '—'}</div>
-          <div className={`wb-task-status ${sk.source === 'builtin' ? 'done' : 'running'}`}>{sk.source === 'builtin' ? '内置' : '用户'}</div>
-        </div>
-      ))}
-      <button className="wb-mini" style={{ marginTop: 6 }} onClick={() => void window.api.agentSkillsOpenDir()}>
-        打开技能目录（放入 .md 即生效）
-      </button>
+    <div className="wb-pane-full">
+      <div className="wb-pane-head">
+        技能
+        <span style={{ flex: 1 }} />
+        <button className="wb-mini" onClick={() => void window.api.agentSkillsOpenDir()}>
+          打开技能目录
+        </button>
+      </div>
+      <div className="wb-dim" style={{ marginBottom: 10 }}>
+        技能 = 可复用的研究工作流说明书（SKILL.md）。agent 在任务中按需加载并照做。放入用户技能目录即热生效——方法可参考 ARIS 等开源科研技能集。
+      </div>
+      <div className="wb-card-grid">
+        {(skills ?? []).map((sk) => (
+          <div key={sk.name} className="wb-card">
+            <div className="wb-card-head">
+              <span className="wb-card-icon">🎯</span>
+              <span className="wb-card-title">{sk.name}</span>
+              <span className={`wb-task-status ${sk.source === 'builtin' ? 'done' : 'running'}`}>{sk.source === 'builtin' ? '内置' : '用户'}</span>
+            </div>
+            <div className="wb-card-body">{sk.description || '—'}</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -405,6 +505,11 @@ interface AutoRow {
   last_run_at: string | null
   last_result: string | null
 }
+const AUTOS: Array<{ label: string; minutes: number }> = [
+  { label: '每天', minutes: 1440 },
+  { label: '每 6 小时', minutes: 360 },
+  { label: '每 30 分钟', minutes: 30 }
+]
 function AutoPane(): JSX.Element {
   const [rows, setRows] = useState<AutoRow[] | null>(null)
   const [name, setName] = useState('')
@@ -415,49 +520,56 @@ function AutoPane(): JSX.Element {
   }
   useEffect(refresh, [])
   return (
-    <div className="wb-pane">
-      <div className="wb-dim">定时无头执行 agent 任务（如「睡眠科研日报」技能），结果进任务列表并弹通知。</div>
-      <input className="wb-plan-purpose" style={{ width: '100%', marginBottom: 6 }} placeholder="任务名（如：每日 arXiv 日报）" value={name} onChange={(e) => setName(e.target.value)} />
-      <textarea className="wb-goal" style={{ marginBottom: 6, fontSize: 12 }} rows={3} placeholder="研究目标（同工作台指令）" value={goal} onChange={(e) => setGoal(e.target.value)} />
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
-        {AUTOS.map((a) => (
-          <button key={a.minutes} className={`wb-chip ${minutes === a.minutes ? 'on' : ''}`} style={minutes === a.minutes ? { borderColor: 'var(--accent,#b08d57)', color: 'var(--accent,#b08d57)' } : undefined} onClick={() => setMinutes(a.minutes)}>
-            {a.label}
+    <div className="wb-pane-full">
+      <div className="wb-pane-head">
+        自动化
+        <span className="wb-dim">· 定时无头执行，结果进任务列表并通知</span>
+      </div>
+      <div className="wb-card">
+        <div className="wb-pane-head">新建自动化</div>
+        <input className="wb-plan-purpose" style={{ width: '100%', marginBottom: 6 }} placeholder="任务名（如：每日 arXiv 日报）" value={name} onChange={(e) => setName(e.target.value)} />
+        <textarea className="wb-plan-purpose" style={{ width: '100%', marginBottom: 6, minHeight: 52 }} placeholder="研究目标（同工作台指令，可指定技能如「睡眠科研日报」）" value={goal} onChange={(e) => setGoal(e.target.value)} />
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          {AUTOS.map((a) => (
+            <button key={a.minutes} className={`wb-chip ${minutes === a.minutes ? 'on' : ''}`} style={minutes === a.minutes ? { borderColor: 'var(--accent,#b08d57)', color: 'var(--accent,#b08d57)' } : undefined} onClick={() => setMinutes(a.minutes)}>
+              {a.label}
+            </button>
+          ))}
+          <span style={{ flex: 1 }} />
+          <button
+            className="wb-run"
+            disabled={!name.trim() || !goal.trim()}
+            onClick={() => {
+              void window.api.agentAutoCreate(name, goal, minutes).then(() => {
+                setName('')
+                setGoal('')
+                refresh()
+              })
+            }}
+          >
+            创建
           </button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+        {(rows ?? []).map((r) => (
+          <div key={r.id} className="wb-card">
+            <div className="wb-card-head">
+              <span className={`wb-task-status ${r.enabled ? 'done' : 'error'}`}>{r.enabled ? '启用' : '停用'}</span>
+              <span className="wb-card-title ellipsis">{r.name}</span>
+              <span style={{ flex: 1 }} />
+              <button className="wb-mini" onClick={() => void window.api.agentAutoToggle(r.id, !r.enabled).then(refresh)}>
+                {r.enabled ? '停用' : '启用'}
+              </button>
+              <button className="wb-mini danger" onClick={() => void window.api.agentAutoRemove(r.id).then(refresh)}>
+                ✕
+              </button>
+            </div>
+            <div className="wb-card-body ellipsis-2">{r.goal}</div>
+            <div className="wb-dim">每 {r.interval_minutes} 分钟 · 上次：{r.last_run_at ?? '未运行'}{r.last_result ? ` · ${r.last_result}` : ''}</div>
+          </div>
         ))}
       </div>
-      <button
-        className="wb-run"
-        style={{ width: '100%', marginBottom: 10 }}
-        disabled={!name.trim() || !goal.trim()}
-        onClick={() => {
-          void window.api.agentAutoCreate(name, goal, minutes).then(() => {
-            setName('')
-            setGoal('')
-            refresh()
-          })
-        }}
-      >
-        ＋ 创建自动化
-      </button>
-      {(rows ?? []).map((r) => (
-        <div key={r.id} className="wb-task-card" style={{ cursor: 'default' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className={`wb-task-status ${r.enabled ? 'running' : 'error'}`}>{r.enabled ? '启用' : '停用'}</span>
-            <span className="wb-task-goal ellipsis" style={{ fontWeight: 600 }}>{r.name}</span>
-            <span style={{ flex: 1 }} />
-            <button className="wb-mini" onClick={() => void window.api.agentAutoToggle(r.id, !r.enabled).then(refresh)}>
-              {r.enabled ? '停用' : '启用'}
-            </button>
-            <button className="wb-mini danger" onClick={() => void window.api.agentAutoRemove(r.id).then(refresh)}>
-              ✕
-            </button>
-          </div>
-          <div className="wb-dim" style={{ padding: 0 }}>
-            每 {r.interval_minutes} 分钟 · 上次：{r.last_run_at ?? '未运行'}{r.last_result ? ` · ${r.last_result}` : ''}
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -470,9 +582,10 @@ function McpPane(): JSX.Element {
   }
   useEffect(refresh, [])
   return (
-    <div className="wb-pane">
-      <div className="wb-dim">MCP（Model Context Protocol）：配置外部工具服务器后，其工具自动成为工作台 agent 的能力。</div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+    <div className="wb-pane-full">
+      <div className="wb-pane-head">
+        MCP 服务器
+        <span style={{ flex: 1 }} />
         <button className="wb-mini" onClick={() => void window.api.agentMcpOpenConfig()}>
           编辑 mcp.json
         </button>
@@ -480,21 +593,30 @@ function McpPane(): JSX.Element {
           重新连接
         </button>
       </div>
+      <div className="wb-dim" style={{ marginBottom: 10 }}>
+        在 mcp.json 里配置任意外部 MCP 服务器（Zotero / arXiv / 文件系统 / 联网搜索…），其工具自动挂载给智能体。
+      </div>
       {(st?.results ?? []).map((r) => (
-        <div key={r.server} className="wb-task-card" style={{ cursor: 'default' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div key={r.server} className="wb-card">
+          <div className="wb-card-head">
+            <span className="wb-card-icon">🔌</span>
+            <span className="wb-card-title">{r.server}</span>
+            <span style={{ flex: 1 }} />
             <span className={`wb-task-status ${r.ok ? 'done' : 'error'}`}>{r.ok ? `✓ ${r.tools} 工具` : '连接失败'}</span>
-            <span className="wb-task-goal">{r.server}</span>
           </div>
-          {r.error && <div className="wb-dim" style={{ padding: 0 }}>{r.error}</div>}
+          {r.error && <div className="wb-card-body">{r.error}</div>}
         </div>
       ))}
       {(st?.tools ?? []).length > 0 && (
-        <div className="wb-dim" style={{ padding: 0 }}>
-          已挂载工具：{(st!.tools ?? []).map((t) => t.fullName).join('、')}
+        <div className="wb-card">
+          <div className="wb-card-head">
+            <span className="wb-card-icon">🧰</span>
+            <span className="wb-card-title">已挂载 MCP 工具</span>
+          </div>
+          <div className="wb-card-body">{(st!.tools ?? []).map((t) => t.fullName).join('、')}</div>
         </div>
       )}
-      <div className="wb-dim" style={{ padding: 0 }}>配置文件：{st?.configPath ?? ''}</div>
+      <div className="wb-dim">配置文件：{st?.configPath ?? ''}</div>
     </div>
   )
 }

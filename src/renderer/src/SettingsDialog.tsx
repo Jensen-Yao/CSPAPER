@@ -26,7 +26,7 @@ function fmtSize(n?: number): string {
   return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
 }
 
-type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'zoterosync' | 'model' | 'embed' | 'plugins' | 'index'
+type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'zoterosync' | 'agent' | 'model' | 'embed' | 'plugins' | 'index'
 
 const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'appear', icon: '🎨', label: '外观与翻译' },
@@ -35,6 +35,7 @@ const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'cites', icon: '📑', label: '引文样式' },
   { id: 'model', icon: '🤖', label: '模型服务' },
   { id: 'embed', icon: '🧬', label: '向量嵌入' },
+  { id: 'agent', icon: '⚡', label: '智能体' },
   { id: 'zoterosync', icon: '🔄', label: 'Zotero 同步' },
   { id: 'plugins', icon: '🔌', label: '插件与安装' },
   { id: 'index', icon: '🗂', label: '索引与关于' }
@@ -773,6 +774,43 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               </div>
             )}
 
+            {sec === 'agent' && (
+              <div className="section">
+                <div className="section-title">智能体模型</div>
+                <div className="hint" style={{ marginBottom: 10 }}>
+                  科研工作台的 agent 建议绑定能力更强的模型（可与对话模型不同）。留空则使用上方「模型服务」的当前模型。
+                </div>
+                <select
+                  className="set-input"
+                  style={{ width: '100%', marginBottom: 12 }}
+                  value={form.agentModel ?? ''}
+                  onChange={(e) => set({ agentModel: e.target.value })}
+                >
+                  <option value="">（使用对话模型：{form.model || '未配置'}）</option>
+                  {(form.models ?? []).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <div className="section-title">执行护栏</div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: 12.5 }}>单任务最大步数</span>
+                  <input
+                    className="set-input"
+                    style={{ width: 90 }}
+                    value={String(form.agentMaxSteps ?? 24)}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value.replace(/\D/g, ''), 10)
+                      set({ agentMaxSteps: Math.max(4, Math.min(60, isNaN(v) ? 24 : v)) })
+                    }}
+                  />
+                  <span className="hint">步数越多越彻底，也越耗时耗 token</span>
+                </div>
+                <div className="section-title">MCP / 技能 / 自动化</div>
+                <div className="hint">
+                  三者的管理入口在 顶栏 Work → 左栏对应面板。MCP 服务器配置文件在数据目录 mcp.json；技能目录放入 .md 即热生效。
+                </div>
+              </div>
+            )}
             {sec === 'zoterosync' && (
               <div className="section">
                 <div className="section-title">Zotero 云端同步（Web API）</div>
@@ -818,6 +856,17 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                     增量同步
                   </button>
                   <span className="hint">{zotMsg || (zotLastSync ? `上次同步：${zotLastSync}` : '')}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                  <input
+                    type="checkbox"
+                    id="zoteroAutoSync"
+                    checked={!!form.zoteroAutoSync}
+                    onChange={(e) => set({ zoteroAutoSync: e.target.checked })}
+                  />
+                  <label htmlFor="zoteroAutoSync" style={{ fontSize: 12.5, cursor: 'pointer' }}>
+                    启动软件时自动执行增量同步（后台静默）
+                  </label>
                 </div>
                 <div className="hint" style={{ marginTop: 10 }}>
                   同步结果自动入库：有 PDF 附件下载原文，无 PDF 生成题录页；标注与笔记写入文献的 md 笔记区。同步在后台执行，可关闭设置页。

@@ -37,6 +37,22 @@ export function registerAiIpc(ctx: IpcCtx): void {
   ipcMain.handle('compare:generate', (_e, paperId: number, dimensions: string[]) => generateCells(paperId, dimensions, send))
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, ctx.getWin()))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
+  ipcMain.handle('papers:similar', async (_e, id: number) => {
+    const db = dbmod.getDb()
+    const p = db.prepare('SELECT id, title FROM papers WHERE id=?').get(id) as { id: number; title: string } | undefined
+    if (!p) return []
+    const rs = await hybridSearch(p.title.slice(0, 120), undefined, 8)
+    const seen = new Set<number>([id])
+    const out: Array<{ id: number; title: string; snippet: string }> = []
+    for (const r of rs) {
+      if (seen.has(r.paperId)) continue
+      seen.add(r.paperId)
+      const row = db.prepare('SELECT id, title FROM papers WHERE id=?').get(r.paperId) as { id: number; title: string } | undefined
+      if (row) out.push({ id: row.id, title: row.title, snippet: r.snippet.slice(0, 100) })
+      if (out.length >= 5) break
+    }
+    return out
+  })
   ipcMain.handle('graph:data', (_e, category?: string) => knowledgeGraph(typeof category === 'string' && category ? category : undefined))
   ipcMain.handle('notes:mine-get', (_e, id: number) => getMyNotesText(id))
   ipcMain.handle('notes:mine-save', (_e, id: number, text: string) => saveMyNotesText(id, text))

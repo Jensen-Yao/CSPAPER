@@ -308,9 +308,26 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               {citedBusy ? '更新中…' : '更新被引'}
             </button>
             {checked.size > 0 && (
-              <button className="btn ghost" title="导出所选文献为 BibTeX 文件" onClick={() => void window.api.exportBibtex([...checked])}>
-                导出 BibTeX
-              </button>
+              <>
+                <button className="btn ghost" title="导出所选文献为 BibTeX 文件" onClick={() => void window.api.exportBibtex([...checked])}>
+                  导出 BibTeX
+                </button>
+                <input
+                  className="ov-filter"
+                  style={{ width: 120 }}
+                  placeholder="批量打标签…"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    const tag = e.currentTarget.value.trim()
+                    if (!tag) return
+                    void Promise.all([...checked].map((id) => window.api.paperTagAdd(id, tag))).then(() => {
+                      setChecked(new Set())
+                      onRefresh()
+                      e.currentTarget.value = ''
+                    })
+                  }}
+                />
+              </>
             )}
             {advOpen && (
               <div className="ov-adv">
