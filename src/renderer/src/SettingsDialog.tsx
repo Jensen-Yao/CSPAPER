@@ -26,7 +26,7 @@ function fmtSize(n?: number): string {
   return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
 }
 
-type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'model' | 'embed' | 'plugins' | 'index'
+type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'zoterosync' | 'model' | 'embed' | 'plugins' | 'index'
 
 const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'appear', icon: '🎨', label: '外观与翻译' },
@@ -35,6 +35,7 @@ const NAV: Array<{ id: Sec; icon: string; label: string }> = [
   { id: 'cites', icon: '📑', label: '引文样式' },
   { id: 'model', icon: '🤖', label: '模型服务' },
   { id: 'embed', icon: '🧬', label: '向量嵌入' },
+  { id: 'zoterosync', icon: '🔄', label: 'Zotero 同步' },
   { id: 'plugins', icon: '🔌', label: '插件与安装' },
   { id: 'index', icon: '🗂', label: '索引与关于' }
 ]
@@ -80,6 +81,35 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const [cslMsg, setCslMsg] = useState('')
   // —— 插件与安装（浏览器扩展一键装载反馈）——
   const [extMsg, setExtMsg] = useState<Partial<Record<'chrome' | 'edge', string>>>({})
+  // Zotero 云端同步：验证/同步消息 + 上次同步时间
+  const [zotMsg, setZotMsg] = useState('')
+  const [zotBusy, setZotBusy] = useState(false)
+  const [zotLastSync, setZotLastSync] = useState('')
+  useEffect(() => {
+    if (sec !== 'zoterosync') return
+    void window.api.zoteroApiStatus().then((st) => {
+      if (st.lastSyncAt) setZotLastSync(st.lastSyncAt)
+    })
+    return window.api.onZoteroSyncDone((p) => {
+      setZotBusy(false)
+      setZotMsg(p.ok ? `✓ 同步完成：拉取 ${p.fetched ?? 0} 条，导入 ${p.imported ?? 0}，跳过 ${p.skipped ?? 0}，失败 ${p.failed ?? 0}` : `✗ ${p.error ?? '同步失败'}`)
+      void window.api.zoteroApiStatus().then((st) => {
+        if (st.lastSyncAt) setZotLastSync(st.lastSyncAt)
+      })
+    })
+  }, [sec])
+  const verifyZotero = async (): Promise<void> => {
+    setZotBusy(true)
+    setZotMsg('验证中…')
+    try {
+      const r = await window.api.zoteroApiVerify(form.zoteroUserId ?? '', form.zoteroApiKey ?? '')
+      setZotMsg(r.ok ? `✓ 连接成功${r.items != null ? `：云端共 ${r.items} 条` : ''}（记得先保存凭据）` : `✗ ${r.error ?? '验证失败'}`)
+    } catch (e) {
+      setZotMsg(`✗ ${String(e).slice(0, 120)}`)
+    } finally {
+      setZotBusy(false)
+    }
+  }
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
@@ -743,6 +773,57 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               </div>
             )}
 
+            {sec === 'zoterosync' && (
+              <div className="section">
+                <div className="section-title">Zotero 云端同步（Web API）</div>
+                <div className="hint" style={{ marginBottom: 10 }}>
+                  填入 Zotero 的 userId 与 apiKey（在 zotero.org/settings/keys 创建 key，同一页面顶部可见你的 userID），
+                  即可云端全量/增量同步：条目、分类、标签、笔记、PDF 标注、附件与 CSL 题录自动入库。与「本地导入」并存。
+                </div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                  <input
+                    className="set-input"
+                    style={{ flex: 1 }}
+                    placeholder="Zotero userID（数字）"
+                    value={form.zoteroUserId ?? ''}
+                    onChange={(e) => set({ zoteroUserId: e.target.value.trim() })}
+                  />
+                  <input
+                    className="set-input"
+                    style={{ flex: 1 }}
+                    type="password"
+                    placeholder="Zotero apiKey"
+                    value={form.zoteroApiKey ?? ''}
+                    onChange={(e) => set({ zoteroApiKey: e.target.value.trim() })}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button className="btn ghost" onClick={() => void verifyZotero()}>
+                    验证连接
+                  </button>
+                  <button
+                    className="btn ghost"
+                    disabled={!(form.zoteroUserId && form.zoteroApiKey)}
+                    onClick={() => void window.api.zoteroApiSync('full')}
+                    title="拉取全部条目（按 key 去重，已有条目自动跳过）"
+                  >
+                    立即全量同步
+                  </button>
+                  <button
+                    className="btn ghost"
+                    disabled={!(form.zoteroUserId && form.zoteroApiKey)}
+                    onClick={() => void window.api.zoteroApiSync('incremental')}
+                    title="只拉取上次同步之后的变更"
+                  >
+                    增量同步
+                  </button>
+                  <span className="hint">{zotMsg || (zotLastSync ? `上次同步：${zotLastSync}` : '')}</span>
+                </div>
+                <div className="hint" style={{ marginTop: 10 }}>
+                  同步结果自动入库：有 PDF 附件下载原文，无 PDF 生成题录页；标注与笔记写入文献的 md 笔记区。同步在后台执行，可关闭设置页。
+                </div>
+              </div>
+            )}
             {sec === 'plugins' && (
               <div className="section">
                 <div className="section-title">内置浏览器</div>

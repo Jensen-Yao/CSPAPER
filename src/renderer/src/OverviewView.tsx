@@ -105,13 +105,57 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
     }
   }
 
+  // ---------- 高级检索（v0.9，对标 Zotero 高级搜索，可保存为智能搜索） ----------
+  interface AdvCond {
+    title: string
+    authors: string
+    yearFrom: string
+    yearTo: string
+    status: string
+    category: string
+  }
+  const EMPTY_ADV: AdvCond = { title: '', authors: '', yearFrom: '', yearTo: '', status: '', category: '' }
+  const [advOpen, setAdvOpen] = useState(false)
+  const [adv, setAdv] = useState<AdvCond>(EMPTY_ADV)
+  const [savedSearches, setSavedSearches] = useState<Array<{ name: string; cond: AdvCond }>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('ov.savedSearches') ?? '[]')
+    } catch {
+      return []
+    }
+  })
+  const persistSaved = (list: Array<{ name: string; cond: AdvCond }>): void => {
+    setSavedSearches(list)
+    try {
+      localStorage.setItem('ov.savedSearches', JSON.stringify(list))
+    } catch {
+      /* 忽略 */
+    }
+  }
+  const advActive = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category)
+
   const filtered = useMemo(() => {
     const cf = catFilter, sf = statusFilter, tf = effTag
-    if (!cf && !sf && !tf) return papers
-    return papers.filter(
-      (p) => (!cf || p.category === cf) && (!sf || p.status === sf) && (!tf || (p.tags ?? []).includes(tf))
-    )
-  }, [papers, catFilter, statusFilter, effTag])
+    const hasAdv = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category)
+    if (!cf && !sf && !tf && !hasAdv) return papers
+    const yf = parseInt(adv.yearFrom, 10) || -Infinity
+    const yt = parseInt(adv.yearTo, 10) || Infinity
+    const kw = (v: string): boolean => v.toLowerCase().includes(adv.title.toLowerCase())
+    const au = adv.authors.toLowerCase()
+    return papers.filter((p) => {
+      if (cf && p.category !== cf) return false
+      if (sf && p.status !== sf) return false
+      if (tf && !(p.tags ?? []).includes(tf)) return false
+      if (hasAdv) {
+        if (adv.title && !kw(p.title)) return false
+        if (adv.authors && !p.authors.toLowerCase().includes(au)) return false
+        if ((p.year ?? -Infinity) < yf || (p.year ?? Infinity) > yt) return false
+        if (adv.status && p.status !== adv.status) return false
+        if (adv.category && p.category !== adv.category) return false
+      }
+      return true
+    })
+  }, [papers, catFilter, statusFilter, effTag, adv])
 
   const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
 
@@ -252,6 +296,9 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               ))}
             </select>
             <span style={{ flex: 1 }} />
+            <button className={`btn ghost ${advActive ? 'on' : ''}`} title="多条件组合检索（可保存为智能搜索）" onClick={() => setAdvOpen((v) => !v)}>
+              ⌕ 高级{advActive ? ' ·' : ''}
+            </button>
             <button
               className="btn ghost"
               disabled={citedBusy || filtered.length === 0}
@@ -260,6 +307,74 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             >
               {citedBusy ? '更新中…' : '更新被引'}
             </button>
+            {checked.size > 0 && (
+              <button className="btn ghost" title="导出所选文献为 BibTeX 文件" onClick={() => void window.api.exportBibtex([...checked])}>
+                导出 BibTeX
+              </button>
+            )}
+            {advOpen && (
+              <div className="ov-adv">
+                <div className="ov-adv-row">
+                  <input className="ov-adv-input" placeholder="标题包含…" value={adv.title} onChange={(e) => setAdv({ ...adv, title: e.target.value })} />
+                  <input className="ov-adv-input" placeholder="作者包含…" value={adv.authors} onChange={(e) => setAdv({ ...adv, authors: e.target.value })} />
+                </div>
+                <div className="ov-adv-row">
+                  <input className="ov-adv-input" placeholder="年份从" value={adv.yearFrom} onChange={(e) => setAdv({ ...adv, yearFrom: e.target.value.replace(/\D/g, '') })} />
+                  <input className="ov-adv-input" placeholder="到" value={adv.yearTo} onChange={(e) => setAdv({ ...adv, yearTo: e.target.value.replace(/\D/g, '') })} />
+                  <select className="ov-filter" value={adv.status} onChange={(e) => setAdv({ ...adv, status: e.target.value })}>
+                    <option value="">任意状态</option>
+                    {STATUS_KEYS.map((k) => (
+                      <option key={k} value={k}>
+                        {STATUS_META[k].label}
+                      </option>
+                    ))}
+                  </select>
+                  <select className="ov-filter" value={adv.category} onChange={(e) => setAdv({ ...adv, category: e.target.value })}>
+                    <option value="">任意分类</option>
+                    {cats.map((c) => (
+                      <option key={c} value={c}>
+                        {catLabel(c)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="ov-adv-row">
+                  <button
+                    className="btn ghost"
+                    onClick={() => {
+                      const name = prompt('智能搜索名称：', `搜索 ${new Date().toLocaleDateString('zh-CN')}`)
+                      if (name) persistSaved([...savedSearches, { name, cond: adv }])
+                    }}
+                  >
+                    保存为智能搜索
+                  </button>
+                  <button className="btn ghost" onClick={() => setAdv(EMPTY_ADV)}>
+                    清除条件
+                  </button>
+                  <button className="btn ghost" onClick={() => setAdvOpen(false)}>
+                    收起
+                  </button>
+                  {savedSearches.length > 0 && <span className="ov-dim">已保存：</span>}
+                  {savedSearches.map((sv) => (
+                    <span key={sv.name} className="ov-adv-saved">
+                      <button
+                        className="ov-filter"
+                        title="应用此智能搜索"
+                        onClick={() => {
+                          setAdv(sv.cond)
+                          setAdvOpen(true)
+                        }}
+                      >
+                        {sv.name}
+                      </button>
+                      <button className="ov-adv-del" title="删除" onClick={() => persistSaved(savedSearches.filter((x) => x.name !== sv.name))}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             {checked.size > 0 && (
               <>
                 <span className="ov-batch-label">已选 {checked.size} 篇</span>

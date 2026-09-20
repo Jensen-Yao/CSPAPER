@@ -222,6 +222,32 @@ const api = {
   graphTopics: (category?: string) => ipcRenderer.invoke('graph:topics', category),
   statsExtra: () => ipcRenderer.invoke('stats:extra'),
 
+  // ---------- 工作台 Agent（v0.9） ----------
+  agentPlan: (goal: string) => ipcRenderer.invoke('agent:plan', goal),
+  agentUpdatePlan: (id: string, plan: unknown) => ipcRenderer.invoke('agent:update-plan', id, plan),
+  agentRun: (id: string) => ipcRenderer.invoke('agent:run', id),
+  agentCancel: (id: string) => ipcRenderer.invoke('agent:cancel', id),
+  agentTasks: () => ipcRenderer.invoke('agent:tasks'),
+  agentTask: (id: string) => ipcRenderer.invoke('agent:task', id),
+  onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } } }) => void) => {
+    const h = (_e: unknown, p: unknown) => cb(p as never)
+    ipcRenderer.on('agent:event', h)
+    return () => ipcRenderer.removeListener('agent:event', h)
+  },
+
+  // ---------- Zotero Web API 同步（v0.9） ----------
+  zoteroApiStatus: () => ipcRenderer.invoke('zotero:api-status'),
+  zoteroApiVerify: (userId: string, apiKey: string) => ipcRenderer.invoke('zotero:api-verify', userId, apiKey),
+  zoteroApiSync: (mode: 'full' | 'incremental') => ipcRenderer.invoke('zotero:api-sync', mode),
+  onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string }) => void) => {
+    const h = (_e: unknown, p: unknown) => cb(p as never)
+    ipcRenderer.on('zotero:sync-done', h)
+    return () => ipcRenderer.removeListener('zotero:sync-done', h)
+  },
+
+  // ---------- Paper 补强（v0.9） ----------
+  exportBibtex: (ids: number[]) => ipcRenderer.invoke('export:bibtex', ids),
+
   // ---------- 内置浏览器 + 一键安装（v0.7） ----------
   webSavePage: (url: string, category?: string) => ipcRenderer.invoke('web:save-page', url, category),
   extOpenFolder: () => ipcRenderer.invoke('ext:open-folder'),

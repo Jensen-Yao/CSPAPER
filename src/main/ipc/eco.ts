@@ -105,3 +105,22 @@ export function registerEcoIpc(ctx: IpcCtx): void {
     if (/^https?:\/\//.test(url)) shell.openExternal(url)
   })
 }
+
+// ---------- Zotero Web API 同步（v0.9） ----------
+import { apiStatus as zoteroApiStatus, verifyApi as zoteroVerifyApi, syncZotero } from '../zotero-api'
+
+export function registerZoteroApiIpc(ctx: IpcCtx): void {
+  ipcMain.handle('zotero:api-status', () => zoteroApiStatus())
+  ipcMain.handle('zotero:api-verify', (_e, userId: string, apiKey: string) => zoteroVerifyApi(String(userId ?? '').trim(), String(apiKey ?? '').trim()))
+  ipcMain.handle('zotero:api-sync', (_e, mode: 'full' | 'incremental') => {
+    void (async () => {
+      const r = await syncZotero({
+        mode,
+        onProgress: (p) => ctx.send('zotero:progress', p)
+      })
+      if (r.ok) ctx.send('zotero:sync-done', { ok: true, imported: r.imported, skipped: r.skipped, failed: r.failed, fetched: r.fetched })
+      else ctx.send('zotero:sync-done', { ok: false, error: r.error })
+    })()
+    return { ok: true }
+  })
+}

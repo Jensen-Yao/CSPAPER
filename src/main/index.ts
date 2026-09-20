@@ -14,6 +14,8 @@ import { registerCiteIpc } from './ipc/cite'
 import { registerExtraIpc } from './ipc/extra'
 import { registerKnowledgeIpc } from './ipc/extra'
 import { registerIntegrateIpc, setupWebSession } from './ipc/integrate'
+import { registerAgentIpc } from './ipc/agent'
+import { registerZoteroApiIpc } from './ipc/eco'
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -175,6 +177,8 @@ app.whenReady().then(() => {
   registerExtraIpc({ send })
   registerKnowledgeIpc()
   registerIntegrateIpc()
+  registerAgentIpc(ctx)
+  registerZoteroApiIpc(ctx)
   // 内置浏览器会话：独立分区 + Connector 扩展 + PDF 下载自动入库
   setupWebSession((title, detail) => send('app:notice', { title, detail }))
   createWindow()

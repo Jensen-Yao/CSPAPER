@@ -61,6 +61,9 @@ export interface Settings {
   closeToTray?: boolean
   // 被停用的抓取脚本 id（W13）
   disabledTranslators?: string[]
+  // Zotero Web API（v0.9）：云端同步
+  zoteroUserId?: string
+  zoteroApiKey?: string
 }
 
 // 默认文献库：跟随平台放到「文档」目录（开发态 app 未 ready 前不能调 getPath，惰性求值）
@@ -86,7 +89,9 @@ const DEFAULTS: Settings = {
   thinkingLevel: 'default',
   renameTemplate: '{title}',
   closeToTray: false,
-  disabledTranslators: []
+  disabledTranslators: [],
+  zoteroUserId: '',
+  zoteroApiKey: ''
 }
 
 let db: Database.Database

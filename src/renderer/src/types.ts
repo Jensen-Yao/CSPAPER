@@ -59,6 +59,8 @@ export interface Settings {
   renameTemplate?: string
   closeToTray?: boolean
   disabledTranslators?: string[]
+  zoteroUserId?: string
+  zoteroApiKey?: string
 }
 
 // 标签（W1）
@@ -378,6 +380,26 @@ declare global {
       statsOverview: () => Promise<StatsOverview>
       venuesLookup: (name: string) => Promise<{ name?: string; if_val?: number; zone?: string } | null>
       venuesImportCsv: () => Promise<{ imported: number } | null>
+      exportBibtex: (ids: number[]) => Promise<{ ok: boolean; count?: number; path?: string; error?: string }>
+      // ---------- 工作台 Agent（v0.9） ----------
+      agentPlan: (goal: string) => Promise<{ id: string; goal: string; status: string; plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>; events: unknown[]; answer: string }>
+      agentUpdatePlan: (id: string, plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>) => Promise<unknown>
+      agentRun: (id: string) => Promise<{ ok: boolean }>
+      agentCancel: (id: string) => Promise<boolean>
+      agentTasks: () => Promise<Array<{ id: string; goal: string; status: string; createdAt: string; answer: string }>>
+      agentTask: (id: string) => Promise<{
+        id: string
+        goal: string
+        status: string
+        plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>
+        events: Array<{ t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } }>
+        answer: string
+      } | null>
+      zoteroApiStatus: () => Promise<{ configured: boolean; lastSyncVersion: number | null; lastSyncAt: string | null }>
+      zoteroApiVerify: (userId: string, apiKey: string) => Promise<{ ok: boolean; error?: string; items?: number }>
+      zoteroApiSync: (mode: 'full' | 'incremental') => Promise<{ ok: boolean }>
+      onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string }) => void) => () => void
+      onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } } }) => void) => () => void
       // ---------- 知识体系 + 统计扩展（v0.7） ----------
       graphKeywords: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number; papers: number[] }>; edges: Array<{ a: string; b: string; w: number }> }>
       graphAuthors: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number }>; edges: Array<{ a: string; b: string; w: number }> }>

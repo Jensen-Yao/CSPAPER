@@ -442,6 +442,29 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     dialog.showMessageBox(win, { message: `已导出 ${copied}/${rows.length} 篇到 ${destRoot}` })
   }
 
+  // 批量导出所选文献为 BibTeX 文件（v0.9）
+  ipcMain.handle('export:bibtex', async (_e, ids: number[]) => {
+    const db = dbmod.getDb()
+    const rows = (ids ?? [])
+      .map((id) => db.prepare('SELECT id, title, authors, year, venue, doi, item_type FROM papers WHERE id=?').get(id))
+      .filter(Boolean) as Array<{ id: number; title: string; authors: string; year: number | null; venue: string; doi: string | null; item_type: string | null }>
+    if (rows.length === 0) return { ok: false, error: '未选择文献' }
+    const { bibtex } = await import('../cite')
+    const text = rows
+      .map((r) => bibtex({ ...r, itemType: r.item_type || 'journalArticle' } as import('../cite').CiteRecord))
+      .join('\n\n')
+    const win = getWin()
+    if (!win) return { ok: false, error: '窗口不可用' }
+    const r = await dialog.showSaveDialog(win, {
+      title: '导出 BibTeX',
+      defaultPath: `CSPAPER-导出-${rows.length}篇.bib`,
+      filters: [{ name: 'BibTeX', extensions: ['bib'] }]
+    })
+    if (r.canceled || !r.filePath) return { ok: false, error: '已取消' }
+    fs.writeFileSync(r.filePath, text, 'utf8')
+    return { ok: true, count: rows.length, path: r.filePath }
+  })
+
   ipcMain.handle('index:status', () => {
     const total = dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers').get() as { n: number }
     const done = dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers WHERE indexed=1').get() as { n: number }

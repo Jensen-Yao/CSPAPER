@@ -91,6 +91,11 @@
 - PDF 文本抽取移入工作线程（索引大库不卡 UI）；全量重扫改增量门控（mtime+size）；抽取缓存加 LRU 上限
 - 主进程 IPC 按域拆分模块；PDF 内 Ctrl+F 查找条；纵览表格窗口化渲染；托盘常驻与关闭最小化；导入重命名模板；删除三选项
 
+### ⚡ Work × 📚 Paper 双主模式（v0.9）
+- **Work 科研工作台**：agent 任务驱动（目标 → 计划确认 → 自动执行 → 产物入库），基于开源 harness Vercel AI SDK；10 个科研工具（检索/入库/精读/问答/笔记/综述/对比/引文）
+- **Paper 文献库**：全部既有能力归入 Paper 模式，全面对标 Zotero；补齐高级检索（可保存智能搜索）与 BibTeX 批量导出
+- **Zotero Web API 云端同步**：userId+apiKey 配置化，全量/增量同步条目、分类、标签、笔记、PDF 标注、附件与 CSL 题录
+
 ## 🚧 规划中
 
 ### 🇨🇳 中文文献支持（深化）
@@ -104,6 +109,8 @@
 - 类 Zotero 的第三方插件系统，开放本地桥接 API 规范
 - WPS 原生 JS 加载项（当前以引文助手网页 + 粘贴方式支持）
 - Notion 同步（Notero 对标项）
+- Zotero 写回（双向同步）：CSPAPER 内的标注/笔记回写 Zotero
+- RSS 订阅管理器（arXiv/期刊 feed 追踪）、嵌套分类、条目关联（related items）
 
 ---
 

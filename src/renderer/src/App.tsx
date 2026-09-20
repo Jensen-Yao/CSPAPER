@@ -16,6 +16,7 @@ import OverviewView from './OverviewView'
 import NotesView from './NotesView'
 import OnlineAddDialog from './OnlineAddDialog'
 import WebSearchView from './WebSearchView'
+import WorkbenchView from './WorkbenchView'
 import { STATUS_KEYS } from './types'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
@@ -120,6 +121,7 @@ export default function App(): JSX.Element {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web'>('read')
+  const [topMode, setTopMode] = useState<'work' | 'paper'>('paper')
   const [overviewTab, setOverviewTab] = useState<'table' | 'graph' | 'stats'>('table')
   const [onlineOpen, setOnlineOpen] = useState(false)
   const [findSignal, setFindSignal] = useState(0)
@@ -623,13 +625,23 @@ export default function App(): JSX.Element {
           <MenuBar menus={menus} openMenu={openMenu} setOpenMenu={setOpenMenu} />
         )}
         <div className="tb-side tb-left">
-          <button
-            className={`icon-btn tb-toggle ${showLib ? 'on' : ''}`}
-            title={showLib ? '隐藏 文献边栏' : '显示 文献边栏'}
-            onClick={() => setShowLib((v) => !v)}
-          >
-            <SidebarIcon />
-          </button>
+          <div className="top-switch">
+            <button className={topMode === 'work' ? 'on' : ''} title="科研工作台：给目标，agent 执行" onClick={() => setTopMode('work')}>
+              ⚡ Work
+            </button>
+            <button className={topMode === 'paper' ? 'on' : ''} title="文献库：阅读 / 对话 / 纵览 / 笔记" onClick={() => setTopMode('paper')}>
+              📚 Paper
+            </button>
+          </div>
+          {topMode === 'paper' && (
+            <button
+              className={`icon-btn tb-toggle ${showLib ? 'on' : ''}`}
+              title={showLib ? '隐藏 文献边栏' : '显示 文献边栏'}
+              onClick={() => setShowLib((v) => !v)}
+            >
+              <SidebarIcon />
+            </button>
+          )}
         </div>
         <div className="tb-drag" />
         <div className="tb-title">CSPAPER</div>
@@ -637,13 +649,14 @@ export default function App(): JSX.Element {
         <div className="tb-side tb-right">
           {/* 顶栏快捷区：工具类模式全局直达（内容模式 阅读/对话 留在左栏） */}
           <div className="tb-quick">
-            <button className={`tb-q ${mode === 'compare' ? 'on' : ''}`} title="AI 对比表格" onClick={() => setMode('compare')}>
+            <button className={`tb-q ${mode === 'compare' ? 'on' : ''}`} title="AI 对比表格" onClick={() => { setTopMode('paper'); setMode('compare') }}>
               ▦<span>对比</span>
             </button>
             <button
               className={`tb-q ${mode === 'overview' && overviewTab !== 'stats' ? 'on' : ''}`}
               title="纵览（文献表格 / 知识体系）"
               onClick={() => {
+                setTopMode('paper')
                 setMode('overview')
                 setOverviewTab('table')
               }}
@@ -654,16 +667,17 @@ export default function App(): JSX.Element {
               className={`tb-q ${mode === 'overview' && overviewTab === 'stats' ? 'on' : ''}`}
               title="统计仪表盘"
               onClick={() => {
+                setTopMode('paper')
                 setMode('overview')
                 setOverviewTab('stats')
               }}
             >
               ▤<span>统计</span>
             </button>
-            <button className={`tb-q ${mode === 'notes' ? 'on' : ''}`} title="笔记中心" onClick={() => setMode('notes')}>
+            <button className={`tb-q ${mode === 'notes' ? 'on' : ''}`} title="笔记中心" onClick={() => { setTopMode('paper'); setMode('notes') }}>
               ✎<span>笔记</span>
             </button>
-            <button className={`tb-q ${mode === 'web' ? 'on' : ''}`} title="文献浏览器（学术搜索）" onClick={() => setMode('web')}>
+            <button className={`tb-q ${mode === 'web' ? 'on' : ''}`} title="文献浏览器（学术搜索）" onClick={() => { setTopMode('paper'); setMode('web') }}>
               ◉<span>网页</span>
             </button>
             <button className="tb-q" title="在线添加文献（DOI / arXiv / 关键词）" onClick={() => setOnlineOpen(true)}>
@@ -686,6 +700,26 @@ export default function App(): JSX.Element {
       </div>
 
       <div className="body3">
+        {topMode === 'work' && (
+          <WorkbenchView
+            visible
+            papers={papers}
+            onOpenPaper={(p) => {
+              setTopMode('paper')
+              openPaperFromTree(p)
+            }}
+            onOpenCompare={() => {
+              setTopMode('paper')
+              setMode('compare')
+            }}
+            onOpenNotes={() => {
+              setTopMode('paper')
+              setMode('notes')
+            }}
+          />
+        )}
+        {topMode === 'paper' && (
+        <>
         {showLib && (
           <>
             <LibraryPane
@@ -853,6 +887,8 @@ export default function App(): JSX.Element {
           {/* 内置文献浏览器：站点快捷入口 + Connector 扩展 + 一键保存入库 */}
           <WebSearchView visible={mode === 'web'} />
         </div>
+        </>
+        )}
       </div>
 
       <div className="statusbar">
