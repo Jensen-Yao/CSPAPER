@@ -43,3 +43,35 @@ jobs:
         run: npm run dist:mac -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安装 Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 清理本地配置并同步移动端页面
+        run: |
+          rm -f android-app/local.properties
+          cp -f mobile/index.html android-app/app/src/main/assets/www/index.html
+
+      - name: 构建 APK（debug 签名，可直接安装）
+        working-directory: android-app
+        run: gradle assembleDebug --no-daemon
+
+      - name: 发布 APK 到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android-app/app/build/outputs/apk/debug/app-debug.apk
+          name: CSPAPER v0.7.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
