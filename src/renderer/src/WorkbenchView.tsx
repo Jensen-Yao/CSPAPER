@@ -418,6 +418,9 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
     }
     if (a.kind === 'table') return onOpenCompare()
     if (a.kind === 'note') return onOpenNotes()
+    // 新导入的文献可能还不在旧 papers 里：给可见反馈而不是静默无效
+    setNotice('该文献刚导入、列表尚未刷新——切到 Paper 模式即可看到')
+    window.setTimeout(() => setNotice(''), 2600)
   }
   const reportMd = (): string => {
     if (!task) return ''
@@ -965,6 +968,12 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                           onClick={() => {
                             void window.api.saveSettings({ agentModel: m })
                             setAgentModel(m)
+                            // 切模型后推理档位词来自新模型（预置库兜底）
+                            void window.api.getSettings().then((s0) => {
+                              const st = s0 as { profiles?: Array<{ models: string[]; modelCaps?: Record<string, { reasoningLevels: string[] }> }> }
+                              const pf = (st.profiles ?? []).find((x) => x.models.includes(m))
+                              setLevels(pf?.modelCaps?.[m]?.reasoningLevels ?? presetCaps(m)?.reasoningLevels ?? [])
+                            })
                             setPop('')
                           }}
                         >

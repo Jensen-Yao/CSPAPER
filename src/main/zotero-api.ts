@@ -363,7 +363,8 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  if (version) setMeta('zotero.syncVersion', String(version))
+  // 有失败项不推进增量游标：失败条目 version ≤ 新游标后 since= 增量永远漏拉
+  if (version && res.failed === 0) setMeta('zotero.syncVersion', String(version))
   setMeta('zotero.lastSyncAt', new Date().toLocaleString('zh-CN'))
   scanLibrary(s.libraryPath)
   res.ok = true

@@ -290,7 +290,7 @@ export async function hybridSearch(query: string, scopePaperId?: number, topK = 
   const maxId = (db.prepare('SELECT MAX(id) m FROM chunks').get() as { m: number | null }).m ?? 0
   const catScope: Record<number, true> = {}
   if (category) {
-    for (const r of db.prepare('SELECT id FROM papers WHERE category=?').all(category) as Array<{ id: number }>) catScope[r.id] = true
+    for (const r of db.prepare('SELECT id FROM papers WHERE category=? AND deleted_at IS NULL').all(category) as Array<{ id: number }>) catScope[r.id] = true
   }
   if (!hybridCache.rows || hybridCache.maxId !== maxId || (hybridCache.rows[0] && hybridCache.rows[0].vec.byteLength / 4 !== qv.length)) {
     hybridCache.rows = db

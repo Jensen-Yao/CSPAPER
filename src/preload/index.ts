@@ -83,6 +83,7 @@ const api = {
   collectionsRemove: (id: number) => ipcRenderer.invoke('collections:remove', id),
   collectionsTogglePaper: (paperId: number, collectionId: number, on: boolean) => ipcRenderer.invoke('collections:toggle-paper', paperId, collectionId, on),
   collectionsPapers: (collectionId: number) => ipcRenderer.invoke('collections:papers', collectionId),
+  collectionsForPaper: (paperId: number) => ipcRenderer.invoke('collections:for-paper', paperId),
   papersDuplicates: () => ipcRenderer.invoke('papers:duplicates'),
   papersMerge: (keepId: number, dropIds: number[]) => ipcRenderer.invoke('papers:merge', keepId, dropIds),
   zoteroPushHighlights: (paperId: number) => ipcRenderer.invoke('zotero:push-highlights', paperId),

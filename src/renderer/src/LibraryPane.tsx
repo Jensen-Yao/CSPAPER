@@ -218,6 +218,15 @@ export default function LibraryPane({
     })
   }, [selColl, papers])
   useEffect(refreshColls, [papers])
+  // 挂接变化即时失效（详情面板 toggle / 合并等派发自定义事件）
+  useEffect(() => {
+    const h = (): void => {
+      refreshColls()
+      setCollPapersCache(new Map())
+    }
+    window.addEventListener('cspaper:collections-changed', h)
+    return () => window.removeEventListener('cspaper:collections-changed', h)
+  }, [])
   const openTrash = (): void => {
     setTrashOpen(true)
     void window.api.papersTrashed().then(setTrashed).catch(() => setTrashed([]))
@@ -595,7 +604,10 @@ export default function LibraryPane({
                 onContextMenu={(e) => {
                   e.preventDefault()
                   if (window.confirm(`删除集合「${c.name}」？（只解除挂接，不动文献与文件）`)) {
-                    void window.api.collectionsRemove(c.id).then(refreshColls)
+                    void window.api.collectionsRemove(c.id).then(() => {
+                      if (selColl === c.id) setSelColl(null)
+                      refreshColls()
+                    })
                   }
                 }}
                 title="点击查看集合内文献；右键删除集合（文献不受影响）"

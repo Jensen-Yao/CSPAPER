@@ -70,13 +70,20 @@ export function refreshAutoRelated(paperId: number, topN = 5): number {
     sims.push({ id: r.id, s: dot })
   }
   sims.sort((a, b) => b.s - a.s)
-  db.prepare('DELETE FROM paper_related WHERE paper_id=? AND kind=?').run(paperId, 'auto')
+  const top = sims.slice(0, topN).map((x) => x.id)
+  // 双向回收失效 auto 行：换 top5 后旧的正反向残留会越滚越多
+  if (top.length > 0) {
+    const ph = top.map(() => '?').join(',')
+    db.prepare(`DELETE FROM paper_related WHERE kind='auto' AND ((paper_id=? AND related_id NOT IN (${ph})) OR (related_id=? AND paper_id NOT IN (${ph})))`).run(paperId, ...top, paperId, ...top)
+  } else {
+    db.prepare("DELETE FROM paper_related WHERE kind='auto' AND (paper_id=? OR related_id=?)").run(paperId, paperId)
+  }
   const ins = db.prepare('INSERT OR IGNORE INTO paper_related(paper_id, related_id, kind) VALUES(?,?,?)')
   let wrote = 0
-  for (const s of sims.slice(0, topN)) {
+  for (const id of top) {
     // 对向也写成 auto（双向可发现，但不覆盖 manual）
-    ins.run(paperId, s.id, 'auto')
-    db.prepare('INSERT OR IGNORE INTO paper_related(paper_id, related_id, kind) VALUES(?,?,?)').run(s.id, paperId, 'auto')
+    ins.run(paperId, id, 'auto')
+    ins.run(id, paperId, 'auto')
     wrote++
   }
   return wrote

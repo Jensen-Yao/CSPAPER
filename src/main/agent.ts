@@ -580,7 +580,15 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
     const thinkBody: Record<string, unknown> = {}
     if (capsLevels.length > 0) {
       if (lvl !== 'default') {
-        const pick = lvl === 'off' ? capsLevels[0] : capsLevels[Math.min(capsLevels.length - 1, Math.max(0, Math.round((capsLevels.length - 1) * (lvl === 'low' ? 0.25 : lvl === 'medium' ? 0.5 : 0.75))))]
+        // 字面命中优先（档位数组含同名档直接用）；未命中再在档位序列上映射：
+        // off→最低档、low→低端、medium→中位、high→最高档（避免 4 档时 medium 错位到 high）
+        const lit = capsLevels.find((x) => x === lvl)
+        let pick: string
+        if (lit) pick = lit
+        else {
+          const n = capsLevels.length
+          pick = lvl === 'off' || lvl === 'low' ? capsLevels[0] : lvl === 'medium' ? capsLevels[Math.floor((n - 1) / 2)] : capsLevels[n - 1]
+        }
         thinkBody.reasoning_effort = pick
       }
     } else if (lvl !== 'default') {

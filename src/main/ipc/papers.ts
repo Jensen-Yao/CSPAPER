@@ -496,9 +496,12 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   // 元数据编辑（v0.15.2：卷/期/页/出版社/语言此前只活在 csl 侧车，不可编辑不可检索）
   ipcMain.handle('papers:update-meta', (_e, id: number, patch: Partial<Record<'title' | 'authors' | 'year' | 'venue' | 'volume' | 'issue' | 'pages' | 'publisher' | 'doi' | 'language', string | number | null>>) => {
     const db = dbmod.getDb()
+    // 字段白名单：renderer 传来的 key 直接拼 SQL，必须挡住 path/id/deleted_at 等任意列改写
+    const ALLOWED_META = new Set(['title', 'authors', 'year', 'venue', 'volume', 'issue', 'pages', 'publisher', 'doi', 'language'])
     const sets: string[] = []
     const vals: unknown[] = []
     for (const [k, v] of Object.entries(patch)) {
+      if (!ALLOWED_META.has(k)) continue
       sets.push(`${k}=?`)
       vals.push(v)
     }
@@ -537,6 +540,9 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     else db.prepare('DELETE FROM paper_collections WHERE paper_id=? AND collection_id=?').run(paperId, collectionId)
     return true
   })
+  ipcMain.handle('collections:for-paper', (_e, paperId: number) =>
+    (dbmod.getDb().prepare('SELECT collection_id FROM paper_collections WHERE paper_id=?').all(paperId) as Array<{ collection_id: number }>).map((r) => r.collection_id)
+  )
   ipcMain.handle('collections:papers', (_e, collectionId: number) =>
     (dbmod.getDb().prepare('SELECT paper_id FROM paper_collections WHERE collection_id=?').all(collectionId) as Array<{ paper_id: number }>).map((r) => r.paper_id)
   )
@@ -566,10 +572,17 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     const db = dbmod.getDb()
     const tx = db.transaction(() => {
       for (const drop of dropIds) {
-        // 标签并集 + 高亮/关联/分类挂接迁移到保留行
+        // 标签/集合挂接并集迁移（UPDATE 会撞复合主键，必须 INSERT OR IGNORE + DELETE）
         db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id, tag_id) SELECT ?, tag_id FROM paper_tags WHERE paper_id=?').run(keepId, drop)
+        db.prepare('INSERT OR IGNORE INTO paper_collections(paper_id, collection_id) SELECT ?, collection_id FROM paper_collections WHERE paper_id=?').run(keepId, drop)
         db.prepare('UPDATE highlights SET paper_id=? WHERE paper_id=?').run(keepId, drop)
-        db.prepare('UPDATE paper_collections SET paper_id=? WHERE paper_id=?').run(keepId, drop)
+        // 条目关联双向迁移（drop 两侧的手动关联不能静默丢）
+        db.prepare('UPDATE paper_related SET paper_id=? WHERE paper_id=? AND related_id != ?').run(keepId, drop, keepId)
+        db.prepare('UPDATE paper_related SET related_id=? WHERE related_id=? AND paper_id != ?').run(keepId, drop, keepId)
+        db.prepare('DELETE FROM paper_related WHERE paper_id=? AND related_id=?').run(keepId, keepId)
+        // FTS 表无 FK 级联：先清 FTS 再删行（chunks 由 FK 级联）
+        db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE paper_id=?)').run(drop)
+        db.prepare('DELETE FROM papers_fts WHERE rowid=?').run(drop)
         db.prepare('DELETE FROM papers WHERE id=?').run(drop)
       }
     })

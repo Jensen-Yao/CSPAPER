@@ -65,7 +65,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   // 模型页子视图：'list' = 供应商列表；数字 = 编辑第 N 个配置
   const [modelTab, setModelTab] = useState<'list' | number>('list')
   // 上游模型列表拉取状态（按 profile 下标）
-  const [fetchState, setFetchState] = useState<Record<number, { busy: boolean; list: string[]; msg: string }>>({})
+  const [fetchState, setFetchState] = useState<Record<string, { busy: boolean; list: string[]; msg: string }>>({})
   const [pickerKw, setPickerKw] = useState('')
   const [bridgeOn, setBridgeOn] = useState(false)
   const [bridgePort, setBridgePort] = useState(24517)
@@ -737,7 +737,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                         <label>模型（逗号分隔，或从服务端拉取）</label>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <input
-                            list={`dl-models-${i}`}
+                            list={`dl-models-${pf.apiBase}`}
                             value={pf.models.join(', ')}
                             onChange={(e) =>
                               upd({
@@ -749,7 +749,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                             }
                             placeholder="点「拉取列表」自动填入"
                           />
-                          <datalist id={`dl-models-${i}`}>
+                          <datalist id={`dl-models-${pf.apiBase}`}>
                             {(fetchState[i]?.list ?? []).map((m) => (
                               <option key={m} value={m} />
                             ))}
@@ -757,22 +757,28 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                           <button
                             className="btn ghost"
                             style={{ flex: 'none', whiteSpace: 'nowrap' }}
-                            disabled={fetchState[i]?.busy}
+                            disabled={fetchState[pf.apiBase]?.busy}
                             onClick={() => {
-                              setFetchState((st) => ({ ...st, [i]: { busy: true, list: st[i]?.list ?? [], msg: '' } }))
+                              const baseKey = pf.apiBase
+                              setFetchState((st) => ({ ...st, [baseKey]: { busy: true, list: st[baseKey]?.list ?? [], msg: '' } }))
                               void window.api
                                 .fetchModels(pf.apiBase, pf.apiKey)
                                 .then((list) => {
-                                  upd({ models: [...new Set([...list, ...pf.models])] })
-                                  setFetchState((st) => ({ ...st, [i]: { busy: false, list, msg: `已拉取 ${list.length} 个模型并填入（输入框可继续补）` } }))
+                                  // 回调按 apiBase 重新定位当前配置（期间列表可能被增删，下标会漂移）
+                                  setProfiles((cur) => {
+                                    const next = cur.map((x) => (x.apiBase === baseKey ? { ...x, models: [...new Set([...list, ...x.models])] } : x))
+                                    saveProfiles(next)
+                                    return next
+                                  })
+                                  setFetchState((st) => ({ ...st, [baseKey]: { busy: false, list, msg: `已拉取 ${list.length} 个模型并填入（输入框可继续补）` } }))
                                 })
-                                .catch((e2) => setFetchState((st) => ({ ...st, [i]: { busy: false, list: st[i]?.list ?? [], msg: String(e2).replace(/^Error: /, '').slice(0, 90) } })))
+                                .catch((e2) => setFetchState((st) => ({ ...st, [baseKey]: { busy: false, list: st[baseKey]?.list ?? [], msg: String(e2).replace(/^Error: /, '').slice(0, 90) } })))
                             }}
                           >
-                            {fetchState[i]?.busy ? '拉取中…' : '拉取列表'}
+                            {fetchState[pf.apiBase]?.busy ? '拉取中…' : '拉取列表'}
                           </button>
                         </div>
-                        {fetchState[i]?.msg && <div className="test-result" style={{ marginTop: 4, fontSize: 11 }}>{fetchState[i].msg}</div>}
+                        {fetchState[pf.apiBase]?.msg && <div className="test-result" style={{ marginTop: 4, fontSize: 11 }}>{fetchState[pf.apiBase].msg}</div>}
                       </div>
                       </div>
                       <div className="profile-foot">
@@ -873,17 +879,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               )
             })()}
 
-            {sec === 'model' && (
-              <div className="section">
-                <div className="section-title">模型能力编辑器说明</div>
-                <div className="hint">推理等级 = 模型自带档位（如 gpt-5.6 的 none/low/medium/high/xhigh/max）。上方列表点进供应商后即可编辑每个模型的能力；「预置」来自内置能力库，可直接覆盖。</div>
-                <div className="test-row">
-                  <button className="btn ghost" onClick={() => setModelTab('list')}>返回供应商列表</button>
-                </div>
-              </div>
-            )}
-
-            {sec === 'embed' && (
+                        {sec === 'embed' && (
               <div className="section">
                 <div className="section-title">向量嵌入</div>
                 <div className="field-row">

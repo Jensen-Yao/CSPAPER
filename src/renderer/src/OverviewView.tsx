@@ -130,6 +130,11 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
   const mergeGroup = (keepId: number, dropIds: number[]): void => {
     void window.api.papersMerge(keepId, dropIds).then(() => {
       setDupGroups((gs) => gs.filter((g) => !g.some((x) => x.id === keepId)))
+      setChecked((prev) => {
+        const n = new Set(prev)
+        for (const d of dropIds) n.delete(d)
+        return n
+      })
       onRefresh()
     })
   }

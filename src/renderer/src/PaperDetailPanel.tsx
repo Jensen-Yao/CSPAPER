@@ -77,19 +77,13 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   const [colls, setColls] = useState<Array<{ id: number; name: string; parent_id: number | null; n: number }>>([])
   const [myCollIds, setMyCollIds] = useState<Set<number>>(new Set())
   useEffect(() => {
-    void window.api.collectionsList().then(setColls).catch(() => setColls([]))
     setMyCollIds(new Set())
-    void window.api
-      .collectionsList()
-      .then(async (cs) => {
-        const mine = new Set<number>()
-        for (const c of cs) {
-          const ids = await window.api.collectionsPapers(c.id)
-          if (ids.includes(paper.id)) mine.add(c.id)
-        }
-        setMyCollIds(mine)
+    void Promise.all([window.api.collectionsList(), window.api.collectionsForPaper(paper.id)])
+      .then(([cs, mineIds]) => {
+        setColls(cs)
+        setMyCollIds(new Set(mineIds))
       })
-      .catch(() => {})
+      .catch(() => setColls([]))
   }, [paper.id])
   const toggleColl = (cid: number, on: boolean): void => {
     void window.api.collectionsTogglePaper(paper.id, cid, on).then(() => {
@@ -99,6 +93,8 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         else n.delete(cid)
         return n
       })
+      // 通知左栏集合区失效缓存（计数/列表不再靠无关 papers 变更才刷新）
+      window.dispatchEvent(new CustomEvent('cspaper:collections-changed'))
     })
   }
   // 相关文献（manual 关联 + auto 语义建议，v0.13）
@@ -388,7 +384,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         const v = e.target.value.trim()
         if (v === val) return
         const patch: Record<string, string | number | null> = key === 'year' ? { year: parseInt(v) || null } : { [key]: v || null }
-        void window.api.updatePaperMeta(paper.id, patch).then(() => onChanged?.())
+        void window.api.updatePaperMeta(paper.id, patch).then(() => onChanged?.()).catch(() => {})
       }}
     />
   )

@@ -358,6 +358,7 @@ declare global {
       collectionsRemove: (id: number) => Promise<boolean>
       collectionsTogglePaper: (paperId: number, collectionId: number, on: boolean) => Promise<boolean>
       collectionsPapers: (collectionId: number) => Promise<number[]>
+      collectionsForPaper: (paperId: number) => Promise<number[]>
       papersDuplicates: () => Promise<Array<Array<{ id: number; title: string; year: number | null; added_at: string; doi: string | null }>>>
       papersMerge: (keepId: number, dropIds: number[]) => Promise<boolean>
       zoteroPushHighlights: (paperId: number) => Promise<{ pushed: number; itemKey: string | null }>

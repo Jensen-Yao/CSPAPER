@@ -21,6 +21,7 @@ export function registerExtraIpc(ctx: { send: (ev: string, p: unknown) => void }
 // ---------- v0.7 知识体系 + 统计扩展 ----------
 import { keywordGraph, authorGraph, topicClusters } from '../insight'
 import { wordsByYear, authorsTop, readHeatmap } from '../stats'
+import { fetchModelList } from '../llm'
 
 export function registerKnowledgeIpc(): void {
   ipcMain.handle('graph:keywords', (_e, category?: string) => keywordGraph(category || undefined))
@@ -29,4 +30,5 @@ export function registerKnowledgeIpc(): void {
   ipcMain.handle('stats:extra', () => ({ wordsByYear: wordsByYear(10), authorsTop: authorsTop(15), heatmap: readHeatmap() }))
   ipcMain.handle('stats:weekly', () => weeklyReport())
   ipcMain.handle('papers:enrich-meta', (_e, limit?: number) => enrichMeta(limit ?? 50))
+  ipcMain.handle('models:fetch', (_e, apiBase: string, apiKey: string) => fetchModelList(apiBase, apiKey))
 }
