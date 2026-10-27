@@ -7,27 +7,28 @@
 
 /* ============ 设计令牌 ============ */
 :root {
-  --bg: #ffffff;          /* 内容表面 */
-  --bg2: #f6f5f2;         /* 外壳/侧栏（纸色暖白，与内容面同色温） */
-  --bg3: #eeedea;         /* 悬停 */
-  --bg4: #e5e3de;         /* 按下/更深一层 */
-  --border: rgba(30, 25, 18, 0.08);
-  --border-lit: rgba(30, 25, 18, 0.15);
-  --text: #26221e;
-  --text-dim: #857f78;
-  --accent: #5b4a3a;      /* 暖墨色 */
-  --accent2: #3d2f1f;
-  --accent-soft: rgba(91, 74, 58, 0.08);
-  --ok: #2e9e63;
-  --warn: #c98a12;
+  --bg: #fdfcf9;          /* 内容表面（宣纸白） */
+  --bg2: #f4f1ea;         /* 外壳/侧栏（宣纸底） */
+  --bg3: #ebe7dd;         /* 悬停（淡墨晕） */
+  --bg4: #e0dbcf;         /* 按下（重墨晕） */
+  --border: rgba(42, 36, 26, 0.11);
+  --border-lit: rgba(42, 36, 26, 0.2);
+  --text: #221f1a;        /* 浓墨 */
+  --text-dim: #7d766a;    /* 淡墨 */
+  --accent: #9e3b2f;      /* 朱砂（印章红） */
+  --accent2: #7c2d24;
+  --accent-soft: rgba(158, 59, 47, 0.09);
+  --ok: #4a7c59;       /* 竹青 */
+  --warn: #a8761d;      /* 赭黄 */
   --danger: #d5606c;
   --shadow: 0 12px 32px rgba(30, 10, 18, 0.13), 0 2px 8px rgba(30, 10, 18, 0.06);
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 14px;
   --hl: rgba(255, 210, 0, 0.45);
-  --pdf-canvas: #efede9;  /* PDF 页外画布（暖灰，与外壳同色温） */
+  --pdf-canvas: #e7e3d8;  /* PDF 页外画布（宣纸灰） */
   --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  --serif: 'Noto Serif SC', 'Source Han Serif SC', 'STSong', 'SimSun', serif;
   --speed: 0.13s;
 
   /* ---- v0.13 令牌扩阶：间距 4px 基线 / 字阶 / 阴影 / 图表色（与 chart-palette.ts 同源） ---- */
@@ -46,29 +47,29 @@
   --shadow-sm: 0 1px 3px rgba(30, 10, 18, 0.07);
   --shadow-md: 0 4px 14px rgba(30, 10, 18, 0.09);
   --shadow-lg: 0 12px 32px rgba(30, 10, 18, 0.13), 0 2px 8px rgba(30, 10, 18, 0.06);
-  --chart-1: #8a6d4f; --chart-2: #5b7fa6; --chart-3: #6f9a6e; --chart-4: #c28f4e;
-  --chart-5: #8f7aa8; --chart-6: #5e9aa0; --chart-7: #b06e82; --chart-8: #8f9a55;
+  --chart-1: #4a443c; --chart-2: #3f5266; --chart-3: #5a7256; --chart-4: #96703f;
+  --chart-5: #9e4a3a; --chart-6: #476b6d; --chart-7: #7d5a78; --chart-8: #74805e;
 }
 html[data-theme='dark'] {
-  --bg: #171618;          /* 内容表面 */
-  --bg2: #1d1b1d;         /* 外壳/侧栏 */
-  --bg3: #262427;         /* 悬停 */
-  --bg4: #312f32;         /* 按下/更深一层 */
-  --border: rgba(255, 255, 255, 0.075);
-  --border-lit: rgba(255, 255, 255, 0.15);
-  --text: #ebe8e9;
-  --text-dim: #9d9699;
-  --accent: #c4a882;
-  --accent2: #d8c0a0;
-  --accent-soft: rgba(196, 168, 130, 0.13);
-  --ok: #3ecf8e;
-  --warn: #e0b04c;
+  --bg: #1b1a17;          /* 内容表面（夜墨暖黑） */
+  --bg2: #211f1b;         /* 外壳/侧栏 */
+  --bg3: #2b2823;         /* 悬停 */
+  --bg4: #37332c;         /* 按下 */
+  --border: rgba(233, 226, 214, 0.09);
+  --border-lit: rgba(233, 226, 214, 0.18);
+  --text: #e9e4da;        /* 宣纸反白 */
+  --text-dim: #9a9284;
+  --accent: #d06a56;      /* 朱砂（亮） */
+  --accent2: #e08875;
+  --accent-soft: rgba(208, 106, 86, 0.14);
+  --ok: #6fae82;
+  --warn: #d3a049;
   --shadow: 0 16px 44px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.35);
   --hl: rgba(255, 200, 0, 0.35);
   --pdf-canvas: #232124;
-  --chart-1: #a8845f; --chart-2: #7da3c9; --chart-3: #8cb88a; --chart-4: #d4a76a;
-  --chart-5: #ab97c4; --chart-6: #7fb7bd; --chart-7: #c98da0; --chart-8: #adb878;
+  --chart-1: #b3a994; --chart-2: #8ba3bd; --chart-3: #96b492; --chart-4: #c9a06a;
+  --chart-5: #d08272; --chart-6: #86b3b5; --chart-7: #b495af; --chart-8: #a8b48c;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2035,13 +2036,12 @@ html[data-theme='dark'] .pcard:hover { box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5
   padding: 8px 0; border-left: 1px solid var(--border); background: var(--bg2, rgba(255, 255, 255, 0.35));
 }
 .side-rail-btn {
-  width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent;
+  width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent;
   color: var(--text-dim); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
   transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
 }
 .side-rail-btn:hover { background: rgba(127, 127, 127, 0.12); color: var(--text); }
 .side-rail-btn.on { background: rgba(176, 141, 87, 0.24); color: var(--text); }
-.side-rail-btn:first-child { margin-bottom: 6px; color: var(--text); }
 html[data-theme='dark'] .side-rail { background: rgba(255, 255, 255, 0.03); }
 /* 模式栏 2 大按钮 */
 .mode-toggle { grid-template-columns: 1fr 1fr; }
@@ -2211,3 +2211,16 @@ button:disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
 .hl-edit-ok, .hl-edit-del { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 3px 5px; border-radius: 5px; display: inline-flex; font-size: 12px; }
 .hl-edit-ok:hover { color: var(--ok); background: var(--bg3); }
 .hl-edit-del:hover { color: #b0654a; background: var(--bg3); }
+
+/* ---------- v0.14 水墨点睛：朱砂印章 / 衬线标题 ---------- */
+.seal {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 5px;
+  background: var(--accent); color: #f8f4ec;
+  font-family: var(--serif); font-size: 13px; font-weight: 700; line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(248, 244, 236, 0.25), 0 1px 3px rgba(42, 36, 26, 0.2);
+}
+.tb-title { display: inline-flex; align-items: center; gap: 8px; }
+.tb-title-name { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: var(--text-dim); font-family: var(--serif); }
+.wb-hero-text { font-family: var(--serif); letter-spacing: 2px; }
+.libhome-title { font-family: var(--serif); letter-spacing: 1px; }

@@ -633,7 +633,7 @@ export default function App(): JSX.Element {
           )}
         </div>
         <div className="tb-drag" />
-        <div className="tb-title">CSPAPER</div>
+        <div className="tb-title"><span className="seal">文</span><span className="tb-title-name">CSPAPER</span></div>
         <div className="tb-drag" />
         <div className="tb-side tb-right">
           {/* 顶栏快捷区：仅 Paper 模式下显示（Work 模式下隐藏避免混乱） */}
@@ -800,11 +800,8 @@ export default function App(): JSX.Element {
                 onFs={changeFs}
               />
               <div className="side-rail">
-                <button className="side-rail-btn" title={showSide ? '收起面板' : '展开面板'} onClick={() => setShowSide((v) => !v)}>
-                  {showSide ? '»' : '«'}
-                </button>
-                {([['chat', '问', '问答'], ['translate', '译', '翻译'], ['full', '全', '全文翻译'], ['notes', '标', '划词标注'], ['refs', '献', '参考文献'], ['info', '详', '文献详情']] as const).map(
-                  ([k, label, tip]) => (
+                {([['chat', <Icon.Chat size={14} />, '问答'], ['translate', <Icon.Globe size={14} />, '翻译'], ['full', <Icon.Doc size={14} />, '全文翻译'], ['notes', <Icon.Highlight size={14} />, '划词标注'], ['refs', <Icon.Book size={14} />, '参考文献'], ['info', <Icon.Info size={14} />, '文献详情']] as const).map(
+                  ([k, ico, tip]) => (
                     <button
                       key={k}
                       className={`side-rail-btn ${sideTab === k && showSide ? 'on' : ''}`}
@@ -814,7 +811,7 @@ export default function App(): JSX.Element {
                         sideControl.current?.openTab(k)
                       }}
                     >
-                      {label}
+                      {ico}
                     </button>
                   )
                 )}

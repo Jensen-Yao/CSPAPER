@@ -1,9 +1,7 @@
-// CSPAPER 统一图表色板：低饱和、同明度区间（55–65%），与暖棕 accent 同族。
-// 全部可视化（知识网络/词云/气泡/时间线/星系/热力）的唯一色源；
-// 浅色用 CHART_LIGHT，深色用 CHART_DARK（各提亮一档保持对比度）。
-
-export const CHART_LIGHT = ['#8a6d4f', '#5b7fa6', '#6f9a6e', '#c28f4e', '#8f7aa8', '#5e9aa0', '#b06e82', '#8f9a55']
-export const CHART_DARK = ['#a8845f', '#7da3c9', '#8cb88a', '#d4a76a', '#ab97c4', '#7fb7bd', '#c98da0', '#adb878']
+// CSPAPER 统一图表色板·水墨八色（墨/黛/竹青/赭石/朱砂/青灰/绛/灰绿）
+// 浅色用宣纸上的矿物色，深色用夜墨上的亮色；与 styles.css --chart-* 同源。
+export const CHART_LIGHT = ['#4a443c', '#3f5266', '#5a7256', '#96703f', '#9e4a3a', '#476b6d', '#7d5a78', '#74805e']
+export const CHART_DARK = ['#b3a994', '#8ba3bd', '#96b492', '#c9a06a', '#d08272', '#86b3b5', '#b495af', '#a8b48c']
 
 export const isDarkUI = (): boolean => document.documentElement.getAttribute('data-theme') === 'dark'
 

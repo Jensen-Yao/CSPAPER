@@ -64,6 +64,7 @@ export interface Settings {
   zoteroAutoSync?: boolean
   agentModel?: string
   agentMaxSteps?: number
+  agentGoal?: string
 }
 
 // 标签（W1）

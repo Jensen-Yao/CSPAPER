@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { renderRich, type Jump } from './rich'
 import { buildSuggestions } from './suggest'
 import { ModelPill, ThinkingPill, ScopePill, type ChatScope } from './ChatControls'
+import { isCommandInput, parseSlash, DEEP_ALIAS, SLASH_CMDS } from './slash'
 import type { ChatMsg, Paper, SourceRef } from './types'
 
 interface Props {
@@ -55,9 +56,65 @@ export default function ChatView({
     if (resetKey > 0) setMsgs([])
   }, [resetKey])
 
+  const [chatNotice, setChatNotice] = useState('')
+  const flash = (m: string): void => {
+    setChatNotice(m)
+    window.setTimeout(() => setChatNotice(''), 2600)
+  }
+  /** 对话侧斜杠命令（与 Work 合成器同框架）：消费返回 true */
+  const execSlash = (raw: string): boolean => {
+    const p = parseSlash(raw)
+    if (!p) return false
+    const { name, args } = p
+    if (name === 'model') {
+      void window.api.getSettings().then((s0) => {
+        const st = s0 as { models?: string[]; model?: string }
+        const all = st.models?.length ? st.models : st.model ? [st.model] : []
+        const hit = all.find((m) => m.toLowerCase().includes((args || '').toLowerCase()))
+        if (hit) {
+          void window.api.saveSettings({ model: hit })
+          flash('对话模型已切换：' + hit)
+        } else flash(all.length ? '可用模型：' + all.join('、') : '未配置模型')
+      })
+      return true
+    }
+    if (name === 'deep') {
+      const lv = (args || '').toLowerCase()
+      const map: Record<string, string> = { low: 'low', mid: 'medium', medium: 'medium', high: 'high', 低: 'low', 中: 'medium', 高: 'high' }
+      if (!map[lv]) {
+        flash('用法：/deep low|mid|high（对话思考强度）')
+        return true
+      }
+      void window.api.saveSettings({ thinkingLevel: map[lv] as 'low' | 'medium' | 'high' })
+      flash('思考强度：' + map[lv])
+      return true
+    }
+    if (name === 'clear' || name === 'new') {
+      setMsgs([])
+      flash('已开始新对话')
+      return true
+    }
+    if (name === 'goal') {
+      void window.api.saveSettings({ agentGoal: args })
+      flash(args ? '长期目标已设定（对 Work 任务生效）：' + args.slice(0, 60) : '已清除长期目标')
+      return true
+    }
+    if (name === 'help') {
+      flash('对话可用命令：' + SLASH_CMDS.filter((c) => ['model', 'deep', 'clear', 'goal', 'help'].includes(c.name)).map((c) => '/' + c.name).join('　') + '（其余命令在 Work 工作台）')
+      return true
+    }
+    // 其余命令引导去 Work
+    flash('/' + name + ' 请在 Work 工作台执行（顶栏切换到 Work）')
+    return true
+  }
+
   const send = (raw?: string): void => {
     const q = (raw ?? input).trim()
     if (!q || busy) return
+    if (isCommandInput(q) && execSlash(q)) {
+      setInput('')
+      return
+    }
     // 带最近两轮问答做多轮追问（在追加本轮消息之前取历史）
     const history = msgs.slice(-4).map((m) => ({ role: m.role, content: m.content }))
     setInput('')
@@ -107,6 +164,7 @@ export default function ChatView({
     </div>
   )
 
+  const noticeBar = chatNotice ? <div className="wb-notice" style={{ width: '100%', marginBottom: 6 }}>{chatNotice}</div> : null
   const inputBox = (
     <div className="hero-input">
       <textarea

@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Paper } from './types'
 import * as Icon from './Icon'
+import { isCommandInput, filterSlash, parseSlash, SLASH_CMDS, TPL_ALIASES, DEEP_ALIAS, type SlashCmd } from './slash'
 import './wb.css'
 
 interface PlanStep {
@@ -49,7 +50,8 @@ const TEMPLATES: Array<{ label: string; desc: string; goal: string }> = [
   { label: '主题调研', desc: '检索 → 筛选导入 → 中文综述', goal: '调研主题：「」。检索相关文献，筛选最相关的 5-8 篇导入文献库，阅读后生成一篇中文综述（存入 AI 知识库）。' },
   { label: '精读论文', desc: '全文阅读 → 结构化精读笔记', goal: '精读库内一篇文献（用 list_library 找到并告诉我 id）：阅读全文，写结构化精读笔记（研究问题/方法/结论/局限/启发）写入我的笔记，最后给出 3 个值得追问的问题。' },
   { label: '多文对比', desc: '方法/数据/结论 三维对比表', goal: '对比库内同一分类下的多篇文献：生成方法/数据/结论三维度对比表，并写 300 字对比结论。' },
-  { label: '睡眠日报', desc: '技能：定时文献日报', goal: '执行「睡眠科研日报」技能：按库内关键词检索最新文献，相关性排序，产出今日日报并存入 AI 知识库。' }
+  { label: '睡眠日报', desc: '技能：定时文献日报', goal: '执行「睡眠科研日报」技能：按库内关键词检索最新文献，相关性排序，产出今日日报并存入 AI 知识库。' },
+  { label: '深度调研', desc: '知识网络→检索→逐篇精读→补检索→综述', goal: '深度调研主题：「」。步骤：1) 用 knowledge_graph 的 topics 视图了解库内研究结构；2) search_papers 检索该主题最新文献并导入 5-8 篇；3) 用 read_paper 的 section=structure 逐篇深度精读；4) 针对精读中发现的信息缺口补一轮检索；5) 用 make_synthesis 生成中文综述（1000 字以上，带文献编号引用），存入 AI 知识库。' }
 ]
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -147,6 +149,9 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   const [effort, setEffort] = useState<number>(24)
   const [agentModel, setAgentModel] = useState<string>('')
   const [pop, setPop] = useState<'' | 'tpl' | 'model' | 'effort' | 'perm'>('')
+  const [slashSel, setSlashSel] = useState(0)
+  const [goalLong, setGoalLong] = useState('')
+  const [notice, setNotice] = useState('')
   const [wide, setWide] = useState(false)
   const [openStep, setOpenStep] = useState<number | null>(null)
   const [workOpen, setWorkOpen] = useState(true)
@@ -191,9 +196,10 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
     void window.api
       .getSettings()
       .then((s) => {
-        const st = s as { agentModel?: string; agentMaxSteps?: number }
+        const st = s as { agentModel?: string; agentMaxSteps?: number; agentGoal?: string }
         if (st.agentModel) setAgentModel(st.agentModel)
         if (st.agentMaxSteps) setEffort(st.agentMaxSteps)
+        if (st.agentGoal) setGoalLong(st.agentGoal)
       })
       .catch(() => {})
   }, [visible])
@@ -271,9 +277,103 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   }
   launchRef.current = launch
 
+  const flash = (msg: string): void => {
+    setNotice(msg)
+    window.setTimeout(() => setNotice(''), 2600)
+  }
+
+  /** 斜杠命令执行：返回 true 表示已消费（不作为任务发送） */
+  const execSlash = (raw: string): boolean => {
+    const p = parseSlash(raw)
+    if (!p) return false
+    const { name, args } = p
+    if (name === 'plan' || name === 'auto') {
+      if (!args) {
+        flash('用法：/' + name + ' 目标描述（如 /plan 调研固态电池热管理）')
+        return true
+      }
+      setPerm(name === 'auto' ? 'auto' : 'confirm')
+      localStorage.setItem('wb.perm', name === 'auto' ? 'auto' : 'confirm')
+      setGoal('')
+      launch(args)
+      return true
+    }
+    if (name === 'goal') {
+      if (!args) {
+        // 无参清除目标
+        void window.api.saveSettings({ agentGoal: '' })
+        setGoalLong('')
+        flash('已清除长期目标')
+        return true
+      }
+      void window.api.saveSettings({ agentGoal: args })
+      setGoalLong(args)
+      flash('长期目标已设定：' + args.slice(0, 60) + '（/goal 无参清除）')
+      setGoal('')
+      return true
+    }
+    if (name === 'model') {
+      const hit = models.find((m) => m.toLowerCase().includes((args || '').toLowerCase()))
+      if (!hit) {
+        flash(args ? `没有匹配「${args}」的模型，可用：${models.join('、')}` : '用法：/model 关键词（如 /model glm）')
+        return true
+      }
+      void window.api.saveSettings({ agentModel: hit })
+      setAgentModel(hit)
+      flash('模型已切换：' + hit)
+      setGoal('')
+      return true
+    }
+    if (name === 'deep') {
+      const n = DEEP_ALIAS[(args || '').toLowerCase()]
+      if (!n) {
+        flash('用法：/deep low|mid|high|max（8/16/24/48 步）')
+        return true
+      }
+      setEffort(n)
+      void window.api.saveSettings({ agentMaxSteps: n })
+      flash(`执行深度：${args}（最多 ${n} 步）`)
+      setGoal('')
+      return true
+    }
+    if (name === 'tpl') {
+      const label = TPL_ALIASES[args] ?? args
+      const tp = TEMPLATES.find((t) => t.label === label)
+      if (!tp) {
+        flash('可用模板：' + TEMPLATES.map((t) => t.label).join(' / '))
+        return true
+      }
+      setGoal(tp.goal)
+      inputRef.current?.focus()
+      flash('已套用模板「' + tp.label + '」，补充目标后回车发送')
+      return true
+    }
+    if (name === 'new') {
+      setSelId(null)
+      setTask(null)
+      setNav('tasks')
+      setGoal('')
+      setTimeout(() => inputRef.current?.focus(), 30)
+      return true
+    }
+    if (name === 'skills') { setNav('skills'); setGoal(''); return true }
+    if (name === 'mcp') { setNav('mcp'); setGoal(''); return true }
+    if (name === 'cron') { setNav('auto'); setGoal(''); return true }
+    if (name === 'help') {
+      flash(SLASH_CMDS.map((c) => `/${c.name}${c.args ? ' <' + c.args + '>' : ''}`).join('　'))
+      return true
+    }
+    return false
+  }
+
   const submit = (): void => {
     const g = goal.trim()
     if (!g || busy) return
+    // 斜杠命令：本地执行，不建任务
+    if (isCommandInput(g) && execSlash(g)) {
+      setPop('')
+      return
+    }
     setGoal('')
     setPop('')
     if (task?.status === 'running') {
@@ -373,7 +473,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
       {/* ---------- 左栏（ZCode 式） ---------- */}
       <div className="wb-side">
         <div className="wb-brand">
-          <span className="wb-brand-mark">Z</span>
+          <span className="wb-brand-mark seal">文</span>
           <span className="wb-brand-name">CSPAPER</span>
         </div>
         <nav className="wb-nav">
@@ -652,6 +752,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
             <div className="wb-hero">
               <div className="wb-hero-text">今天要研究什么？</div>
               <div className="wb-hero-sub">库内 {papers.length} 篇文献 · 描述目标，智能体自动检索、精读、写综述</div>
+              {goalLong && <div className="wb-hero-goal"><Icon.Target size={12} /> 长期目标：{goalLong}</div>}
             </div>
           </div>
         )}
@@ -678,15 +779,73 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               ))}
             </div>
           )}
+          {notice && <div className="wb-notice">{notice}</div>}
+          {isCommandInput(goal) && !goal.includes(' ') && filterSlash(goal).length > 0 && (
+            <div className="wb-slash">
+              {filterSlash(goal).map((c: SlashCmd, i: number) => (
+                <button
+                  key={c.name}
+                  className={`wb-slash-item ${i === Math.min(slashSel, filterSlash(goal).length - 1) ? 'on' : ''}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    if (c.args) setGoal('/' + c.name + ' ')
+                    else {
+                      setGoal('/' + c.name)
+                      submit()
+                    }
+                    inputRef.current?.focus()
+                  }}
+                >
+                  <b>/{c.name}</b>
+                  {c.args ? <span className="wb-slash-args">{'<' + c.args + '>'}</span> : null}
+                  <span className="wb-slash-desc">{c.desc}</span>
+                  <span className="wb-slash-group">{c.group}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="wb-compose-card">
             <textarea
               ref={inputRef}
               className="wb-compose-input"
               value={goal}
               rows={2}
-              placeholder={running ? '任务执行中，输入内容将排队在本任务完成后执行' : '给科研智能体一个目标：调研主题、精读文献、多文对比、写日报…'}
-              onChange={(e) => setGoal(e.target.value)}
+              placeholder={running ? '任务执行中，输入内容将排队在本任务完成后执行' : '给科研智能体一个目标… 输入 / 查看命令（/plan 确认后执行 · /goal 设长期目标 · /deep 调深度）'}
+              onChange={(e) => {
+                setGoal(e.target.value)
+                if (e.target.value.startsWith('/')) setSlashSel(0)
+              }}
               onKeyDown={(e) => {
+                const menu = isCommandInput(goal) && !goal.includes(' ') ? filterSlash(goal) : null
+                if (menu && menu.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setSlashSel((i) => (i + 1) % menu.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setSlashSel((i) => (i - 1 + menu.length) % menu.length)
+                    return
+                  }
+                  if (e.key === 'Tab') {
+                    e.preventDefault()
+                    const c = menu[Math.min(slashSel, menu.length - 1)]
+                    setGoal('/' + c.name + ' ')
+                    return
+                  }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    const c = menu[Math.min(slashSel, menu.length - 1)]
+                    // 无参命令直接执行；带参命令补全后留在输入框
+                    if (c.args) setGoal('/' + c.name + ' ')
+                    else {
+                      setGoal('/' + c.name)
+                      submit()
+                    }
+                    return
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   submit()

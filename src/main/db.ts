@@ -69,6 +69,7 @@ export interface Settings {
   // 智能体（v0.11）：独立模型绑定与护栏参数
   agentModel?: string
   agentMaxSteps?: number
+  agentGoal?: string
 }
 
 // 默认文献库：跟随平台放到「文档」目录（开发态 app 未 ready 前不能调 getPath，惰性求值）
