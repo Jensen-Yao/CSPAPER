@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Paper } from './types'
 import * as Icon from './Icon'
 import { isCommandInput, filterSlash, parseSlash, SLASH_CMDS, TPL_ALIASES, DEEP_ALIAS, type SlashCmd } from './slash'
+import { presetCaps } from './model-caps-presets'
 import './wb.css'
 
 interface PlanStep {
@@ -204,7 +205,8 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
         // 所选模型自带的推理等级档（如 gpt-5: low/high/max）——有则 pill 直接展示这些词
         const cur = st.agentModel || st.model || ''
         const pf = (st.profiles ?? []).find((x) => x.models.includes(cur))
-        setLevels(pf?.modelCaps?.[cur]?.reasoningLevels ?? [])
+        const preset = cur ? presetCaps(cur) : undefined
+        setLevels(pf?.modelCaps?.[cur]?.reasoningLevels ?? preset?.reasoningLevels ?? [])
         if (st.agentGoal) setGoalLong(st.agentGoal)
       })
       .catch(() => {})

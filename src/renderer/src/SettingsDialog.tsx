@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ScriptInfo, Settings, StyleInfo } from './types'
 import { ALL_PROVIDERS, PROVIDER_GROUPS, type ProviderPreset } from './providers'
+import { presetCaps } from './model-caps-presets'
 import * as Icon from './Icon'
 
 interface Props {
@@ -751,7 +752,10 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 })()}
                 {profiles.flatMap((pf, pi) =>
                   pf.models.slice(0, 24).map((m) => {
-                    const caps = pf.modelCaps?.[m] ?? { reasoningLevels: [] }
+                    // 预置库兜底：主流模型自动带出已知规格（编辑后存 modelCaps 覆盖）
+                    const preset = presetCaps(m)
+                    const caps = pf.modelCaps?.[m] ?? preset ?? { reasoningLevels: [] }
+                    const isPreset = !pf.modelCaps?.[m] && !!preset
                     const updCaps = (patch: Partial<import('./types').ModelCaps>): void => {
                       const nextCaps = { ...(pf.modelCaps ?? {}), [m]: { ...caps, ...patch } }
                       setProfiles((list) => {
@@ -766,6 +770,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                         <div className="mcaps-head">
                           <b>{m}</b>
                           {isCur && <span className="active-tag">当前</span>}
+                          {isPreset && <span className="cat-count" title="来自内置模型能力库，可直接编辑覆盖">预置</span>}
                           <span style={{ flex: 1 }} />
                           <input
                             className="set-input"

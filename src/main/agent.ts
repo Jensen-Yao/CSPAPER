@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { streamText, tool, stepCountIs, dynamicTool } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { presetCaps } from './model-caps-presets'
 import { z } from 'zod'
 import { getDb, getSettings, listPapers } from './db'
 import { chatStream } from './llm'
@@ -574,7 +575,8 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
     // 走 customFetch 改写 body 的 reasoning_effort；无 caps 回落 provider 特定参数
     const lvl = (s.thinkingLevel ?? 'default') as 'default' | 'off' | 'low' | 'medium' | 'high'
     const activeProfile = (s.profiles ?? []).find((pf) => pf.models.includes(agentModel))
-    const capsLevels = activeProfile?.modelCaps?.[agentModel]?.reasoningLevels ?? []
+    // 预置能力库优先（主流模型已知规格），用户在模型能力卡里编辑过的值覆盖预置
+    const capsLevels = activeProfile?.modelCaps?.[agentModel]?.reasoningLevels ?? presetCaps(agentModel)?.reasoningLevels ?? []
     const thinkBody: Record<string, unknown> = {}
     if (capsLevels.length > 0) {
       if (lvl !== 'default') {
