@@ -62,6 +62,8 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   )
   const [sec, setSec] = useState<Sec>('appear')
   const [showPicker, setShowPicker] = useState(false)
+  // 模型页子视图：'list' = 供应商列表；数字 = 编辑第 N 个配置
+  const [modelTab, setModelTab] = useState<'list' | number>('list')
   // 上游模型列表拉取状态（按 profile 下标）
   const [fetchState, setFetchState] = useState<Record<number, { busy: boolean; list: string[]; msg: string }>>({})
   const [pickerKw, setPickerKw] = useState('')
@@ -613,21 +615,95 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               </div>
             )}
 
-            {sec === 'model' && (
+            {sec === 'model' && modelTab === 'list' && (
               <div className="section">
-                <div className="section-title">模型与服务商（对话界面可切换）</div>
-                {profiles.map((pf, i) => {
-                  const isActive = pf.models.includes(form.model)
-                  const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
-                  const upd = (patch: Partial<{ provider: string; apiBase: string; apiKey: string; models: string[] }>): void =>
-                    setProfiles((list) => {
-                      const next = list.map((x, idx) => (idx === i ? { ...x, ...patch } : x))
-                      saveProfiles(next)
-                      return next
-                    })
-                  return (
-                    <div className={`profile-card ${isActive ? 'active' : ''}`} key={i}>
-                      <div className="field-row">
+                <div className="section-title" style={{ display: 'flex', alignItems: 'center' }}>
+                  模型与服务商
+                  <span style={{ flex: 1 }} />
+                  <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={() => setShowPicker(true)}>
+                    <Icon.Plus size={12} /> 添加供应商
+                  </button>
+                </div>
+                {/* 供应商列表（对标 Codex 式设置：一行一供应商，状态点 + 模型数 + 启用徽标） */}
+                <div className="prov-list">
+                  {profiles.map((pf, i) => {
+                    const isActive = pf.models.includes(form.model)
+                    const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
+                    return (
+                      <button key={i} className={`prov-row ${isActive ? 'active' : ''}`} onClick={() => setModelTab(i)}>
+                        <span className="pv-avatar" style={{ background: preset?.color ?? '#64748b' }}>{preset?.logo ?? '⚙'}</span>
+                        <span className="prov-name ellipsis">{preset?.name ?? pf.provider}</span>
+                        <span className="prov-models ellipsis">{pf.models.slice(0, 2).join('、')}{pf.models.length > 2 ? ` +${pf.models.length - 2}` : ''}</span>
+                        {isActive && <i className="dot ok" title="使用中" />}
+                        <Icon.ChevronR size={13} />
+                      </button>
+                    )
+                  })}
+                  {profiles.length === 0 && <div className="tag-empty" style={{ padding: 24 }}>还没有配置——点右上「添加供应商」，粘贴 Key 即用</div>}
+                </div>
+                <div className="section-title" style={{ marginTop: 18 }}>推理</div>
+                <div className="field-row">
+                  <div className="field grow">
+                    <label>思考深度（支持的服务商生效；agent 与对话共用）</label>
+                    <select
+                      value={form.thinkingLevel ?? 'default'}
+                      onChange={(e) => set({ thinkingLevel: e.target.value as Settings['thinkingLevel'] })}
+                    >
+                      {Object.entries(THINKING_LABEL).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="test-row">
+                  <button className="btn ghost" onClick={() => void testLlm()} disabled={busy}>
+                    测试连接
+                  </button>
+                  <span className="test-result">{llmTest}</span>
+                </div>
+              </div>
+            )}
+
+            {sec === 'model' && modelTab !== 'list' && (() => {
+              const i = modelTab as number
+              const pf = profiles[i]
+              if (!pf) return null
+              const isActive = pf.models.includes(form.model)
+              const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
+              const upd = (patch: Partial<{ provider: string; apiBase: string; apiKey: string; models: string[]; modelCaps: Record<string, import('./types').ModelCaps> }>): void =>
+                setProfiles((list) => {
+                  const next = list.map((x, idx) => (idx === i ? { ...x, ...patch } : x))
+                  saveProfiles(next)
+                  return next
+                })
+              return (
+              <div className="section">
+                <div className="section-title" style={{ display: 'flex', alignItems: 'center' }}>
+                  <button className="btn ghost" style={{ padding: '3px 9px', marginRight: 10 }} onClick={() => setModelTab('list')}>←</button>
+                  {preset?.name ?? pf.provider}
+                  {isActive && <span className="active-tag" style={{ marginLeft: 10 }}>使用中</span>}
+                  <span style={{ flex: 1 }} />
+                  {profiles.length > 1 && (
+                    <button
+                      className="btn ghost"
+                      style={{ padding: '3px 10px', color: '#b4443c' }}
+                      onClick={() => {
+                        if (!window.confirm(`删除「${preset?.name ?? pf.provider}」配置？`)) return
+                        setProfiles((list) => {
+                          const next = list.filter((_, idx) => idx !== i)
+                          saveProfiles(next)
+                          return next
+                        })
+                        setModelTab('list')
+                      }}
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
+                <div className="field-row">
                         <div className="field pv-field">
                           <label>服务商</label>
                           <div className="pv-row">
@@ -711,62 +787,23 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                           </span>
                         )}
                         <span style={{ flex: 1 }} />
-                        {profiles.length > 1 && (
-                          <button
-                            className="profile-del"
-                            onClick={() =>
-                              setProfiles((list) => {
-                                const next = list.filter((_, idx) => idx !== i)
-                                saveProfiles(next)
-                                return next
-                              })
-                            }
-                          >
-                            删除
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  )
-                })}
                 {/* 模型能力编辑器（v0.16.2）：推理等级是模型自带档位，per-model 可视化编辑 */}
-                {(() => {
-                  const pi = profiles.findIndex((pf) => pf.models.includes(form.model) || (form.models ?? []).some((m) => pf.models.includes(m)))
-                  if (pi < 0) return null
-                  const pf = profiles[pi]
-                  const capsOf = (m: string) => pf.modelCaps?.[m] ?? { reasoningLevels: [] }
-                  const updCaps = (m: string, patch: Partial<import('./types').ModelCaps>) => {
-                    const nextCaps = { ...(pf.modelCaps ?? {}), [m]: { ...capsOf(m), ...patch } }
-                    setProfiles((list) => {
-                      const next = list.map((x, idx) => (idx === pi ? { ...x, modelCaps: nextCaps } : x))
-                      saveProfiles(next)
-                      return next
-                    })
-                  }
-                  return (
-                    <div className="section-title" style={{ marginTop: 20 }}>
-                      模型能力 · {pf.provider}
-                      <span className="ov-dim" style={{ fontWeight: 400, marginLeft: 8 }}>推理等级=模型自带档位（如 gpt-5 的 low/high/max），对话与 Work 的「推理」档位会映射到这里的词</span>
-                    </div>
-                  )
-                })()}
-                {profiles.flatMap((pf, pi) =>
-                  pf.models.slice(0, 24).map((m) => {
+                <div className="section-title" style={{ marginTop: 20 }}>
+                  模型能力 · {preset?.name ?? pf.provider}
+                  <span className="ov-dim" style={{ fontWeight: 400, marginLeft: 8 }}>推理等级 = 模型自带档位（如 gpt-5.6 的 none/low/medium/high/xhigh/max），对话与 Work 的「推理」档位会映射到这里的词</span>
+                </div>
+                {pf.models.slice(0, 24).map((m) => {
                     // 预置库兜底：主流模型自动带出已知规格（编辑后存 modelCaps 覆盖）
                     const preset = presetCaps(m)
                     const caps = pf.modelCaps?.[m] ?? preset ?? { reasoningLevels: [] }
                     const isPreset = !pf.modelCaps?.[m] && !!preset
                     const updCaps = (patch: Partial<import('./types').ModelCaps>): void => {
-                      const nextCaps = { ...(pf.modelCaps ?? {}), [m]: { ...caps, ...patch } }
-                      setProfiles((list) => {
-                        const next = list.map((x, idx) => (idx === pi ? { ...x, modelCaps: nextCaps } : x))
-                        saveProfiles(next)
-                        return next
-                      })
+                      upd({ modelCaps: { ...(pf.modelCaps ?? {}), [m]: { ...caps, ...patch } } } as Parameters<typeof upd>[0])
                     }
                     const isCur = form.model === m
                     return (
-                      <div key={`${pi}-${m}`} className={`mcaps ${isCur ? 'cur' : ''}`}>
+                      <div key={m} className={`mcaps ${isCur ? 'cur' : ''}`}>
                         <div className="mcaps-head">
                           <b>{m}</b>
                           {isCur && <span className="active-tag">当前</span>}
@@ -831,46 +868,17 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                         </div>
                       </div>
                     )
-                  })
-                )}
-                <div className="profile-add-row">
-                  <button className="profile-add" onClick={() => setShowPicker(true)}>
-                    <Icon.Plus size={12} /> 从服务商库添加（自动填好接口与模型）
-                  </button>
-                  <button
-                    className="profile-add ghost"
-                    onClick={() =>
-                      setProfiles((list) => {
-                        const next = [...list, { provider: 'custom', apiBase: '', apiKey: '', models: [] }]
-                        saveProfiles(next)
-                        return next
-                      })
-                    }
-                  >
-                    空白配置
-                  </button>
+                  })}
                 </div>
-                <div className="section-title" style={{ marginTop: 22 }}>推理</div>
-                <div className="field-row">
-                  <div className="field grow">
-                    <label>思考深度（支持的服务商生效）</label>
-                    <select
-                      value={form.thinkingLevel ?? 'default'}
-                      onChange={(e) => set({ thinkingLevel: e.target.value as Settings['thinkingLevel'] })}
-                    >
-                      {Object.entries(THINKING_LABEL).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+              )
+            })()}
+
+            {sec === 'model' && (
+              <div className="section">
+                <div className="section-title">模型能力编辑器说明</div>
+                <div className="hint">推理等级 = 模型自带档位（如 gpt-5.6 的 none/low/medium/high/xhigh/max）。上方列表点进供应商后即可编辑每个模型的能力；「预置」来自内置能力库，可直接覆盖。</div>
                 <div className="test-row">
-                  <button className="btn ghost" onClick={() => void testLlm()} disabled={busy}>
-                    测试连接
-                  </button>
-                  <span className="test-result">{llmTest}</span>
+                  <button className="btn ghost" onClick={() => setModelTab('list')}>返回供应商列表</button>
                 </div>
               </div>
             )}
