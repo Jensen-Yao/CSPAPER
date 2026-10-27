@@ -80,8 +80,13 @@ try {
   // ---------- 详情面板 ----------
   await jsClick('.top-switch button', 'Paper')
   await wait(1200)
+  // 卡片懒加载时序稳定：轮询直到卡片可点
+  for (let i = 0; i < 10; i++) {
+    if (await page.locator('.pcard').count()) break
+    await wait(500)
+  }
   await page.locator('.pcard').first().click().catch(() => {})
-  await wait(1500)
+  await wait(1800)
   let secs = await ev(() => [...document.querySelectorAll('.pd-sec-title')].map((x) => x.textContent.trim()))
   check('detail: 分区齐全(10)', secs != null && secs.length >= 10 && secs.includes('深度解读') && secs.includes('相关文献'))
   let sc = await ev(() => { const el = document.querySelector('.pd-scroll'); if (!el) return null; el.scrollTop = el.scrollHeight; return { c: el.clientHeight, s: el.scrollHeight, a: el.scrollTop } })
