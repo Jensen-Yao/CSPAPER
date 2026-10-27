@@ -1724,7 +1724,7 @@ html[data-theme='dark'] .pcard-prog i { background: linear-gradient(90deg, #8a70
 .ov-table.win .ov-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
 
 /* ---- 卡片墙：状态角标 / 底部进度 / hover 标签行 ---- */
-.pcard { position: relative; }
+.pcard { position: relative; contain: layout paint; }
 .pcard-status {
   position: absolute; top: 8px; right: 8px; z-index: 2;
   display: inline-flex; align-items: center; justify-content: center;

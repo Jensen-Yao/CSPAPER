@@ -789,13 +789,13 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
             {!findQuery.trim() ? '' : findHits.length > 0 ? `${Math.min(findIdx + 1, findHits.length)} / ${findHits.length}` : '无结果'}
           </span>
           <button className="pdf-findbar-btn" title="上一个（Shift+Enter）" disabled={!findHits.length} onClick={() => stepFind(-1)}>
-            ↑
+            <Icon.ChevronU size={12} />
           </button>
           <button className="pdf-findbar-btn" title="下一个（Enter）" disabled={!findHits.length} onClick={() => stepFind(1)}>
-            ↓
+            <Icon.ChevronD size={12} />
           </button>
           <button className="pdf-findbar-btn" title="关闭（Esc）" onClick={closeFind}>
-            ✕
+            <Icon.X size={12} />
           </button>
         </div>
       )}
