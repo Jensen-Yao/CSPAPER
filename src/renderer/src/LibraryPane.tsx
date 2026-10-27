@@ -189,12 +189,13 @@ export default function LibraryPane({
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [papersView, cats])
 
-  // 最近：最近打开优先，没打开过的按导入时间（新导入的自然置顶）
+  // 最近：最近打开优先，没打开过的按导入时间（上限 5 条——把侧栏主位还给分类/标签，
+  // 想看全量用纵览表格或搜索）
   const recent = useMemo(
     () =>
       [...papersView]
         .sort((a, b) => (b.opened_at ?? b.added_at).localeCompare(a.opened_at ?? a.added_at))
-        .slice(0, 60),
+        .slice(0, 5),
     [papersView]
   )
 

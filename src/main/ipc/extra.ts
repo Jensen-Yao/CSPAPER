@@ -2,7 +2,7 @@
 import { ipcMain } from 'electron'
 import { listRefs, importRef } from '../refs'
 import { updateCitations, venueLookup, importVenuesCsv } from '../openalex'
-import { statsOverview } from '../stats'
+import { statsOverview, weeklyReport } from '../stats'
 
 export function registerExtraIpc(ctx: { send: (ev: string, p: unknown) => void }): void {
   // ctx.send 预留：当前 handlers 都是 invoke 即返回，暂无主动推送事件
@@ -27,4 +27,5 @@ export function registerKnowledgeIpc(): void {
   ipcMain.handle('graph:authors', (_e, category?: string) => authorGraph(category || undefined))
   ipcMain.handle('graph:topics', (_e, category?: string) => topicClusters(category || undefined))
   ipcMain.handle('stats:extra', () => ({ wordsByYear: wordsByYear(10), authorsTop: authorsTop(15), heatmap: readHeatmap() }))
+  ipcMain.handle('stats:weekly', () => weeklyReport())
 }

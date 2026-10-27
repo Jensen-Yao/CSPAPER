@@ -115,3 +115,25 @@
 ---
 
 优先级会随反馈调整，欢迎提 Issue 讨论。
+
+## v0.15.2 六角色智能体评审结论（2026-10）
+
+六路角色评审（产品/UI/后端/美术/Zotero 工程师/用户）已完成第一轮并修复高严重度项。
+关键结论与排期：
+
+**已修复（v0.15.2）**：agent 对比表数据丢弃、--line/--surface 未定义、pdf:read 同步卡死、
+LLM/embed 无超时、扫描根掉线误删全库、自动化任务并发重跑、导入指纹时序、小结队列连坐、
+MCP 连接泄漏、bridge Host 校验、词云尾词可读性、旧金色 accent 残留、本周阅读周报、最近列表限 5。
+
+**下版主线（按迁移用户碰壁顺序，Zotero 工程师评审）**：
+1. Word 引文域代码（ContentControl 包裹 + 刷新全部）——当前纯文本插入不能换样式/重排号
+2. Zotero pull 改 upsert + 标注写回（POST annotation 子条目）
+3. papers 加 volume/issue/pages/publisher/language 列 + creators JSON + 元数据编辑 IPC
+4. paper_collections 多对多 + 嵌套分类树
+5. 保存搜索迁 DB + 标签/DOI/全文条件
+
+**中期**：便签标注类型、独立笔记表、CSL 引擎自动下载、重复条目检测合并、软删除回收站、
+万条库 SQL 侧过滤、检索向量缓存、扫描 md stat 门控前置、vm 沙箱换 worker。
+
+**产品叙事转向**：从"对标 20 插件清单"改为「收集→精读→笔记→引用」一条工作流故事线；
+首启无 Key 引导、示例文献包、Work 模式向导化（斜杠命令降为高级入口）。

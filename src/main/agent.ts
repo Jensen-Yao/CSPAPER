@@ -10,7 +10,7 @@ import { getDb, getSettings, listPapers } from './db'
 import { chatStream } from './llm'
 import { hybridSearch, extractPagesCached } from './ingest'
 import { searchAll, matchScript, runWeb, extractDoi, importTranslated } from './translators'
-import { synthesizePapers, generateCells, createCompare, saveCompare, getMyNotesText, saveMyNotesText, getExtract, extractPaper, knowledgeGraph, topicClusters } from './insight'
+import { synthesizePapers, generateCells, createCompare, saveCompare, listCompare, getMyNotesText, saveMyNotesText, getExtract, extractPaper, knowledgeGraph, topicClusters } from './insight'
 import { formatCite } from './csl'
 import { listMcpTools, callMcpTool } from './mcp'
 import { listSkills, skillBody } from './skills'
@@ -426,12 +426,22 @@ function buildTools(t: AgentTask) {
           await step('compare_papers', `${paperIds.length} 篇`, async () => {
             const tb = await createCompare()
             const dims = dimensions && dimensions.length ? dimensions : ['研究方法', '数据与实验', '核心结论']
+            // generateCells 只把结果 return 给调用方（不落库）——必须接住并合并保存，
+            // 此前直接丢弃导致 agent 汇报成功但表格为空
+            const data = listCompare().find((c) => c.id === tb.id)?.data
+            const cells = data?.cells ?? {}
+            const fields = data?.fields ?? ['作者', '期刊名称']
             for (const pid of paperIds) {
-              await generateCells(pid, dims, () => {})
+              // generateCells 返回 {维度: CompareCell[]}，合并进 cells[paperId][维度]
+              const r = await generateCells(pid, dims, () => {})
+              cells[String(pid)] = { ...(cells[String(pid)] ?? {}), ...r }
             }
-            const saved = await import('./insight').then(m => m.listCompare())
-            const cur = saved.find(c => c.id === tb.id)
-            if (cur) await saveCompare(tb.id, cur.data)
+            await saveCompare(tb.id, {
+              paperIds: [...new Set([...(data?.paperIds ?? []), ...paperIds])],
+              dimensions: dims,
+              fields,
+              cells
+            })
             recordArtifact({ kind: 'table', title: `对比表 #${tb.id}`, tableId: tb.id })
             return `对比表已生成（id: ${tb.id}），维度：${dims.join('/')}`
           })

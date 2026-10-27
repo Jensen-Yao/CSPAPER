@@ -25,7 +25,7 @@ export interface Paper {
 
 // 阅读状态五态（W2，对标 Reading List）
 export const STATUS_META: Record<string, { label: string; icon: string; color: string }> = {
-  todo: { label: '稍后读', icon: '🕓', color: '#b08d57' },
+  todo: { label: '稍后读', icon: '🕓', color: '#9e3b2f' },
   unread: { label: '待读', icon: '-new', color: '#98a2ab' },
   reading: { label: '在读', icon: '📖', color: '#6b7fa3' },
   read: { label: '已读', icon: '✅', color: '#7a9e7e' },
@@ -324,6 +324,7 @@ declare global {
       paperDetail: (id: number) => Promise<PaperDetail | null>
       paperExtractGet: (id: number) => Promise<PaperExtract | null>
       paperExtractRun: (id: number) => Promise<{ summary: string; extract: PaperExtract | null }>
+      statsWeekly: () => Promise<string>
       relatedList: (id: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
       relatedSet: (a: number, b: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
       relatedRemove: (a: number, b: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>

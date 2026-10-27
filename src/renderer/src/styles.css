@@ -28,6 +28,8 @@
   --hl: rgba(255, 210, 0, 0.45);
   --pdf-canvas: #e7e3d8;  /* PDF 页外画布（宣纸灰） */
   --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  --line: var(--border);      /* 兼容别名：旧代码用 --line 的统一落到 --border */
+  --surface: var(--bg);
   --serif: 'Noto Serif SC', 'Source Han Serif SC', 'STSong', 'SimSun', serif;
   --speed: 0.13s;
 
@@ -850,7 +852,7 @@ html.mac { --tb-h: 44px; }
 .card-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
 .thumb-ph { font-size: 30px; opacity: .4; }
 .pcard-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.pcard-title { font-size: 13px; font-weight: 620; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pcard-title { font-family: var(--serif); font-size: 13px; font-weight: 600; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pcard-meta { font-size: 11.5px; color: var(--text-dim); line-height: 1.6; }
 .pcard-authors { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcard-venue { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1707,7 +1709,7 @@ html[data-theme='dark'] .status-pill:hover { filter: brightness(1.18); }
 .prog-bar { flex: 1; max-width: 74px; height: 5px; border-radius: 99px; background: var(--bg3); overflow: hidden; }
 .prog-bar i, .pcard-prog i {
   display: block; height: 100%; border-radius: 99px;
-  background: linear-gradient(90deg, var(--accent), #b08d57);
+  background: linear-gradient(90deg, var(--accent), var(--accent));
   transition: width 0.2s ease;
 }
 html[data-theme='dark'] .prog-bar i,
@@ -1891,14 +1893,14 @@ button:active, .btn:active, .ws-chip:active, .kv-chip:active, .st2-chip:active, 
 
 /* 键盘可达性：焦点环 */
 :focus-visible {
-  outline: 2px solid var(--accent, #b08d57);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
   border-radius: 6px;
 }
 
 /* 输入聚焦：accent 描边 + 柔光 */
 input:focus, textarea:focus, select:focus {
-  border-color: var(--accent, #b08d57) !important;
+  border-color: var(--accent) !important;
   box-shadow: 0 0 0 3px rgba(176, 141, 87, 0.15);
   outline: none;
 }
@@ -1958,7 +1960,7 @@ html[data-theme='dark'] .pcard:hover { box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5
 .ov-wrap tbody tr { transition: background 0.12s ease; }
 
 /* chips：hover 轻浮起 */
-.ws-chip:hover, .kv-chip:hover, .st2-chip:hover { transform: translateY(-1px); border-color: var(--accent, #b08d57); }
+.ws-chip:hover, .kv-chip:hover, .st2-chip:hover { transform: translateY(-1px); border-color: var(--accent); }
 
 /* ---------- 手风琴平滑展开（配合 pd-sec-body-wrap 结构） ---------- */
 .pd-sec-body-wrap {
@@ -2063,7 +2065,7 @@ html[data-theme='dark'] .top-switch { background: rgba(255,255,255,0.06); }
 
 
 /* ================= v0.9 纵览高级检索 ================= */
-.btn.ghost.on { border-color: var(--accent, #b08d57); color: var(--accent, #b08d57); }
+.btn.ghost.on { border-color: var(--accent); color: var(--accent); }
 .ov-adv { position: relative; width: 100%; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2, rgba(255,255,255,0.5)); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .ov-adv-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ov-adv-input { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; background: var(--bg); color: var(--text); width: 180px; }
@@ -2076,7 +2078,7 @@ html[data-theme='dark'] .ov-adv { background: rgba(255,255,255,0.04); }
 /* 相似文献 */
 .pd-similar { display: flex; flex-direction: column; gap: 6px; }
 .pd-similar-item { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: transparent; cursor: pointer; text-align: left; font-family: inherit; transition: border-color 0.12s ease; }
-.pd-similar-item:hover { border-color: var(--accent, #b08d57); }
+.pd-similar-item:hover { border-color: var(--accent); }
 .pd-similar-title { font-size: 12px; font-weight: 600; color: var(--text); }
 .pd-similar-snippet { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
@@ -2086,7 +2088,7 @@ html[data-theme='dark'] .ov-adv { background: rgba(255,255,255,0.04); }
   border: 0; background: transparent; color: var(--text-dim); font-size: 12px;
   cursor: pointer; font-family: inherit; padding: 2px 0; transition: color 0.12s ease;
 }
-.sum-gen-link:hover:not(:disabled) { color: var(--accent, #b08d57); }
+.sum-gen-link:hover:not(:disabled) { color: var(--accent); }
 .sum-gen-link:disabled { opacity: 0.6; }
 
 /* ---------- 全局间距统一（v0.11 美化） ---------- */
@@ -2138,7 +2140,7 @@ html[data-theme='dark'] .pcard:hover, html[data-theme='dark'] .wb-card:hover, ht
 /* 输入框统一 focus 状态 */
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: var(--accent, #b08d57) !important;
+  border-color: var(--accent) !important;
   box-shadow: 0 0 0 3px rgba(176, 141, 87, 0.1);
 }
 
@@ -2149,7 +2151,7 @@ input:focus, textarea:focus, select:focus {
 .searchbox:focus { box-shadow: 0 0 0 3px rgba(176, 141, 87, 0.08); }
 
 /* 对话气泡：增加用户/助手视觉区分 */
-.msg.user .bubble { border-left: 3px solid var(--accent, #b08d57); }
+.msg.user .bubble { border-left: 3px solid var(--accent); }
 .msg.assistant .bubble { border-left: 3px solid transparent; }
 
 /* 纵览表格：hover 行高亮更柔和 */
@@ -2176,7 +2178,7 @@ button:disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
   left: 50%;
   width: 0;
   height: 2px;
-  background: var(--accent, #b08d57);
+  background: var(--accent);
   transition: width 0.18s ease, left 0.18s ease;
 }
 .side-tab:hover::after { width: 40%; left: 30%; }

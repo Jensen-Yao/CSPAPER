@@ -154,6 +154,7 @@ app.setAppUserModelId('com.jensenyao.cspaper')
 applyDataDir()
 migrateLegacyData()
 
+app.on('will-quit', () => { void import('./mcp').then(m => m.disconnectAll()).catch(() => {}) })
 app.whenReady().then(() => {
   dbmod.initDb()
   const ctx = {

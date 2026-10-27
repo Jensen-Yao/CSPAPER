@@ -111,6 +111,7 @@ export function initDb(): void {
   fs.mkdirSync(dir, { recursive: true })
   db = new Database(path.join(dir, 'cspaper.db'))
   db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
   db.exec(`
     CREATE TABLE IF NOT EXISTS papers(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -455,13 +456,24 @@ export function scanLibrary(libPath: string): ScanResult {
   // 列表会新旧并存“翻倍”，且新行 indexed=0 会触发整批重新嵌入。
   // 按论文文件夹（slug 目录）判断存在性——iCloud/网盘占位文件只占文件本身，
   // 目录结构始终物化，不会误删未同步条目
-  const stale = db.prepare('SELECT id, path FROM papers').all() as Array<{ id: number; path: string }>
-  const delRow = db.prepare('DELETE FROM papers WHERE id=?')
-  for (const row of stale) {
-    try {
-      if (!fs.existsSync(path.dirname(row.path))) delRow.run(row.id)
-    } catch {
-      /* 单行 stat 失败保守跳过 */
+  // stale 清理的防误删门控：文献库根目录不可访问（外接盘拔出 / 网盘掉线 / iCloud 根未同步）
+  // 时整轮跳过——否则一次掉线就会把全库行当"已删除"清光
+  let rootOk = true
+  try {
+    const st = fs.statSync(libPath)
+    rootOk = st.isDirectory()
+  } catch {
+    rootOk = false
+  }
+  if (rootOk) {
+    const stale = db.prepare('SELECT id, path FROM papers').all() as Array<{ id: number; path: string }>
+    const delRow = db.prepare('DELETE FROM papers WHERE id=?')
+    for (const row of stale) {
+      try {
+        if (!fs.existsSync(path.dirname(row.path))) delRow.run(row.id)
+      } catch {
+        /* 单行 stat 失败保守跳过 */
+      }
     }
   }
   return res

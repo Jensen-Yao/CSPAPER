@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { STATUS_META, type Paper, type StatsOverview } from './types'
 import './stats2.css'
+import * as Icon from './Icon'
 
 interface Props {
   visible: boolean
@@ -196,9 +197,10 @@ function cloudColor(rank: number, total: number, dark: boolean, pal: StatPalette
   if (rank === 0) return dark ? mixLight(pal.cloudHi, 0.35) : pal.cloudHi
   if (rank === 1) return dark ? mixLight(pal.cloudSecond, 0.28) : pal.cloudSecond
   if (rank === 2) return dark ? mixLight(pal.accent, 0.2) : pal.accent
-  const f = total <= 4 ? 0.5 : Math.min(1, rank / (total - 1))
+  // 提亮上限 0.32：尾词不得褪向纸色（此前 mix 到 ramp[4] 近白，对比度 <1.6:1 不可读）
+  const f = total <= 4 ? 0.35 : Math.min(0.32, (rank / (total - 1)) * 0.32)
   const a = dark ? hexRgb(mixLight(pal.cloudSecond, 0.3)) : hexRgb(pal.ramp[2])
-  const b = dark ? [150, 142, 132] : hexRgb(pal.ramp[4])
+  const b = dark ? [150, 142, 132] : hexRgb(pal.ramp[3])
   const mix = (x: number, y: number): number => Math.round(x + (y - x) * f)
   return `rgb(${mix(a[0], b[0])},${mix(a[1], b[1])},${mix(a[2], b[2])})`
 }
@@ -353,6 +355,28 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
   const [view, setView] = useState<ViewKey>('cloud')
   const [palKey, setPalKey] = useState<string>(() => localStorage.getItem('st2.palette') ?? 'warm')
   const [palOpen, setPalOpen] = useState(false)
+  const [weeklyBusy, setWeeklyBusy] = useState(false)
+  const [weeklyMsg, setWeeklyMsg] = useState('')
+  const copyWeekly = (): void => {
+    setWeeklyBusy(true)
+    void window.api
+      .statsWeekly()
+      .then(async (md) => {
+        try {
+          await navigator.clipboard.writeText(md)
+          setWeeklyMsg('周报已复制到剪贴板')
+        } catch {
+          setWeeklyMsg('复制失败——已改为下载')
+          const a = document.createElement('a')
+          a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }))
+          a.download = `阅读周报-${new Date().toISOString().slice(0, 10)}.md`
+          a.click()
+        }
+        window.setTimeout(() => setWeeklyMsg(''), 2400)
+      })
+      .catch(() => setWeeklyMsg('生成失败'))
+      .finally(() => setWeeklyBusy(false))
+  }
   const pal = PALETTES[palKey] ?? PALETTES.warm
   const pickPal = (k: string): void => {
     setPalKey(k)
@@ -1060,6 +1084,10 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
               </button>
             ))}
           </div>
+          {weeklyMsg && <span className="st2-weekly-msg">{weeklyMsg}</span>}
+          <button className="st2-chip" title="近 7 天阅读文献 + 每篇小结 + 摘录统计，一键复制（组会汇报用）" disabled={weeklyBusy} onClick={copyWeekly}>
+            <Icon.Notes size={12} /> {weeklyBusy ? '生成中…' : '本周周报'}
+          </button>
           <div className="st2-pal-wrap">
             <button
               className="st2-pal-btn"

@@ -301,6 +301,7 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
     send('import:progress', { done: i, total: files.length, current: path.basename(src) })
     // 内容去重：同一 PDF（含桥接/题录导入）只入一次库
     let fp = ''
+    let fpChecked = false
     try {
       fp = fingerprintFile(src)
       if (fpHas.get(fp)) {
@@ -309,7 +310,7 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
         send('import:file', oc)
         continue
       }
-      fpIns.run(fp)
+      fpChecked = true // 先查重；插入推迟到导入成功（失败文件不得永久判重）
     } catch { /* 指纹失败不阻断导入 */ }
     const fb = titleFromFilename(src)
     let title = fb.base
@@ -393,6 +394,12 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
       fs.copyFileSync(src, path.join(dest, 'paper.pdf'))
       const note = `---\ntitle: "${title.replace(/"/g, "'")}"\nauthors: "${authors.replace(/"/g, "'")}"\nyear: ${year ?? 'null'}\nvenue: "${venue.replace(/"/g, "'")}"\ntags: [status/unread]\nstatus: unread\n---\n\n# ${title}\n\n- **作者:** ${authors || '（作者见原文）'}\n- **发表:** ${venue || `${year ?? ''}（待核实）`}\n- **来源:** 本地导入（${path.basename(src)}）${classified ? '，AI 自动归类' : ''}\n\n## 速览\n\n（导入时未生成摘要。）\n\n## 阅读状态\n\n- ${new Date().getFullYear()} 通过应用内导入入库，未精读。\n`
       fs.writeFileSync(path.join(dest, `${slug}.md`), note)
+      // 导入成功才落指纹（此前先落库：失败的文件重试会被误判重复，永远导不进来）
+      if (fpChecked && fp) {
+        try {
+          fpIns.run(fp)
+        } catch { /* 指纹失败不阻断 */ }
+      }
       const oc: ImportOutcome = { file: path.basename(src), path: src, ok: true, slug, title, category: path.basename(dir).replace(/^\d+-/, ''), classified }
       outcomes.push(oc)
       send('import:file', oc)

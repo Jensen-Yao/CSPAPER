@@ -70,6 +70,7 @@ const api = {
   paperDetail: (id: number) => ipcRenderer.invoke('papers:detail', id),
   paperExtractGet: (id: number) => ipcRenderer.invoke('papers:extract-get', id),
   paperExtractRun: (id: number) => ipcRenderer.invoke('papers:extract-run', id),
+  statsWeekly: () => ipcRenderer.invoke('stats:weekly'),
   relatedList: (id: number) => ipcRenderer.invoke('papers:related-list', id),
   relatedSet: (a: number, b: number) => ipcRenderer.invoke('papers:related-set', a, b),
   relatedRemove: (a: number, b: number) => ipcRenderer.invoke('papers:related-remove', a, b),

@@ -58,18 +58,24 @@ function isDue(s: AgentSchedule): boolean {
 }
 
 // 无头执行一条：计划 → 免确认直接跑（计划为空也照跑，ReAct 自行规划）
+// inFlight + 起跑即写 last_run_at：agent 任务常超 60s tick 周期，此前会并发起 N 份同一目标
+const inFlight = new Set<number>()
 async function runHeadless(s: AgentSchedule): Promise<void> {
+  if (inFlight.has(s.id)) return
+  inFlight.add(s.id)
   const db = getDb()
-  const t = await planTask(s.goal)
-  const run = getDb().prepare('SELECT id FROM agent_tasks WHERE id=?').get(t.id) as { id: string } | undefined
-  if (!run) return
-  db.prepare("UPDATE agent_tasks SET status='running' WHERE id=?").run(t.id)
-  const r = await runTask(t.id)
-  const mark = r.ok ? '完成' : `失败：${r.error ?? ''}`
-  db.prepare("UPDATE agent_schedules SET last_run_at=datetime('now','localtime'), last_result=? WHERE id=?").run(
-    `${mark}（任务 ${t.id}）`,
-    s.id
-  )
+  try {
+    db.prepare("UPDATE agent_schedules SET last_run_at=datetime('now','localtime') WHERE id=?").run(s.id)
+    const t = await planTask(s.goal)
+    const run = getDb().prepare('SELECT id FROM agent_tasks WHERE id=?').get(t.id) as { id: string } | undefined
+    if (!run) return
+    db.prepare("UPDATE agent_tasks SET status='running' WHERE id=?").run(t.id)
+    const r = await runTask(t.id)
+    const mark = r.ok ? '完成' : `失败：${r.error ?? ''}`
+    db.prepare('UPDATE agent_schedules SET last_result=? WHERE id=?').run(`${mark}（任务 ${t.id}）`, s.id)
+  } finally {
+    inFlight.delete(s.id)
+  }
 }
 
 let ticking = false

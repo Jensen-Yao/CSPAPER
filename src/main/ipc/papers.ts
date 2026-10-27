@@ -3,6 +3,7 @@ import { listRelated, setRelated, removeRelated, refreshAutoRelated } from '../r
 import { ipcMain, dialog, shell, Menu, clipboard } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import * as dbmod from '../db'
 import { buildIndex, isIndexRunning, indexNeedsRebuild } from '../ingest'
 import { logReadTime } from '../stats'
@@ -256,7 +257,7 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     return true
   })
 
-  ipcMain.handle('pdf:read', (_e, pdfPath: string) => {
+  ipcMain.handle('pdf:read', async (_e, pdfPath: string) => {
     const libSetting = dbmod.getSettings().libraryPath
     if (!libSetting) throw new Error('文献库未设置，请先在设置中选择工作区文件夹')
     const lib = path.resolve(libSetting)
@@ -268,7 +269,8 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     }
     // 不预检 existsSync：iCloud/网盘占位文件在读取时会按需下载，预检反而拦掉
     try {
-      return fs.readFileSync(abs)
+      // 异步读：iCloud/网盘占位文件会按需下载（可能数分钟），同步 IO 会冻结整个主进程
+      return await fsp.readFile(abs)
     } catch {
       throw new Error(
         `无法读取（文件未同步到本机或已移动）：${abs}\n若是 iCloud / 网盘文献，请在文件管理器中右键对应文件夹选择「始终保留在此设备上」，同步完成后再试。`

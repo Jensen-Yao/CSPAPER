@@ -60,6 +60,12 @@ async function doConnectAll(): Promise<Array<{ server: string; ok: boolean; tool
   for (const [server, def] of Object.entries(cfg.mcpServers ?? {})) {
     if (!def?.command) continue
     try {
+      // 重连前先关旧连接：否则每次刷新泄漏一批常驻 stdio 子进程
+      const oldConn = conns.get(server)
+      if (oldConn) {
+        conns.delete(server)
+        await oldConn.client.close().catch(() => {})
+      }
       const client = new Client({ name: 'cspaper-agent', version: '1.0.0' })
       const transport = new StdioClientTransport({
         command: def.command,
@@ -102,10 +108,13 @@ export async function callMcpTool(fullName: string, args: Record<string, unknown
   if (!ref) throw new Error(`MCP 工具不存在：${fullName}`)
   const conn = conns.get(ref.server)
   if (!conn) throw new Error(`MCP 服务器 ${ref.server} 未连接`)
+  let timer: NodeJS.Timeout | undefined
   const r = (await Promise.race([
     conn.client.callTool({ name: ref.name, arguments: args }),
-    new Promise((_r, rej) => setTimeout(() => rej(new Error('MCP 调用超时（60s）')), 60000))
-  ])) as { content?: Array<{ type: string; text?: string }> }
+    new Promise((_r, rej) => {
+      timer = setTimeout(() => rej(new Error('MCP 调用超时（60s）')), 60000)
+    })
+  ]).finally(() => clearTimeout(timer))) as { content?: Array<{ type: string; text?: string }> }
   const text = (r.content ?? [])
     .filter((c) => c.type === 'text')
     .map((c) => c.text ?? '')

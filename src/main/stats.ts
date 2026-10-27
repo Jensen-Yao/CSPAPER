@@ -187,3 +187,38 @@ export function readHeatmap(): Array<{ day: string; seconds: number }> {
     return []
   }
 }
+
+
+// ---------- 本周阅读周报（组会汇报刚需）：近 7 天阅读文献 + 小结 + 摘录统计 ----------
+export function weeklyReport(): string {
+  const db = getDb()
+  const since = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 19).replace('T', ' ')
+  const read = db
+    .prepare(
+      `SELECT id, title, summary, read_seconds FROM papers
+       WHERE opened_at IS NOT NULL AND opened_at >= ? ORDER BY opened_at DESC LIMIT 50`
+    )
+    .all(since) as Array<{ id: number; title: string; summary: string | null; read_seconds: number }>
+  const newCount = (db.prepare('SELECT COUNT(*) c FROM papers WHERE added_at >= ?').get(since) as { c: number }).c
+  const hlCount = (db.prepare('SELECT COUNT(*) c FROM highlights WHERE created_at >= ?').get(since) as { c: number }).c
+  const totalSecs = read.reduce((a, r) => a + (r.read_seconds ?? 0), 0)
+  const fmt = (s: number): string => (s >= 3600 ? `${(s / 3600).toFixed(1)} 小时` : `${Math.round(s / 60)} 分钟`)
+  const lines: string[] = [
+    `# 阅读周报（${new Date(Date.now() - 6 * 86400_000).toLocaleDateString('zh-CN')} ~ ${new Date().toLocaleDateString('zh-CN')}）`,
+    '',
+    `- 打开文献：${read.length} 篇 · 累计阅读 ${fmt(totalSecs)}`,
+    `- 新入库：${newCount} 篇 · 新增摘录/高亮：${hlCount} 条`,
+    ''
+  ]
+  if (read.length === 0) {
+    lines.push('本周暂无阅读记录。')
+  } else {
+    lines.push('## 本周文献', '')
+    for (const r of read) {
+      lines.push(`- **${r.title.slice(0, 80)}**${r.read_seconds > 60 ? `（${fmt(r.read_seconds)}）` : ''}`)
+      if (r.summary) lines.push(`  ${r.summary.slice(0, 160)}`)
+    }
+    lines.push('', '## 下周计划', '', '- （待补充）')
+  }
+  return lines.join('\n')
+}

@@ -27,6 +27,15 @@ export function bridgeStatus(): { running: boolean; port: number; version: strin
 export function startBridge(notify: (title: string, detail: string) => void): void {
   if (server) return
   server = http.createServer((req, res) => {
+    // Host 白名单：挡 DNS rebinding（攻击者域名 rebind 到 127.0.0.1 后变同源直读/写库）
+    const host = (req.headers.host ?? '').toLowerCase()
+    const port = (server?.address() as { port?: number } | null)?.port
+    const okHost = host === `127.0.0.1:${port}` || host === `localhost:${port}`
+    if (!okHost) {
+      res.writeHead(403, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: false, error: 'forbidden host' }))
+      return
+    }
     void handle(req, res, notify).catch(() => {
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ ok: false, error: 'internal error' }))
@@ -51,9 +60,15 @@ function json(res: http.ServerResponse, code: number, body: unknown): void {
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let buf = ''
+    let dead = false
     req.on('data', (c: Buffer) => {
+      if (dead) return
       buf += c.toString('utf8')
-      if (buf.length > 20 * 1024 * 1024) reject(new Error('body too large'))
+      if (buf.length > 20 * 1024 * 1024) {
+        dead = true
+        req.destroy() // 超限必须销毁连接，否则恶意慢速流式 body 可无限吃内存
+        reject(new Error('body too large'))
+      }
     })
     req.on('end', () => resolve(buf))
     req.on('error', reject)

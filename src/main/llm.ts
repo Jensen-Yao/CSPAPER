@@ -43,7 +43,7 @@ function friendlyFetchError(err: unknown, apiBase: string): Error {
 }
 
 // 智谱 GLM 等 OpenAI 兼容接口的 SSE 流式调用
-export async function* chatStream(messages: ChatMessage[], opts: { temperature?: number } = {}): AsyncGenerator<string> {
+export async function* chatStream(messages: ChatMessage[], opts: { temperature?: number; signal?: AbortSignal } = {}): AsyncGenerator<string> {
   const s = getSettings()
   if (!s.apiKey) {
     yield '⚠️ 尚未配置 API Key：请点击左下角「设置」，填入智谱开放平台的 API Key。'
@@ -54,7 +54,8 @@ export async function* chatStream(messages: ChatMessage[], opts: { temperature?:
     resp = await fetch(`${s.apiBase}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.apiKey}` },
-      body: JSON.stringify(buildBody(s.model, messages, true, opts.temperature ?? 0.3))
+      body: JSON.stringify(buildBody(s.model, messages, true, opts.temperature ?? 0.3)),
+      signal: opts.signal ?? AbortSignal.timeout(300_000)
     })
   } catch (err) {
     throw friendlyFetchError(err, s.apiBase)
@@ -129,6 +130,7 @@ export async function chatOnce(messages: ChatMessage[], over?: LlmEndpoint): Pro
   let resp: Response
   try {
     resp = await fetch(`${apiBase}/chat/completions`, {
+      signal: AbortSignal.timeout(120_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(buildBody(model, messages, false, undefined, provider))

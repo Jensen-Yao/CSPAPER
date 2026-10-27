@@ -573,15 +573,22 @@ export function enqueueSummaries(ids: number[], send: (ev: string, p: unknown) =
 async function pump(send: (ev: string, p: unknown) => void): Promise<void> {
   if (sumRunning) return
   sumRunning = true
+  let fails = 0
   while (sumQueue.length > 0) {
     const id = sumQueue.shift()!
     try {
       await summarizePaper(id)
+      fails = 0
       send('summary:done', { id })
       send('papers:changed', { ids: [id] })
-    } catch {
-      sumQueue.length = 0 // 无 Key / 连续失败：放弃整队，避免反复报错
-      break
+    } catch (err) {
+      // 单篇失败（PDF 损坏等）不连坐：上报后继续下一篇；连续 3 次失败视为配置问题，熔断整队
+      fails++
+      send('summary:failed', { id, error: String(err).slice(0, 120) })
+      if (fails >= 3) {
+        sumQueue.length = 0
+        break
+      }
     }
   }
   sumRunning = false

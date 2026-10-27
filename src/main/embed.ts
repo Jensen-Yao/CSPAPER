@@ -34,6 +34,7 @@ export async function embed(texts: string[], isQuery = false): Promise<EmbedResu
     for (let i = 0; i < texts.length; i += 64) {
       const batch = texts.slice(i, i + 64)
       const resp = await fetch(`${s.apiBase}/embeddings`, {
+        signal: AbortSignal.timeout(120_000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.apiKey}` },
         body: JSON.stringify({ model: 'embedding-3', input: batch })
@@ -50,6 +51,7 @@ export async function embed(texts: string[], isQuery = false): Promise<EmbedResu
     for (let i = 0; i < texts.length; i += 32) {
       const batch = texts.slice(i, i + 32)
       const resp = await fetch(`${s.ollamaUrl.replace(/\/$/, '')}/api/embed`, {
+        signal: AbortSignal.timeout(120_000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: s.ollamaEmbedModel, input: batch })
