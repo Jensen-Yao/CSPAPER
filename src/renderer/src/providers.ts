@@ -12,6 +12,12 @@ export interface ProviderPreset {
 
 export const PROVIDER_GROUPS: Array<{ title: string; items: ProviderPreset[] }> = [
   {
+    title: '免费中转',
+    items: [
+      { id: 'agnes', name: 'Agnes · 免费中转', base: 'https://api.agnes-ai.cn/v1', models: ['agnes-3.0-flash', 'agnes-2.5-flash'], logo: 'Ag', color: '#9e3b2f', note: '免费端点：文本 3.0 Flash，另有 image/video 系列' }
+    ]
+  },
+  {
     title: '国内主流',
     items: [
       { id: 'zhipu', name: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4.6', 'glm-4.5-air', 'glm-4.5'], logo: '智', color: '#3b5bfd' },

@@ -100,7 +100,7 @@ export default function ChatView({
       return true
     }
     if (name === 'help') {
-      flash('对话可用命令：' + SLASH_CMDS.filter((c) => ['model', 'deep', 'clear', 'goal', 'help'].includes(c.name)).map((c) => '/' + c.name).join('　') + '（其余命令在 Work 工作台）')
+      flash('对话可用命令：/goal　/model　/deep　/clear　/help（其余命令在 Work 工作台）')
       return true
     }
     // 其余命令引导去 Work
@@ -167,9 +167,10 @@ export default function ChatView({
   const noticeBar = chatNotice ? <div className="wb-notice" style={{ width: '100%', marginBottom: 6 }}>{chatNotice}</div> : null
   const inputBox = (
     <div className="hero-input">
+      {noticeBar}
       <textarea
         className="hero-textarea"
-        placeholder="与全库文献对话，如：这个库里有哪些关于热建模的论文？"
+        placeholder="与全库文献对话，如：这个库里有哪些关于热建模的论文？支持 /model /deep /clear /goal 命令"
         value={input}
         rows={2}
         onChange={(e) => setInput(e.target.value)}

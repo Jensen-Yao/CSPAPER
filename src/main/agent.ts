@@ -178,10 +178,10 @@ export function updatePlan(id: string, plan: PlanStep[]): AgentTask | null {
 // ---------- 工具集（映射既有能力） ----------
 function buildTools(t: AgentTask) {
   let budget = BUDGET_CHARS
-  const cap = (text: string): string => {
+  const cap = (text: string, limit = 4000): string => {
     budget -= text.length
     if (budget <= 0) return '（观察预算已用尽——请基于已有信息直接总结收尾，不要再调用工具）'
-    return text.length > 4000 ? text.slice(0, 4000) + '…（已截断）' : text
+    return text.length > limit ? text.slice(0, limit) + '…（已截断）' : text
   }
   const step = async <T,>(name: string, argsSummary: string, fn: () => Promise<T>): Promise<T> => {
     const t0 = Date.now()
@@ -295,38 +295,97 @@ function buildTools(t: AgentTask) {
         )
     }),
     read_paper: tool({
-      description: '读取某篇文献的文本内容（默认前 6 页）',
-      inputSchema: z.object({ paperId: z.number(), pages: z.string().optional().describe('如 "1-3" 或 "5"') }),
-      execute: async ({ paperId, pages }) =>
+      description:
+        '读取某篇文献。section=structure 返回深度精读结构化字段（研究问题/方法/数据/指标/结果/局限，精读优先用它）；' +
+        'section=intro/method/results/conclusion 定位对应章节原文；不填则按页读原文（默认前 8 页）',
+      inputSchema: z.object({
+        paperId: z.number(),
+        pages: z.string().optional().describe('如 "1-3" 或 "5"（与 section 二选一）'),
+        section: z.enum(['structure', 'intro', 'method', 'results', 'conclusion']).optional()
+      }),
+      execute: async ({ paperId, pages, section }) =>
         cap(
-          await step('read_paper', `${paperTitle(paperId)} ${pages ?? ''}`, async () => {
+          await step('read_paper', `${paperTitle(paperId)} ${section ?? pages ?? ''}`, async () => {
             const p = listPapers().find((x) => x.id === paperId)
             if (!p) throw new Error('论文不存在')
+            // 结构化模式：优先取 paper_extract 缓存，没有就现场深度精读（全文 + 8 字段）
+            if (section === 'structure') {
+              let ext = getExtract(paperId)
+              if (!ext) {
+                const r = await extractPaper(paperId)
+                ext = r.extract
+              }
+              if (ext) {
+                return [
+                  `《${p.title}》深度精读：`,
+                  `研究问题：${ext.problem}`,
+                  `方法路线：${ext.method}`,
+                  `数据与对象：${ext.dataset}`,
+                  `评价指标：${ext.metrics}`,
+                  `核心结果：${ext.results}`,
+                  `创新点：${ext.novelty}`,
+                  `局限：${ext.limitations}`,
+                  `可跟进方向：${ext.future}`
+                ].join('\n')
+              }
+              throw new Error('深度精读失败（检查模型配置）')
+            }
             const pages_ = await extractPagesCached(p.path)
+            // 章节定位：标题行允许编号前缀（"1. Introduction"、"2.1 实验方法"）
+            if (section) {
+              const PAT: Record<string, RegExp> = {
+                intro: /^([ivx]+\s*\.?\s*)?(\d+(\.\d+)*\s*[.、)]?\s*)?(abstract|introduction|background|背景|引言|绪论|相关工作)/i,
+                method: /^(\d+(\.\d+)*\s*[.、)]?\s*)?(method|methodology|approach|实验设计|研究方法|方法|模型)/i,
+                results: /^(\d+(\.\d+)*\s*[.、)]?\s*)?(result|experiment|evaluation|实验|结果|分析)/i,
+                conclusion: /^(\d+(\.\d+)*\s*[.、)]?\s*)?(conclusion|summary|讨论|结论|总结|展望)/i
+              }
+              const pat = PAT[section]
+              const hits: number[] = []
+              pages_.forEach((pg, i) => {
+                const head = pg.slice(0, 600)
+                for (const line of head.split('\n')) {
+                  if (line.length < 60 && pat.test(line.trim())) {
+                    hits.push(i)
+                    break
+                  }
+                }
+              })
+              const start = hits.length > 0 ? hits[0] : section === 'intro' ? 0 : Math.floor(pages_.length * 0.6)
+              const end = hits.length > 1 ? hits[1] + 1 : Math.min(pages_.length, start + 4)
+              return pages_.slice(start, end).map((pg, i) => `--- 第${start + i + 1}页（${section}） ---\n${pg}`).join('\n')
+            }
             const range = pages ? pages.match(/(\d+)\s*-\s*(\d+)/) : null
             if (range) {
               const a = Math.max(1, parseInt(range[1]))
               const b = Math.min(pages_.length, parseInt(range[2]))
               return pages_.slice(a - 1, b).map((pg, i) => `--- 第${a + i}页 ---\n${pg}`).join('\n')
             }
-            return pages_.slice(0, 6).map((pg, i) => `--- 第${i + 1}页 ---\n${pg}`).join('\n')
-          })
+            return pages_.slice(0, 8).map((pg, i) => `--- 第${i + 1}页 ---\n${pg}`).join('\n')
+          }),
+          8000
         )
     }),
     ask_paper: tool({
-      description: '就某篇文献的全文内容提问并获得回答',
+      description: '就某篇文献提问并获得带页码引用的回答（自动检索最相关段落 + 首页摘要混合上下文）',
       inputSchema: z.object({ paperId: z.number(), question: z.string() }),
       execute: async ({ paperId, question }) =>
         cap(
           await step('ask_paper', `${paperTitle(paperId)}：${question.slice(0, 40)}`, async () => {
             const p = listPapers().find((x) => x.id === paperId)
             if (!p) throw new Error('论文不存在')
+            // 混合上下文：该文献最相关的 16 个检索块（带页码）+ 首两页原文
+            const hits = await hybridSearch(question, paperId, 16)
+            const evCtx = hits.map((h) => `[p.${h.page}] ${h.snippet}`).join('\n\n')
             const pages = await extractPagesCached(p.path)
-            const ctx = pages.join('\n').slice(0, 60_000)
+            const head = pages.slice(0, 2).join('\n').slice(0, 4000)
             let ans = ''
             for await (const d of chatStream([
-              { role: 'system', content: '基于提供的论文全文回答问题，中文，引用内容标注页码。只输出回答。' },
-              { role: 'user', content: `论文全文：\n${ctx}\n\n问题：${question}` }
+              {
+                role: 'system',
+                content:
+                  '基于提供的文献检索证据回答问题，中文。每个论断后标注 [p.页码] 引用；证据不足以回答时明确说"原文未覆盖"。只输出回答。'
+              },
+              { role: 'user', content: `文献首两页：\n${head}\n\n检索到的相关段落（问题：${question}）：\n${evCtx.slice(0, 30_000)}\n\n问题：${question}` }
             ])) {
               ans += d
             }
@@ -534,7 +593,9 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
       },
       system:
         '你是 CSPAPER 科研智能体。严格按照以下已确认的计划逐步执行（每步调用对应工具，参数已给定可直接用；' +
-        '若某步失败，调整参数重试一次或跳过并在最后说明）。完成后输出最终总结（做了什么、产物在哪、未尽事项），中文。\n\n执行计划：\n' +
+        '若某步失败，调整参数重试一次或跳过并在最后说明）。完成后输出最终总结（做了什么、产物在哪、未尽事项），中文。' +
+        (getSettings().agentGoal ? `\n\n用户长期目标（执行始终围绕它，总结末尾说明对该目标的推进）：${getSettings().agentGoal}` : '') +
+        '\n\n执行计划：\n' +
         planText +
         '\n\n文献库分类与论文 id 可通过 list_library 查询。',
       messages: [{ role: 'user', content: `任务目标：${t.goal}` }]
