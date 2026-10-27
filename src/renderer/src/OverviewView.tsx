@@ -107,6 +107,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
   }
 
   // ---------- 高级检索（v0.9，对标 Zotero 高级搜索，可保存为智能搜索） ----------
+  const [nameEdit, setNameEdit] = useState<string | null>(null)
   interface AdvCond {
     title: string
     authors: string
@@ -298,7 +299,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             </select>
             <span style={{ flex: 1 }} />
             <button className={`btn ghost ${advActive ? 'on' : ''}`} title="多条件组合检索（可保存为智能搜索）" onClick={() => setAdvOpen((v) => !v)}>
-              ⌕ 高级{advActive ? ' ·' : ''}
+              <Icon.Search size={12} /> 高级{advActive ? ' ·' : ''}
             </button>
             <button
               className="btn ghost"
@@ -357,15 +358,28 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                   </select>
                 </div>
                 <div className="ov-adv-row">
-                  <button
-                    className="btn ghost"
-                    onClick={() => {
-                      const name = prompt('智能搜索名称：', `搜索 ${new Date().toLocaleDateString('zh-CN')}`)
-                      if (name) persistSaved([...savedSearches, { name, cond: adv }])
-                    }}
-                  >
-                    保存为智能搜索
-                  </button>
+                  {nameEdit === null ? (
+                    <button className="btn ghost" onClick={() => setNameEdit(`搜索 ${new Date().toLocaleDateString('zh-CN')}`)}>
+                      保存为智能搜索
+                    </button>
+                  ) : (
+                    <input
+                      className="ov-adv-input"
+                      style={{ width: 150 }}
+                      autoFocus
+                      value={nameEdit}
+                      onChange={(e) => setNameEdit(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && nameEdit.trim()) {
+                          persistSaved([...savedSearches, { name: nameEdit.trim(), cond: adv }])
+                          setNameEdit(null)
+                        }
+                        if (e.key === 'Escape') setNameEdit(null)
+                      }}
+                      onBlur={() => setNameEdit(null)}
+                      placeholder="命名后回车"
+                    />
+                  )}
                   <button className="btn ghost" onClick={() => setAdv(EMPTY_ADV)}>
                     清除条件
                   </button>

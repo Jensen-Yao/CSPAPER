@@ -649,6 +649,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                           <input value={pf.apiBase} onChange={(e) => upd({ apiBase: e.target.value })} />
                         </div>
                       </div>
+                      <div className="field-row">
                       <div className="field">
                         <label>API Key</label>
                         <input type="password" value={pf.apiKey} onChange={(e) => upd({ apiKey: e.target.value })} placeholder="sk-…" />
@@ -667,6 +668,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                           }
                           placeholder="deepseek-chat, deepseek-reasoner"
                         />
+                      </div>
                       </div>
                       <div className="profile-foot">
                         {isActive ? (
@@ -700,7 +702,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 })}
                 <div className="profile-add-row">
                   <button className="profile-add" onClick={() => setShowPicker(true)}>
-                    ＋ 从服务商库添加（自动填好接口与模型）
+                    <Icon.Plus size={12} /> 从服务商库添加（自动填好接口与模型）
                   </button>
                   <button
                     className="profile-add ghost"
@@ -1011,7 +1013,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               <div className="modal-head">
                 <h2>添加服务商</h2>
                 <button className="modal-x" title="关闭" onClick={() => setShowPicker(false)}>
-                  ✕
+                  <Icon.X size={13} />
                 </button>
               </div>
               <div className="picker-search">

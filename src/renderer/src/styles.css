@@ -2231,3 +2231,7 @@ button:disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
 .cmp-table td.cmp-meta { min-width: 108px; max-width: 200px; }
 .cmp-table td.cmp-cell { min-width: 230px; }
 .cmp-empty { color: var(--text-dim); opacity: 0.55; font-size: 12px; }
+
+/* ---------- v0.15.1 纵览工具条按钮收紧 ---------- */
+.ov-filters .btn { padding: 5px 12px; font-size: 12px; }
+.ov-filters .btn .ov-dim { font-size: 11px; }
