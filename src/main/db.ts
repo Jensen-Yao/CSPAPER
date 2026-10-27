@@ -288,7 +288,12 @@ export function getSettings(): Settings {
 }
 
 export function saveSettings(patch: Partial<Settings>): Settings {
-  const next = { ...getSettings(), ...patch }
+  const cur = getSettings()
+  const next = { ...cur, ...patch }
+  // 防 Key 误清空：patch 显式传空串不能抹掉已配置的 Key（曾致用户的 agnes 配置丢失）
+  // 想真正换 Key 必须传非空值；传 null 表示有意清除
+  if (next.apiKey === '' && cur.apiKey) next.apiKey = cur.apiKey
+  if (next.zoteroApiKey === '' && cur.zoteroApiKey) next.zoteroApiKey = cur.zoteroApiKey
   db.prepare("UPDATE meta SET value=? WHERE key='settings'").run(JSON.stringify(next))
   return next
 }

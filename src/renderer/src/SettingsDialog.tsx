@@ -787,7 +787,15 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                         ) : (
                           <span
                             className="profile-link"
-                            onClick={() => set({ provider: pf.provider, apiBase: pf.apiBase, apiKey: pf.apiKey, model: pf.models[0] ?? form.model })}
+                            onClick={() =>
+                              set({
+                                provider: pf.provider,
+                                apiBase: pf.apiBase,
+                                // 该配置没填 Key 时不覆盖现有 Key（防误清空）
+                                apiKey: pf.apiKey || form.apiKey,
+                                model: pf.models[0] ?? form.model
+                              })
+                            }
                           >
                             启用此配置
                           </span>

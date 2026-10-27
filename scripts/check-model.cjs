@@ -1,0 +1,6 @@
+const Database = require('better-sqlite3')
+const path = require('path')
+const db = new Database(path.join(process.env.APPDATA, 'CSPAPER', 'cspaper.db'), { readonly: true })
+const s = JSON.parse(db.prepare("SELECT value FROM meta WHERE key='settings'").get().value)
+console.log(JSON.stringify({ apiBase: s.apiBase, hasKey: !!(s.apiKey && s.apiKey.startsWith('sk-')), provider: s.provider, model: s.model, models: s.models, profile0: (s.profiles ?? [])[0] ? { provider: s.profiles[0].provider, base: s.profiles[0].apiBase, models: s.profiles[0].models } : null, thinkingLevel: s.thinkingLevel }))
+db.close(); process.exit(0)
