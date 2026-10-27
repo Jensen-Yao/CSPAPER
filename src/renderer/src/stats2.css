@@ -277,3 +277,29 @@ html[data-theme='dark'] .st2-chip.on {
 .st2-pal i { width: 9px; height: 9px; border-radius: 50%; }
 .st2-pal:hover { border-color: var(--accent); color: var(--text); transform: translateY(-1px); }
 .st2-pal.on { border-color: var(--accent); color: var(--text); background: rgba(176, 141, 87, 0.12); font-weight: 600; }
+
+
+/* ---------- v0.15 配色下拉（替代 5 chip 平铺） ---------- */
+.st2-pal-wrap { position: relative; }
+.st2-pal-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  border-radius: 7px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.st2-pal-btn:hover { color: var(--text); border-color: var(--border-lit); }
+.st2-pal-btn i { width: 9px; height: 9px; border-radius: 50%; }
+.st2-pal-caret { font-size: 8px; opacity: 0.7; }
+.st2-pal-mask { position: fixed; inset: 0; z-index: 9; }
+.st2-pal-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; min-width: 130px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.14); padding: 4px;
+}
+.st2-pal-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: 0; background: transparent; color: var(--text); font-size: 12.5px;
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; font-family: inherit;
+}
+.st2-pal-item:hover { background: rgba(127,127,127,0.1); }
+.st2-pal-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.st2-pal-item i { width: 9px; height: 9px; border-radius: 50%; flex: none; }

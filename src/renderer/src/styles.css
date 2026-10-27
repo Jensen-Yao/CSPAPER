@@ -513,14 +513,14 @@ html[data-theme='dark'] .modal-mask { background: rgba(0, 0, 0, 0.55); backdrop-
 .modal-x:hover { background: var(--bg4); color: var(--text); }
 .section { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
 .section-title { font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 1.1px; text-transform: uppercase; margin-bottom: 10px; }
-.field { margin-bottom: 10px; }
+.field { margin-bottom: 8px; }
 .field:last-child { margin-bottom: 0; }
 .field-row { display: flex; gap: 10px; }
 .field-row .field { flex: 1; }
 .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; }
 .field input, .field select {
   width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 8px 10px; color: var(--text); outline: none; font-size: 13px; transition: border-color var(--speed);
+  padding: 6px 10px; color: var(--text); outline: none; font-size: 13px; transition: border-color var(--speed);
 }
 .field input:focus { border-color: var(--accent); }
 .field .hint { font-size: 11px; color: var(--text-dim); margin-top: 5px; line-height: 1.5; }
@@ -2224,3 +2224,10 @@ button:disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
 .tb-title-name { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: var(--text-dim); font-family: var(--serif); }
 .wb-hero-text { font-family: var(--serif); letter-spacing: 2px; }
 .libhome-title { font-family: var(--serif); letter-spacing: 1px; }
+
+
+/* ---------- v0.15 对比表列宽约束（修复维度列被挤歪） ---------- */
+.cmp-table th.cmp-title, .cmp-table td.cmp-title { min-width: 240px; max-width: 320px; }
+.cmp-table td.cmp-meta { min-width: 108px; max-width: 200px; }
+.cmp-table td.cmp-cell { min-width: 230px; }
+.cmp-empty { color: var(--text-dim); opacity: 0.55; font-size: 12px; }

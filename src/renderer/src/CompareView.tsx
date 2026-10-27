@@ -199,7 +199,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
     return (
       <div className="cmp-wrap">
         <div className="empty-viewer">
-          <div className="big">📊</div>
+          <div className="big"><Icon.Compare size={34} /></div>
           <div className="headline">AI 对比表格</div>
           <div className="tip">{err || '正在加载对比表…'}</div>
         </div>
@@ -221,21 +221,21 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
                 void removeTable(t.id)
               }}
             >
-              ✕
+              <Icon.X size={11} />
             </span>
           </div>
         ))}
         <div className="tab cmp-add-tab" title="新建对比表" onClick={() => void newTable()}>
-          ＋
+          <Icon.Plus size={13} />
         </div>
       </div>
 
       <div className="cmp-toolbar">
         <button className="cmp-btn" onClick={() => { setPicked(new Set()); setShowAddPaper(true) }}>
-          ⊕ 添加文献
+          <Icon.Plus size={13} /> 添加文献
         </button>
         <button className="cmp-btn" onClick={() => { setDimSource('builtin'); setShowAddDim(true) }}>
-          ＋ 添加维度
+          <Icon.Plus size={13} /> 添加维度
         </button>
         <button className="cmp-btn primary" disabled={genAllBusy || active.data.paperIds.length === 0} onClick={() => void generateMissing()} title="对所有还没提取过要点的文献跑一遍 AI">
           {genAllBusy ? '生成中…' : <>生成缺失维度</>}
@@ -253,7 +253,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
 
       {active.data.paperIds.length === 0 ? (
         <div className="empty-viewer">
-          <div className="big">📊</div>
+          <div className="big"><Icon.Compare size={34} /></div>
           <div className="headline">多篇文献横向对比</div>
           <div className="tip">
             点「⊕ 添加文献」选入 2 篇以上论文：基础字段（作者 / 期刊…）直接提取，分析维度由 AI 读原文提取要点，

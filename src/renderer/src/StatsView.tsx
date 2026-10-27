@@ -210,31 +210,35 @@ function layoutCloud(g: CanvasRenderingContext2D, words: Array<{ w: string; n: n
   const cx = W / 2
   const cy = H / 2
   const FONT = '"Microsoft YaHei", "PingFang SC", sans-serif'
-  const sizeOf = (rank: number, n: number): number => (rank === 0 ? 1.35 : 1) * (13 + 34 * Math.sqrt(n / max))
+  // 强层级：top1 明显大（约 5-6 倍于尾部），频差呈指数拉开
+  const sizeOf = (n: number): number => 13 + 44 * Math.pow(n / max, 0.72)
   // 面积估算：整体缩放防止大画布塞不下
-  const est = words.reduce((a, wd, i) => a + Math.pow(13 + 34 * Math.sqrt(wd.n / max), 1.9) * (i < 6 ? 2.6 : 1.2), 0)
-  let scale = est > W * H * 0.55 ? Math.sqrt((W * H * 0.55) / est) : 1
+  const est = words.reduce((a, wd, i) => a + Math.pow(sizeOf(wd.n), 1.85) * (i < 6 ? 2.2 : 1.15), 0)
+  const scale = est > W * H * 0.5 ? Math.sqrt((W * H * 0.5) / est) : 1
   const collides = (c: CloudWord): boolean => {
     for (const q of placed) {
-      const cw = ((c.rot ? c.h : c.w2 * 2) + (q.rot ? q.h : q.w2 * 2)) / 2 + 7
-      const ch = ((c.rot ? c.w2 * 2 : c.h) + (q.rot ? q.w2 * 2 : q.h)) / 2 + 6
+      // 逐词紧密：间距压到 2-3px，让云抱团而不是散布
+      const cw = ((c.rot ? c.h : c.w2 * 2) + (q.rot ? q.h : q.w2 * 2)) / 2 + 2.5
+      const ch = ((c.rot ? c.w2 * 2 : c.h) + (q.rot ? q.w2 * 2 : q.h)) / 2 + 2
       if (Math.abs(c.x - q.x) < cw && Math.abs(c.y - q.y) < ch) return true
     }
     return false
   }
   for (let i = 0; i < words.length; i++) {
     const wd = words[i]
-    let size = Math.max(11, sizeOf(i, wd.n) * scale)
-    const rot = i > 2 && i % 6 === 4 && size < 30 // 少量中频词竖排增添云感
+    let size = Math.max(11, sizeOf(wd.n) * scale)
+    // 少量中频词 90° 竖排（只取整 90°，杜绝斜排的乱感）
+    const rot = i > 5 && i % 9 === 7 && size < 30
     let placedW: CloudWord | null = null
     for (let pass = 0; pass < 3 && !placedW; pass++) {
-      g.font = `${size}px ${FONT}`
+      g.font = `${i < 2 ? '600 ' : ''}${size}px ${FONT}`
       const w2 = g.measureText(wd.w).width / 2
-      for (let t = 0; t < 820; t++) {
-        const rad = t * 2.4
-        const ang = t * 0.32 + (i % 7) * 0.85
-        const x = cx + rad * Math.cos(ang) * 1.3
-        const y = cy + rad * Math.sin(ang) * 0.82
+      // 慢速紧密螺旋：小步进绕中心转圈外扩，词贴词填充
+      for (let t = 0; t < 2400; t++) {
+        const rad = t * 0.42
+        const ang = t * 0.55 + (i % 3) * 0.7
+        const x = cx + rad * Math.cos(ang) * 1.22
+        const y = cy + rad * Math.sin(ang) * 0.8
         const cand: CloudWord = { key: `c${i}`, w: wd.w, n: wd.n, x, y, size, w2, h: size, rot, bold: i < 4, color: cloudColor(i, words.length, dark, pal) }
         const halfW = rot ? cand.h : cand.w2
         const halfH = rot ? cand.w2 : cand.h
@@ -244,27 +248,28 @@ function layoutCloud(g: CanvasRenderingContext2D, words: Array<{ w: string; n: n
           break
         }
       }
-      if (!placedW) size *= 0.8 // 放不下整体缩小再试
+      if (!placedW) size *= 0.78 // 放不下整体缩小再试
     }
     if (placedW) placed.push(placedW)
   }
   return placed
 }
 
-// 从中心螺旋放置防重叠（放不下则缩小半径重试）
+// 从中心螺旋放置防重叠（放不下则缩小半径重试）；半径幂律压平，避免 top1 巨球霸屏
 function layoutCircles(words: Array<{ w: string; n: number }>, W: number, H: number): Circle[] {  const out: Circle[] = []
   const max = words[0].n || 1
   const cx = W / 2
   const cy = H / 2
-  const Rmax = Math.min(W, H) * 0.26
+  const Rmax = Math.min(W, H) * 0.17
   const diag = Math.max(W, H)
   for (let i = 0; i < words.length; i++) {
     const it = words[i]
-    let r = clamp(12 + (Rmax - 12) * Math.sqrt(it.n / max), 10, Rmax)
+    // 0.55 幂：top1 与尾部的半径差收敛在 ~3 倍内，整体成群不失衡
+    let r = clamp(13 + (Rmax - 13) * Math.pow(it.n / max, 0.55), 10, Rmax)
     let done = false
     for (let tries = 0; tries < 7 && !done && r >= 8; tries++) {
       for (let t = 0; t < 720; t++) {
-        const rad = r * 0.55 + t * 1.55
+        const rad = r * 0.55 + t * 1.35
         if (rad > diag) break
         const ang = t * 0.34
         const x = cx + rad * Math.cos(ang)
@@ -274,7 +279,7 @@ function layoutCircles(words: Array<{ w: string; n: number }>, W: number, H: num
         for (const p of out) {
           const dx = p.x - x
           const dy = p.y - y
-          const rr = p.r + r + 2
+          const rr = p.r + r + 1
           if (dx * dx + dy * dy < rr * rr) {
             collide = true
             break
@@ -347,6 +352,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
   const [papers, setPapers] = useState<Paper[]>([])
   const [view, setView] = useState<ViewKey>('cloud')
   const [palKey, setPalKey] = useState<string>(() => localStorage.getItem('st2.palette') ?? 'warm')
+  const [palOpen, setPalOpen] = useState(false)
   const pal = PALETTES[palKey] ?? PALETTES.warm
   const pickPal = (k: string): void => {
     setPalKey(k)
@@ -728,7 +734,8 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       const step = cell + gap
       const gridW = WEEKS * step - gap
       const gridH = 7 * step - gap
-      const x0 = Math.max(34, W - gridW - 8)
+      // 网格水平居中；左侧空白画统计摘要，避免「格子挤右边、左边一大块空」
+      const x0 = Math.max(34, Math.round((W - gridW) / 2))
       const y0 = Math.max(12, Math.round((H - gridH - 34) / 2))
       const pad2 = (v: number): string => String(v).padStart(2, '0')
       const fmtDay = (d: Date): string => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
@@ -792,6 +799,36 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       }
       const hv = hits.find((h) => h.key === hoverRef.current)
       if (hv) drawTip(g, W, hv.tip)
+      // 左侧统计摘要：活跃天数 / 最长连续 / 累计时长（填补居中后左侧空白）
+      const actives = recs.filter((d) => d.seconds > 0)
+      if (actives.length > 0 && x0 > 190) {
+        const totalSecs = actives.reduce((a, d) => a + d.seconds, 0)
+        const sorted = [...actives].map((d) => d.day).sort()
+        let streak = 1
+        let best = 1
+        for (let i = 1; i < sorted.length; i++) {
+          const prev = new Date(sorted[i - 1])
+          const cur = new Date(sorted[i])
+          const dd = Math.round((cur.getTime() - prev.getTime()) / 86400000)
+          streak = dd === 1 ? streak + 1 : 1
+          best = Math.max(best, streak)
+        }
+        const bx = Math.max(18, Math.round((x0 - 170) / 2))
+        const items: Array<[string, string]> = [
+          ['活跃天数', `${actives.length} 天`],
+          ['最长连续', `${best} 天`],
+          ['累计阅读', fmtHours(totalSecs)]
+        ]
+        items.forEach(([k, v], i) => {
+          const yy = y0 + 14 + i * 54
+          g.fillStyle = tc.faint
+          g.font = '11px sans-serif'
+          g.fillText(k, bx, yy)
+          g.fillStyle = tc.text
+          g.font = '600 22px "Microsoft YaHei", sans-serif'
+          g.fillText(v, bx, yy + 26)
+        })
+      }
     }
     mountStage(paint, hits)
   }
@@ -1015,24 +1052,44 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
       <div className="st2-panel">
         <div className="st2-head">
           <div className="st2-head-title">{VIEWS.find((v) => v.key === view)?.title ?? ''}</div>
+          <span style={{ flex: 1 }} />
           <div className="st2-chips">
             {VIEWS.map((v) => (
               <button key={v.key} className={`st2-chip ${view === v.key ? 'on' : ''}`} onClick={() => setView(v.key)}>
                 {v.label}
               </button>
             ))}
-            <span className="st2-pal-sep" />
-            {PAL_KEYS.map((k) => (
-              <button
-                key={k}
-                className={`st2-pal ${palKey === k ? 'on' : ''}`}
-                title={`配色风格：${PALETTES[k].name}`}
-                onClick={() => pickPal(k)}
-              >
-                <i style={{ background: PALETTES[k].accent }} />
-                {PALETTES[k].name}
-              </button>
-            ))}
+          </div>
+          <div className="st2-pal-wrap">
+            <button
+              className="st2-pal-btn"
+              title="配色风格"
+              onClick={() => setPalOpen((o) => !o)}
+            >
+              <i style={{ background: pal.accent }} />
+              {pal.name}
+              <span className="st2-pal-caret">▾</span>
+            </button>
+            {palOpen && (
+              <>
+                <div className="st2-pal-mask" onClick={() => setPalOpen(false)} />
+                <div className="st2-pal-menu">
+                  {PAL_KEYS.map((k) => (
+                    <button
+                      key={k}
+                      className={`st2-pal-item ${palKey === k ? 'on' : ''}`}
+                      onClick={() => {
+                        pickPal(k)
+                        setPalOpen(false)
+                      }}
+                    >
+                      <i style={{ background: PALETTES[k].accent }} />
+                      {PALETTES[k].name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
         <canvas ref={stageRef} className="st2-canvas" style={{ height: 380 }} />
