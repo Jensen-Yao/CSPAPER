@@ -257,6 +257,12 @@ export interface PaperDetail {
   files: string[]
   notesCount: number
   myNotes: string
+  doi?: string | null
+  volume?: string | null
+  issue?: string | null
+  pages?: string | null
+  publisher?: string | null
+  language?: string | null
 }
 
 // 深度搜索命中（正文 / 划词笔记）

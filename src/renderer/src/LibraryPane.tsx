@@ -458,6 +458,19 @@ export default function LibraryPane({
             </button>
           </div>
         )}
+        {(searching || selectedTag) && (
+          <div className="lib-filter-banner">
+            {searching ? `搜索「${kw}」` : `标签「${selectedTag}」`} · 显示 {papersView.length} 篇（全库 {papers.length}）
+            <button
+              onClick={() => {
+                if (searching) onSetQ('')
+                if (selectedTag) applyTagFilter(null)
+              }}
+            >
+              清除筛选
+            </button>
+          </div>
+        )}
         <div
           className="lib-files-scroll"
           onContextMenu={(e) => {

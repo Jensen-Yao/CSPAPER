@@ -536,9 +536,9 @@ export function saveMyNotesText(paperId: number, text: string): boolean {
 export async function paperDetail(id: number): Promise<PaperDetail | null> {
   const db = getDb()
   const row = db
-    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path FROM papers WHERE id=?')
+    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path, doi, volume, issue, pages, publisher, language FROM papers WHERE id=?')
     .get(id) as
-    | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string; status: string; added_at: string; summary: string | null; path: string }
+    | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string; status: string; added_at: string; summary: string | null; path: string; doi: string | null; volume: string | null; issue: string | null; pages: string | null; publisher: string | null; language: string | null }
     | undefined
   if (!row) return null
   const dir = path.dirname(row.path)

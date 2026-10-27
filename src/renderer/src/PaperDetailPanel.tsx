@@ -377,6 +377,21 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     </div>
   )
 
+  // 元数据行内编辑（v0.16.6）：失焦保存 papers:update-meta，回填本地 detail
+  const editable = (key: 'venue' | 'year' | 'doi' | 'volume' | 'issue' | 'pages' | 'publisher' | 'language', val: string): JSX.Element => (
+    <input
+      className="pd-edit-input"
+      defaultValue={val}
+      key={`${paper.id}-${key}-${val}`}
+      placeholder="—"
+      onBlur={(e) => {
+        const v = e.target.value.trim()
+        if (v === val) return
+        const patch: Record<string, string | number | null> = key === 'year' ? { year: parseInt(v) || null } : { [key]: v || null }
+        void window.api.updatePaperMeta(paper.id, patch).then(() => onChanged?.())
+      }}
+    />
+  )
   const field = (label: string, value: React.ReactNode): JSX.Element => (
     <div className="pd-field">
       <div className="pd-flabel">{label}</div>
@@ -509,9 +524,15 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                     </div>
                   )
                 )}
-                {detail.venue && field('期刊 / 来源', detail.venue)}
+                {field('期刊 / 来源', editable('venue', detail.venue || ''))}
                 <div className="pd-grid2">
-                  {detail.year != null && field('年份', String(detail.year))}
+                  {field('年份', editable('year', detail.year != null ? String(detail.year) : ''))}
+                  {field('DOI', editable('doi', detail.doi ?? ''))}
+                  {field('卷', editable('volume', detail.volume ?? ''))}
+                  {field('期', editable('issue', detail.issue ?? ''))}
+                  {field('页码', editable('pages', detail.pages ?? ''))}
+                  {field('出版社', editable('publisher', detail.publisher ?? ''))}
+                  {field('语言', editable('language', detail.language ?? ''))}
                   {field('添加日期', (detail.added_at || '').slice(0, 10))}
                 </div>
               </>
