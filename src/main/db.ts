@@ -70,6 +70,7 @@ export interface Settings {
   agentModel?: string
   agentMaxSteps?: number
   agentGoal?: string
+  imageModel?: string
 }
 
 // 默认文献库：跟随平台放到「文档」目录（开发态 app 未 ready 前不能调 getPath，惰性求值）

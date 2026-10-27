@@ -65,6 +65,7 @@ export interface Settings {
   agentModel?: string
   agentMaxSteps?: number
   agentGoal?: string
+  imageModel?: string
 }
 
 // 标签（W1）
