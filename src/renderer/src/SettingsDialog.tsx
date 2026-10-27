@@ -957,6 +957,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 <div className="hint" style={{ marginBottom: 10 }}>
                   填入 Zotero 的 userId 与 apiKey（在 zotero.org/settings/keys 创建 key，同一页面顶部可见你的 userID），
                   即可云端全量/增量同步：条目、分类、标签、笔记、PDF 标注、附件与 CSL 题录自动入库。与「本地导入」并存。
+                  增量同步会按版本更新远端改动过的条目（本地 PDF 不重复下载）；在文献详情面板可把本地高亮一键写回 Zotero。
                 </div>
                 <div className="set-row" style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
                   <input

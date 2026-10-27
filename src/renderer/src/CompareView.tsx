@@ -34,6 +34,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
   const [checkedDims, setCheckedDims] = useState<Set<string>>(new Set())
   const [customDim, setCustomDim] = useState('')
   const [genAllBusy, setGenAllBusy] = useState(false)
+  const [genAllProg, setGenAllProg] = useState('')
 
   useEffect(() => {
     void window.api
@@ -133,8 +134,12 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
       const cells = active.data.cells[String(id)]
       return !cells || Object.keys(cells).length === 0
     })
-    for (const id of ids) await generateOne(id)
+    for (let k = 0; k < ids.length; k++) {
+      setGenAllProg(`${k + 1}/${ids.length}`)
+      await generateOne(ids[k])
+    }
     setGenAllBusy(false)
+    setGenAllProg('')
   }
 
   const paperRow = (pid: number, idx: number): JSX.Element => {
@@ -238,7 +243,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
           <Icon.Plus size={13} /> 添加维度
         </button>
         <button className="cmp-btn primary" disabled={genAllBusy || active.data.paperIds.length === 0} onClick={() => void generateMissing()} title="对所有还没提取过要点的文献跑一遍 AI">
-          {genAllBusy ? '生成中…' : <>生成缺失维度</>}
+          {genAllBusy ? `AI 提取中 ${genAllProg}…` : <>AI 填全表</>}
         </button>
         <span style={{ flex: 1 }} />
         <button className="cmp-btn" onClick={() => void window.api.compareExport(active.id, 'md')}>

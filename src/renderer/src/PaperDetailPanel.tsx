@@ -73,6 +73,13 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     setOpenPersist(next)
   }
   const [sumBusy, setSumBusy] = useState(false)
+  // Zotero 高亮写回状态
+  const [zpBusy, setZpBusy] = useState(false)
+  const [zpMsg, setZpMsg] = useState('')
+  const flashMsg = (m: string): void => {
+    setZpMsg(m)
+    window.setTimeout(() => setZpMsg(''), 3000)
+  }
   // 集合挂接（v0.16 多分类）
   const [colls, setColls] = useState<Array<{ id: number; name: string; parent_id: number | null; n: number }>>([])
   const [myCollIds, setMyCollIds] = useState<Set<number>>(new Set())
@@ -422,6 +429,23 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               <Icon.Info size={14} />,
               '信息',
               <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <button
+                    className="cmp-mini"
+                    title="把本篇的本地高亮写回 Zotero（作为 annotation 子条目；仅 Zotero 同步来源的文献可用）"
+                    onClick={() => {
+                      setZpBusy(true)
+                      void window.api
+                        .zoteroPushHighlights(paper.id)
+                        .then((r) => flashMsg(`已写回 ${r.pushed} 条高亮到 Zotero`))
+                        .catch((e2) => flashMsg(String(e2).replace(/^Error: /, '').slice(0, 90)))
+                        .finally(() => setZpBusy(false))
+                    }}
+                  >
+                    {zpBusy ? '写回中…' : '高亮写回 Zotero'}
+                  </button>
+                  {zpMsg && <span className="ov-dim">{zpMsg}</span>}
+                </div>
                 <div className="pd-colls">
                   <span className="pd-flabel" style={{ minWidth: 32 }}>集合</span>
                   {colls.length === 0 && <span className="pd-dim">暂无集合（左栏「集合」区可新建，一篇文献可挂多个）</span>}
