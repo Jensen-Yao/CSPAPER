@@ -124,7 +124,35 @@ export async function generateCells(
 }
 
 // ---------- AI 文献卡片小结（约 150 字，研究问题/方法/核心结果） ----------
-export async function summarizePaper(paperId: number): Promise<string> {
+// ---------- 深度精读：结构化抽取（v0.13） ----------
+export interface PaperExtract {
+  paper_id: number
+  problem: string
+  method: string
+  dataset: string
+  metrics: string
+  results: string
+  limitations: string
+  novelty: string
+  future: string
+  extracted_at: string
+}
+
+export function getExtract(paperId: number): PaperExtract | null {
+  try {
+    const db = getDb()
+    const r = db.prepare('SELECT * FROM paper_extract WHERE paper_id=?').get(paperId) as PaperExtract | undefined
+    return r ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 深度精读：全文（预算 ~90k 字符，远超旧版 3 页 24k）一次调用，
+ * 同时产出卡片小结（兼容 papers.summary）与 8 个结构化字段（入库 paper_extract）。
+ */
+export async function extractPaper(paperId: number): Promise<{ summary: string; extract: PaperExtract | null }> {
   const db = getDb()
   const paper = db.prepare('SELECT id, title, path FROM papers WHERE id=?').get(paperId) as
     | { id: number; title: string; path: string }
@@ -136,18 +164,62 @@ export async function summarizePaper(paperId: number): Promise<string> {
   } catch {
     pages = []
   }
-  const text = pages.slice(0, 3).join('\n\n').slice(0, 24000)
+  const full = pages.join('\n\n')
+  const text = full.slice(0, 90000)
   if (!text.trim()) throw new Error('无法读取论文正文')
   const prompt =
-    '你是文献阅读助手。用中文为这篇论文写一段卡片式小结，150 字以内：一句话研究问题，一句方法，' +
-    '一到两句核心结果/结论。信息密度优先，不要套话，不要分点，只输出小结本身。'
+    '你是资深科研文献分析师。深度阅读论文全文，输出严格 JSON（不要围栏、不要多余文字）：\n' +
+    '{"summary":"150字内卡片小结：一句话研究问题+一句方法+一到两句核心结论",' +
+    '"problem":"研究问题（1-2句）","method":"方法/技术路线（2-3句，含关键模型或算法名）",' +
+    '"dataset":"数据集/实验对象/案例（含规模）","metrics":"评价指标（如准确率/能耗/成本，含量级）",' +
+    '"results":"核心结果（2-3条，带关键数字）","limitations":"局限（1-2条，来自原文或合理推断）",' +
+    '"novelty":"创新点（1-2句，与已有工作的差异）","future":"可跟进的研究方向（1-2条）"}\n' +
+    '全部中文；论文中没有的字段写"未提及"。'
   let out = ''
-  for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: `【标题】${paper.title}\n【正文首页】\n${text}` }])) {
+  for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: `【标题】${paper.title}\n【全文】\n${text}` }])) {
     out += d
   }
-  const summary = out.trim().replace(/^["「]|["」]$/g, '')
-  if (!summary) throw new Error('AI 未返回小结')
-  db.prepare('UPDATE papers SET summary=? WHERE id=?').run(summary, paperId)
+  const cleaned = out.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
+  let summary = ''
+  let ext: PaperExtract | null = null
+  try {
+    const j = JSON.parse(cleaned) as Partial<PaperExtract> & { summary?: string }
+    summary = String(j.summary ?? '').trim()
+    const f = (x: unknown): string => String(x ?? '').trim().slice(0, 1200)
+    ext = {
+      paper_id: paperId,
+      problem: f(j.problem),
+      method: f(j.method),
+      dataset: f(j.dataset),
+      metrics: f(j.metrics),
+      results: f(j.results),
+      limitations: f(j.limitations),
+      novelty: f(j.novelty),
+      future: f(j.future),
+      extracted_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    }
+    db.exec(`CREATE TABLE IF NOT EXISTS paper_extract(
+      paper_id INTEGER PRIMARY KEY,
+      problem TEXT, method TEXT, dataset TEXT, metrics TEXT, results TEXT,
+      limitations TEXT, novelty TEXT, future TEXT, extracted_at TEXT)`)
+    db.prepare(
+      `INSERT INTO paper_extract(paper_id, problem, method, dataset, metrics, results, limitations, novelty, future, extracted_at)
+       VALUES(@paper_id, @problem, @method, @dataset, @metrics, @results, @limitations, @novelty, @future, @extracted_at)
+       ON CONFLICT(paper_id) DO UPDATE SET problem=excluded.problem, method=excluded.method, dataset=excluded.dataset,
+         metrics=excluded.metrics, results=excluded.results, limitations=excluded.limitations,
+         novelty=excluded.novelty, future=excluded.future, extracted_at=excluded.extracted_at`
+    ).run(ext)
+  } catch {
+    // JSON 解析失败：退化为把整段输出当 summary（与旧版行为一致）
+    summary = cleaned.replace(/^["「]|["」]$/g, '').slice(0, 600)
+  }
+  if (!summary) throw new Error('AI 未返回有效内容')
+  db.prepare('UPDATE papers SET summary=? WHERE id=?').run(summary.slice(0, 600), paperId)
+  return { summary, extract: ext }
+}
+
+export async function summarizePaper(paperId: number): Promise<string> {
+  const { summary } = await extractPaper(paperId)
   return summary
 }
 
@@ -320,31 +392,53 @@ export interface PaperDetail {
   myNotes: string
 }
 
-// ---------- AI 综合总结：选取的文献 → 生成知识综述 md，存入「AI 知识库」分类 ----------
+// ---------- AI 综合总结：map-reduce（v0.13 深度版） ----------
+// map：每篇复用 paper_extract 结构化精读（无缓存则现场全文精读）——覆盖全文而非旧版前 3 页
+// reduce：各篇结构化要点 + 小结喂 LLM 综合成文
 export async function synthesizePapers(
   ids: number[],
   send: (ev: string, payload: unknown) => void
 ): Promise<{ slug: string; title: string }> {
   const db = getDb()
   const parts: string[] = []
+  let done = 0
   for (const pid of ids) {
     const row = db.prepare('SELECT id, title, authors, year, summary, path FROM papers WHERE id=?').get(pid) as
       | { id: number; title: string; authors: string; year: number | null; summary: string | null; path: string }
       | undefined
     if (!row) continue
-    let text = ''
-    try {
-      const pages = await extractPagesCached(row.path)
-      text = pages.slice(0, 3).join('\n').slice(0, 12000)
-    } catch { text = row.summary ?? '' }
-    parts.push(`【文献：${row.title}（${row.authors}，${row.year ?? ''}）】
-${text}`)
-    send('ai:progress', { done: parts.length, total: ids.length })
+    // map：优先结构化精读缓存；没有就现场深度精读（失败退回前 3 页正文）
+    let ext = getExtract(pid)
+    if (!ext) {
+      try {
+        ext = (await extractPaper(pid)).extract
+      } catch {
+        ext = null
+      }
+    }
+    if (ext) {
+      parts.push(
+        `【文献：${row.title}（${row.authors}，${row.year ?? ''}）】\n` +
+          `研究问题：${ext.problem}\n方法路线：${ext.method}\n数据与对象：${ext.dataset}\n评价指标：${ext.metrics}\n核心结果：${ext.results}\n创新点：${ext.novelty}\n局限：${ext.limitations}`
+      )
+    } else {
+      let text = ''
+      try {
+        const pages = await extractPagesCached(row.path)
+        text = pages.slice(0, 3).join('\n').slice(0, 12000)
+      } catch {
+        text = row.summary ?? ''
+      }
+      parts.push(`【文献：${row.title}（${row.authors}，${row.year ?? ''}）】\n${text}`)
+    }
+    done++
+    send('ai:progress', { done, total: ids.length })
   }
   if (parts.length < 2) throw new Error('至少需要 2 篇有正文的文献')
   const prompt =
-    '你是学术研究助手。以下是多篇相关文献的正文节选。请撰写一篇 800-1200 字的中文综述，包括：' +
-    '1）共同的研究主题；2）各文献的方法与核心结论对比（分点，标注文献编号如 [1]）；' +
+    '你是学术研究助手。以下是多篇相关文献的结构化精读要点（研究问题/方法/数据/指标/结果/创新/局限）。' +
+    '请撰写一篇 1000-1500 字的中文综述，包括：' +
+    '1）共同的研究主题与脉络；2）各文献的方法与核心结论对比（分点，标注文献编号如 [1]，引用关键数字）；' +
     '3）研究空白与未来方向。结构清晰，使用 markdown 小标题。只输出综述正文。'
   let out = ''
   for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: parts.join('\n\n') }])) out += d
@@ -590,11 +684,35 @@ export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: 
     return { id: r.id, title: r.title, category: r.category, year: r.year }
   })
 
+  // 语义向量（papers.pvec，e5 整篇向量）：有则语义相似为主(0.7)、词法为辅(0.3)，
+  // 无向量库自动退化为纯词法（与旧版一致）
+  const pvecs = new Map<number, Float32Array>()
+  try {
+    const pv = db.prepare('SELECT id, pvec FROM papers WHERE pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
+    for (const r of pv) {
+      if (r.pvec && r.pvec.byteLength >= 8) pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
+    }
+  } catch {
+    /* pvec 列不存在（旧库）时退化词法 */
+  }
+
   // 两两相似度
   const sims: Array<{ a: number; b: number; w: number }> = []
   for (let i = 0; i < metas.length; i++) {
     for (let j = i + 1; j < metas.length; j++) {
-      const w = cosine(vectors.get(metas[i].id)!, vectors.get(metas[j].id)!)
+      const va = pvecs.get(metas[i].id)
+      const vb = pvecs.get(metas[j].id)
+      const lex = cosine(vectors.get(metas[i].id)!, vectors.get(metas[j].id)!)
+      let w: number
+      if (va && vb) {
+        // 归一化向量点积即余弦
+        let dot = 0
+        const n = Math.min(va.length, vb.length)
+        for (let k = 0; k < n; k++) dot += va[k] * vb[k]
+        w = Math.max(0, dot) * 0.7 + lex * 0.3
+      } else {
+        w = lex
+      }
       if (w >= 0.08) sims.push({ a: metas[i].id, b: metas[j].id, w })
     }
   }
@@ -775,18 +893,122 @@ export interface TopicCluster {
 // 主题星系：相似度图做连通分量聚类，每簇给出高频关键词与论文清单（点击可展开）
 export function topicClusters(category?: string): TopicCluster[] {
   const db = getDb()
-  const g = knowledgeGraph.call(null, category)
-  if (g.nodes.length === 0) return []
-  // 论文 → 关键词（重算一次，簇标签用）
   const rows = (
     category
       ? db.prepare('SELECT id, title, summary FROM papers WHERE category=?').all(category)
       : db.prepare('SELECT id, title, summary FROM papers').all()
   ) as Array<{ id: number; title: string; summary: string | null }>
+  if (rows.length === 0) return []
   const kwOf = new Map<number, string[]>()
   for (const r of rows) kwOf.set(r.id, paperKeywords(r))
 
-  // 并查集（论文级：两篇共享 ≥1 关键词即连边，按共享关键词数加权）
+  // ---- 优先语义聚类：papers.pvec K-means（k 自适应 ⌊√(n/2)⌋，限 2..12） ----
+  const pvecs = new Map<number, Float32Array>()
+  try {
+    const pv = db.prepare('SELECT id, pvec FROM papers WHERE pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
+    for (const r of pv) {
+      if (r.pvec && r.pvec.byteLength >= 8) pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
+    }
+  } catch {
+    /* pvec 列不存在（旧库）时退化词法 */
+  }
+  const usable = rows.filter((r) => pvecs.has(r.id))
+  if (usable.length >= 6 && pvecs.size >= usable.length) {
+    return kmeansClusters(usable, pvecs, kwOf)
+  }
+
+  // ---- 退化：关键词共享并查集（旧算法，无向量库时使用） ----
+  return keywordClusters(rows, kwOf)
+}
+
+// 语义 K-means：k=⌊√(n/2)⌋ 限 2..12，20 轮迭代；簇标签 = 簇内 TF-IDF 最高词，代表文献 = 离质心最近
+function kmeansClusters(
+  rows: Array<{ id: number; title: string; summary: string | null }>,
+  pvecs: Map<number, Float32Array>,
+  kwOf: Map<number, string[]>
+): TopicCluster[] {
+  const n = rows.length
+  const dim = pvecs.get(rows[0].id)!.length
+  const k = Math.max(2, Math.min(12, Math.floor(Math.sqrt(n / 2))))
+  // 确定性初始化：按 id 排序均匀取 k 个种子（同库每次结果一致，可复现）
+  const seeds = [...rows].sort((a, b) => a.id - b.id).filter((_, i) => i % Math.max(1, Math.floor(n / k)) === 0).slice(0, k)
+  const centroids: Float32Array[] = seeds.map((s) => Float32Array.from(pvecs.get(s.id)!))
+  const assign = new Array<number>(n).fill(0)
+  for (let iter = 0; iter < 20; iter++) {
+    let moved = false
+    for (let i = 0; i < n; i++) {
+      const v = pvecs.get(rows[i].id)!
+      let best = 0
+      let bestD = -Infinity
+      for (let c = 0; c < centroids.length; c++) {
+        let dot = 0
+        for (let d = 0; d < dim; d++) dot += v[d] * centroids[c][d]
+        if (dot > bestD) {
+          bestD = dot
+          best = c
+        }
+      }
+      if (assign[i] !== best) {
+        assign[i] = best
+        moved = true
+      }
+    }
+    // 更新质心（归一化均值）
+    for (let c = 0; c < centroids.length; c++) {
+      const cen = new Float32Array(dim)
+      let cnt = 0
+      for (let i = 0; i < n; i++) {
+        if (assign[i] !== c) continue
+        cnt++
+        const v = pvecs.get(rows[i].id)!
+        for (let d = 0; d < dim; d++) cen[d] += v[d]
+      }
+      if (cnt > 0) {
+        let norm = 0
+        for (let d = 0; d < dim; d++) norm += cen[d] * cen[d]
+        norm = Math.sqrt(norm) || 1
+        for (let d = 0; d < dim; d++) centroids[c][d] = cen[d] / norm
+      }
+    }
+    if (!moved && iter > 1) break
+  }
+  // 组簇：标签 = 簇内高频（且非全库泛化）关键词；代表文献 = 离质心最近
+  const df = new Map<string, number>()
+  for (const [, kws] of kwOf) for (const w of new Set(kws)) df.set(w, (df.get(w) ?? 0) + 1)
+  const groups = new Map<number, Array<{ r: (typeof rows)[number]; sim: number }>>()
+  for (let i = 0; i < n; i++) {
+    const v = pvecs.get(rows[i].id)!
+    let dot = 0
+    for (let d = 0; d < dim; d++) dot += v[d] * centroids[assign[i]][d]
+    const arr = groups.get(assign[i]) ?? []
+    arr.push({ r: rows[i], sim: dot })
+    groups.set(assign[i], arr)
+  }
+  const out: TopicCluster[] = []
+  for (const [, members] of groups) {
+    if (members.length < 2) continue
+    const freq = new Map<string, number>()
+    for (const m of members) for (const w of kwOf.get(m.r.id) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1)
+    const kws = [...freq.entries()]
+      .map(([w, c]) => [w, c * Math.log(1 + n / (df.get(w) ?? 1))] as const) // TF-IDF：压制全库泛化词
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([w]) => w)
+    const rep = [...members].sort((a, b) => b.sim - a.sim)[0].r
+    out.push({
+      label: kws[0] ?? rep.title.slice(0, 18),
+      keywords: kws.length ? kws : [rep.title.slice(0, 12)],
+      paperIds: members.map((m) => m.r.id).sort((a, b) => a - b)
+    })
+  }
+  return out.sort((a, b) => b.paperIds.length - a.paperIds.length).slice(0, 12)
+}
+
+// 关键词共享并查集聚类（旧算法，退化路径）
+function keywordClusters(
+  rows: Array<{ id: number; title: string; summary: string | null }>,
+  kwOf: Map<number, string[]>
+): TopicCluster[] {
   const parent = new Map<number, number>()
   for (const r of rows) parent.set(r.id, r.id)
   // 路径减半：cur 必须向祖先推进，否则合并过的节点会原地打转死循环（曾致主进程 100% 卡死）

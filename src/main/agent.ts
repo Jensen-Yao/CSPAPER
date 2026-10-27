@@ -10,7 +10,7 @@ import { getDb, getSettings, listPapers } from './db'
 import { chatStream } from './llm'
 import { hybridSearch, extractPagesCached } from './ingest'
 import { searchAll, matchScript, runWeb, extractDoi, importTranslated } from './translators'
-import { synthesizePapers, generateCells, createCompare, saveCompare, getMyNotesText, saveMyNotesText } from './insight'
+import { synthesizePapers, generateCells, createCompare, saveCompare, getMyNotesText, saveMyNotesText, getExtract, extractPaper, knowledgeGraph, topicClusters } from './insight'
 import { formatCite } from './csl'
 import { listMcpTools, callMcpTool } from './mcp'
 import { listSkills, skillBody } from './skills'
@@ -428,6 +428,41 @@ function buildTools(t: AgentTask) {
 ${text}
 `)
             return '标注已追加'
+          })
+        )
+    }),
+    knowledge_graph: tool({
+      description:
+        '查看文献库的知识结构：similar 返回语义相似网络（哪几篇内容相近），topics 返回主题聚类（库分几个研究方向、各含哪些论文）。调研类任务先用它建立全局认识',
+      inputSchema: z.object({
+        view: z.enum(['similar', 'topics']),
+        category: z.string().optional().describe('限定分类（不填=全库）')
+      }),
+      execute: async ({ view, category }) =>
+        cap(
+          await step('knowledge_graph', `${view}${category ? ' · ' + category : ''}`, async () => {
+            if (view === 'topics') {
+              const ts = topicClusters(category || undefined)
+              if (ts.length === 0) return '暂无主题聚类（文献太少或未建索引）'
+              return ts
+                .map((t) => `【${t.label}】${t.paperIds.length} 篇 · 关键词：${t.keywords.join('、')}\n  论文：${t.paperIds.join(', ')}`)
+                .join('\n')
+            }
+            const g = knowledgeGraph(category || undefined)
+            const deg = new Map<number, number>()
+            for (const e of g.edges) {
+              deg.set(e.a, (deg.get(e.a) ?? 0) + 1)
+              deg.set(e.b, (deg.get(e.b) ?? 0) + 1)
+            }
+            const hubs = g.nodes
+              .map((n) => ({ ...n, d: deg.get(n.id) ?? 0 }))
+              .sort((a, b) => b.d - a.d)
+              .slice(0, 12)
+              .filter((n) => n.d > 0)
+            if (hubs.length === 0) return '相似网络为空（文献太少或未建向量索引）'
+            return `共 ${g.nodes.length} 篇、${g.edges.length} 条相似边。枢纽文献（相似连接最多）：\n` + hubs
+              .map((n) => `#${n.id}《${n.title.slice(0, 50)}》(${n.category}·${n.year ?? ''}) 相连 ${n.d} 篇`)
+              .join('\n')
           })
         )
     }),

@@ -1,4 +1,5 @@
 // 文献库域 IPC：库扫描/导入/移动/删除/右键菜单/分类/高亮/PDF 读取/索引/标签/阅读进度
+import { listRelated, setRelated, removeRelated, refreshAutoRelated } from '../related'
 import { ipcMain, dialog, shell, Menu, clipboard } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -233,14 +234,23 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     }
   )
   ipcMain.handle('highlights:list', (_e, paperId: number) =>
-    (dbmod.getDb().prepare('SELECT id, page, rects, text, color FROM highlights WHERE paper_id=?').all(paperId) as Array<{
+    (dbmod.getDb().prepare('SELECT id, page, rects, text, color, comment, tag FROM highlights WHERE paper_id=?').all(paperId) as Array<{
       id: number
       page: number
       rects: string
       text: string
       color: string
+      comment: string | null
+      tag: string | null
     }>).map((h) => ({ ...h, rects: JSON.parse(h.rects) }))
   )
+  // v0.13：标注编辑——改色（=语义标签）/备注
+  ipcMain.handle('highlights:update', (_e, hid: number, patch: { color?: string; comment?: string }) => {
+    const db = dbmod.getDb()
+    if (patch.color != null) db.prepare('UPDATE highlights SET color=? WHERE id=?').run(patch.color, hid)
+    if (patch.comment != null) db.prepare('UPDATE highlights SET comment=? WHERE id=?').run(patch.comment.slice(0, 600), hid)
+    return true
+  })
   ipcMain.handle('highlights:delete', (_e, hid: number) => {
     dbmod.getDb().prepare('DELETE FROM highlights WHERE id=?').run(hid)
     return true
@@ -356,9 +366,11 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   ): Promise<void> {
     const win = getWin()
     if (!win) return
-    const hs = dbmod.getDb().prepare('SELECT page, text FROM highlights WHERE paper_id=? ORDER BY page, id').all(p.id) as Array<{
+    const hs = dbmod.getDb().prepare('SELECT page, text, color, comment FROM highlights WHERE paper_id=? ORDER BY page, id').all(p.id) as Array<{
       page: number
       text: string
+      color: string | null
+      comment: string | null
     }>
     if (hs.length === 0) {
       dialog.showMessageBox(win, {
@@ -479,4 +491,19 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   ipcMain.on('index:start', () => {
     if (!isIndexRunning()) void buildIndex(send).catch((e) => send('index:error', String(e)))
   })
+  // 条目关联（v0.13）
+  ipcMain.handle('papers:related-list', (_e, id: number) => listRelated(id))
+  ipcMain.handle('papers:related-set', (_e, a: number, b: number) => {
+    setRelated(a, b)
+    return listRelated(a)
+  })
+  ipcMain.handle('papers:related-remove', (_e, a: number, b: number) => {
+    removeRelated(a, b)
+    return listRelated(a)
+  })
+  ipcMain.handle('papers:related-refresh', (_e, id: number) => {
+    const n = refreshAutoRelated(id)
+    return { auto: n, rows: listRelated(id) }
+  })
+
 }

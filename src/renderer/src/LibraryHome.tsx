@@ -4,6 +4,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { Paper } from './types'
 import { catLabel, statusMeta, withAlpha } from './LibraryPane'
 import PaperDetailPanel from './PaperDetailPanel'
+import * as Icon from './Icon'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -70,7 +71,7 @@ function Thumb({ paper }: { paper: Paper }): JSX.Element {
 
   return (
     <div className="card-thumb" ref={ref}>
-      {src ? <img src={src} alt="" loading="lazy" /> : <div className="thumb-ph">📄</div>}
+      {src ? <img src={src} alt="" loading="lazy" /> : <div className="thumb-ph"><Icon.Pdf size={20} /></div>}
     </div>
   )
 }
@@ -99,7 +100,7 @@ function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s:
     return (
       <div className="card-sum card-sum-empty">
         <button className="sum-gen-link" disabled={busy} onClick={() => void gen()}>
-          {busy ? '分析中…' : '✦ 生成 AI 小结'}
+          {busy ? '分析中…' : '生成 AI 小结'}
         </button>
         {err && <span className="sum-err">{err}</span>}
       </div>
@@ -107,7 +108,7 @@ function SummaryBlock({ paper, onDone }: { paper: Paper; onDone: (id: number, s:
   }
   return (
     <div className="card-sum">
-      <span className="sum-label">AI 小结</span>
+      <span className="sum-label"><Icon.Sparkle size={10} /> AI 小结</span>
       <div className="sum-text">{val}</div>
     </div>
   )
@@ -172,13 +173,13 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
           <span className="libhome-count">{papers.length} 篇</span>
           <span style={{ flex: 1 }} />
           <button className="btn ghost" onClick={onOpenRecords} title="导入从 CNKI / 万方等批量导出的题录文件">
-            导入题录…
+            <Icon.Upload size={13} /> 导入题录…
           </button>
           <button className="btn ghost" onClick={onOpenOnline} title="DOI / arXiv / 链接 / 关键词在线检索抓取（Translators 脚本）">
-            🌐 在线添加
+            <Icon.Globe size={13} /> 在线添加
           </button>
           <button className="btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
-            ⬆ 上传文献
+            <Icon.Upload size={13} /> 上传文献
           </button>
         </div>
         {papers.length === 0 && (
@@ -194,7 +195,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
         {groups.map(([month, list]) => (
           <div key={month}>
             <div className="libhome-month">
-              🗓 {month}
+              {month}
               <span className="libhome-month-n">{list.length} 篇</span>
             </div>
             <div className="libhome-grid">
@@ -210,9 +211,14 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                   }}
                   title="单击查看详情，双击进入阅读"
                 >
-                <StatusBadge status={p.status} />
-                <Thumb paper={p} />
-                <div className="pcard-body">
+                  <StatusBadge status={p.status} />
+                  <Thumb paper={p} />
+                  {p.last_page != null && p.last_page > 0 && p.n_pages > 0 && p.last_page < p.n_pages && (
+                    <div className="pcard-prog is-thumb" title={`读到第 ${p.last_page} 页，共 ${p.n_pages} 页`}>
+                      <i style={{ width: `${Math.round((p.last_page / p.n_pages) * 100)}%` }} />
+                    </div>
+                  )}
+                  <div className="pcard-body">
                   <div className="pcard-title">{p.title}</div>
                   <div className="pcard-meta">
                     {p.authors && <div className="pcard-authors">作者：{p.authors.split(/[,;，；]/)[0]} 等</div>}
@@ -222,11 +228,6 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                     </div>
                   </div>
                   <SummaryBlock paper={p} onDone={refresh} />
-                  {p.last_page != null && p.last_page > 0 && p.n_pages > 0 && p.last_page < p.n_pages && (
-                    <div className="pcard-prog" title={`读到第 ${p.last_page} 页，共 ${p.n_pages} 页`}>
-                      <i style={{ width: `${Math.round((p.last_page / p.n_pages) * 100)}%` }} />
-                    </div>
-                  )}
                   {(p.tags?.length ?? 0) > 0 && (
                     <div className="pcard-tags">
                       {(p.tags ?? []).slice(0, 3).map((t) => (

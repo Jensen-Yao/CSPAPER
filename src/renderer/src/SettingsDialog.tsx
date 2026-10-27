@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ScriptInfo, Settings, StyleInfo } from './types'
 import { ALL_PROVIDERS, PROVIDER_GROUPS, type ProviderPreset } from './providers'
+import * as Icon from './Icon'
 
 interface Props {
   settings: Settings
@@ -28,17 +29,17 @@ function fmtSize(n?: number): string {
 
 type Sec = 'appear' | 'lib' | 'translators' | 'cites' | 'zoterosync' | 'agent' | 'model' | 'embed' | 'plugins' | 'index'
 
-const NAV: Array<{ id: Sec; icon: string; label: string }> = [
-  { id: 'appear', icon: '🎨', label: '外观与翻译' },
-  { id: 'lib', icon: '📚', label: '文献库与数据' },
-  { id: 'translators', icon: '🌐', label: '在线获取' },
-  { id: 'cites', icon: '📑', label: '引文样式' },
-  { id: 'model', icon: '🤖', label: '模型服务' },
-  { id: 'embed', icon: '🧬', label: '向量嵌入' },
-  { id: 'agent', icon: '⚡', label: '智能体' },
-  { id: 'zoterosync', icon: '🔄', label: 'Zotero 同步' },
-  { id: 'plugins', icon: '🔌', label: '插件与安装' },
-  { id: 'index', icon: '🗂', label: '索引与关于' }
+const NAV: Array<{ id: Sec; icon: JSX.Element; label: string }> = [
+  { id: 'appear', icon: <Icon.Sparkle size={14} />, label: '外观与翻译' },
+  { id: 'lib', icon: <Icon.Folder size={14} />, label: '文献库与数据' },
+  { id: 'translators', icon: <Icon.Globe size={14} />, label: '在线获取' },
+  { id: 'cites', icon: <Icon.Quote size={14} />, label: '引文样式' },
+  { id: 'model', icon: <Icon.Zap size={14} />, label: '模型服务' },
+  { id: 'embed', icon: <Icon.Graph size={14} />, label: '向量嵌入' },
+  { id: 'agent', icon: <Icon.Target size={14} />, label: '智能体' },
+  { id: 'zoterosync', icon: <Icon.Refresh size={14} />, label: 'Zotero 同步' },
+  { id: 'plugins', icon: <Icon.Grid size={14} />, label: '插件与安装' },
+  { id: 'index', icon: <Icon.Info size={14} />, label: '索引与关于' }
 ]
 
 const THINKING_LABEL: Record<string, string> = { default: '默认', off: '关闭', low: '低', medium: '中', high: '高' }

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Paper, TagRow } from './types'
 import { catLabel, withAlpha } from './LibraryPane'
+import { catColor, chart8 } from './chart-palette'
 import './knowledge.css'
+import * as Icon from './Icon'
 
 /* ============================================================
    知识体系（纵览「知识」tab）
@@ -9,7 +11,6 @@ import './knowledge.css'
    对标 CiteSpace / VOSviewer 范式：共现网络 + 聚类星系 + 知识沉淀
    ============================================================ */
 
-const PALETTE = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
 
 // hex 混色（频次渐变着色用），返回 rgb() 字符串
 function mixHex(a: string, b: string, t: number): string {
@@ -425,7 +426,7 @@ function SimNetView({
         const h = wrapRef.current?.clientHeight || 600
         nodesRef.current = g.nodes.map((n, i) => ({
           ...n,
-          color: PALETTE[Math.max(0, cats.indexOf(n.category)) % PALETTE.length],
+          color: catColor(cats, n.category),
           x: w / 2 + Math.cos((i / Math.max(1, g.nodes.length)) * Math.PI * 2) * w * 0.3,
           y: h / 2 + Math.sin((i / Math.max(1, g.nodes.length)) * Math.PI * 2) * h * 0.3,
           vx: 0,
@@ -636,13 +637,13 @@ function SimNetView({
   }, [selected, papers, paperById])
 
   const cats = useMemo(() => [...new Set(catPapers.map((p) => p.category))].sort((a, b) => a.localeCompare(b)), [catPapers])
-  const catColor = (c: string): string => PALETTE[Math.max(0, cats.indexOf(c)) % PALETTE.length]
+  
 
   return (
     <div className="kv-view">
       <div className="kv-head">
         <button className="kv-chip" title="重新排布节点" onClick={() => setResetTick((t) => t + 1)}>
-          ↻ 重置布局
+          <Icon.Refresh size={12} /> 重置布局
         </button>
         <span className="kv-hint">
           {cat ? `仅「${catLabel(cat)}」内构图。` : ''}圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点。
@@ -650,7 +651,7 @@ function SimNetView({
         <span className="kv-legend">
           {cats.map((c) => (
             <span key={c} className="kv-leg">
-              <i style={{ background: catColor(c) }} />
+              <i style={{ background: catColor(cats, c) }} />
               {catLabel(c)}
             </span>
           ))}
@@ -928,6 +929,7 @@ function packTopics(topics: TopicT[], w: number, h: number, seed: number): GalCi
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return []
   if (topics.length === 0 || w < 80 || h < 80) return []
   const rand = seededRng(seed * 7919 + 13)
+  const pal = chart8()
   const cx = w / 2
   const cy = h / 2
   const items = topics.map((t) => ({ t, r: Math.max(34, Math.min(96, 22 + Math.sqrt(t.paperIds.length) * 9)) }))
@@ -974,7 +976,7 @@ function packTopics(topics: TopicT[], w: number, h: number, seed: number): GalCi
     placed.push({ x: px, y: py, r: it.r, color: '', t: it.t })
   }
   placed.forEach((p, i) => {
-    p.color = PALETTE[(i * 5 + seed) % PALETTE.length]
+    p.color = pal[(i * 5 + seed) % pal.length]
   })
   return placed
 }
@@ -1049,7 +1051,7 @@ function TopicGalaxyView({
               setSelLabel(null)
             }}
           >
-            ↻ 重新排布
+            <Icon.Refresh size={12} /> 重新排布
           </button>
         </span>
       </div>

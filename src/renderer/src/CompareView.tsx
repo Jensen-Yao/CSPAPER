@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CompareData, CompareTable, Paper } from './types'
 import { BASE_FIELDS, AI_DIMENSION_PRESETS } from './dimensions'
+import * as Icon from './Icon'
 
 interface Props {
   papers: Paper[]
@@ -151,7 +152,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
               </div>
               <div className="cmp-title-actions">
                 <button className="cmp-mini" disabled={gen} title="AI 重新提取本篇要点" onClick={() => void generateOne(pid)}>
-                  {gen ? '提取中…' : '↻ 生成'}
+                  {gen ? '提取中…' : <>生成</>}
                 </button>
                 <button className="cmp-mini danger" title="从对比中移除" onClick={() => removePaper(pid)}>
                   移除
@@ -237,7 +238,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
           ＋ 添加维度
         </button>
         <button className="cmp-btn primary" disabled={genAllBusy || active.data.paperIds.length === 0} onClick={() => void generateMissing()} title="对所有还没提取过要点的文献跑一遍 AI">
-          {genAllBusy ? '生成中…' : '⚡ 生成缺失维度'}
+          {genAllBusy ? '生成中…' : <>生成缺失维度</>}
         </button>
         <span style={{ flex: 1 }} />
         <button className="cmp-btn" onClick={() => void window.api.compareExport(active.id, 'md')}>
@@ -352,7 +353,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
                   <span>基础字段直接提取，分析维度由 AI 生成</span>
                 </button>
                 <button className={`dim-src ${dimSource === 'custom' ? 'on' : ''}`} onClick={() => setDimSource('custom')}>
-                  <b>✨ 自定义维度</b>
+                  <b>自定义维度</b>
                   <span>命名该维度，让 AI 按你的口径提取</span>
                 </button>
               </div>
@@ -424,7 +425,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
                       value={customDim}
                       onChange={(e) => setCustomDim(e.target.value)}
                     />
-                    <div className="hint">确认后点每行的「↻ 生成」，AI 会按该维度读原文提取要点（附页码出处）。</div>
+                    <div className="hint">确认后点每行的「生成」，AI 会按该维度读原文提取要点（附页码出处）。</div>
                   </div>
                 </div>
               )}

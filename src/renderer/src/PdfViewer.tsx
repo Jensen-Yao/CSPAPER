@@ -4,13 +4,15 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { Tab } from './App'
 import type { Highlight } from './types'
 import { locateSnippet, locateByKeywords, flashHit } from './locate'
+import * as Icon from './Icon'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 const HL_BG: Record<string, string> = {
-  yellow: 'rgba(255, 210, 0, 0.45)',
-  green: 'rgba(70, 200, 130, 0.35)',
-  red: 'rgba(235, 80, 80, 0.30)'
+  yellow: 'rgba(255, 210, 0, 0.45)', // 重要
+  blue: 'rgba(66, 133, 244, 0.32)', // 方法
+  green: 'rgba(70, 200, 130, 0.35)', // 结论
+  red: 'rgba(235, 80, 80, 0.30)' // 疑问
 }
 
 export interface ViewerHandle {
@@ -35,6 +37,7 @@ interface Props {
   onOpenFulltext?: () => void
   onSelect: (text: string, x: number, y: number) => void
   onDeleteHighlight: (id: number) => void
+  onEditHighlight: (id: number, patch: { color?: string; comment?: string }) => void
   // 面板常驻但 chat 模式下隐藏：隐藏时全局缩放快捷键不生效（让位给引用面板）
   visible: boolean
   // 恢复上次阅读位置（W2）：文档加载完成后跳到该页（>1 才生效，仅本次加载生效一次；
@@ -57,7 +60,7 @@ interface FindHit {
 }
 
 const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
-  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, visible, initialPage, findSignal },
+  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, onEditHighlight, visible, initialPage, findSignal },
   ref
 ): JSX.Element {
   const active = tabs.find((t) => t.paper.id === activeId) ?? null
@@ -692,7 +695,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     return (
       <div className="pdf-pane">
         <div className="empty-viewer">
-          <div className="big">📄</div>
+          <div className="big"><Icon.Pdf size={34} /></div>
           <div className="headline">从左侧选择一篇论文开始阅读</div>
           <div className="tip">
             选中文字即可 <span className="kbd">翻译</span> <span className="kbd">解释</span> <span className="kbd">追问</span>；右侧面板支持当前论文与全库 RAG 问答，回答自带页码引用。
@@ -729,10 +732,10 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
       <div className="viewer-toolbar">
         <div className="seg" title="侧边导航">
           <button className={navi === 'thumbs' ? 'on' : ''} onClick={() => setNavi((n) => (n === 'thumbs' ? 'none' : 'thumbs'))} title="页面缩略图">
-            ▦
+            <Icon.Grid size={14} />
           </button>
           <button className={navi === 'toc' ? 'on' : ''} onClick={() => setNavi((n) => (n === 'toc' ? 'none' : 'toc'))} title="目录 / 书签">
-            ☰
+            <Icon.Table size={14} />
           </button>
         </div>
         <span className="slug" title={active.paper.title}>
@@ -832,6 +835,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
               dim={pageDims[i]}
               hls={hls.filter((h) => h.page === i + 1)}
               onDeleteHl={onDeleteHighlight}
+              onEditHl={onEditHighlight}
               registerRef={(el) => {
                 if (el) pageRefs.current.set(i + 1, el)
                 else pageRefs.current.delete(i + 1)
@@ -929,13 +933,15 @@ interface PageViewProps {
   dim?: { w: number; h: number }
   hls: Highlight[]
   onDeleteHl: (id: number) => void
+  onEditHl: (id: number, patch: { color?: string; comment?: string }) => void
   registerRef: (el: HTMLDivElement | null) => void
   onPageText: (n: number, text: string) => void
   // 该页 textLayer 渲染完成（首次/缩放重建后）
   onLayerReady?: (n: number) => void
 }
 
-function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageText, onLayerReady }: PageViewProps): JSX.Element {
+function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, registerRef, onPageText, onLayerReady }: PageViewProps): JSX.Element {
+  const [edit, setEdit] = useState<{ id: number; cx: number; cy: number; color: string; comment: string } | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
@@ -1067,6 +1073,42 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, registerRef, onPageTe
           </div>
         ))}
       </div>
+      {edit && (
+        <div className="hl-edit" style={{ left: Math.max(4, Math.min(edit.cx, (dim?.w ?? 600) * scale - 250)), top: Math.max(2, edit.cy) }} onClick={(e) => e.stopPropagation()}>
+          <span className="fbdots">
+            {(['yellow', 'blue', 'green', 'red'] as const).map((c) => (
+              <button
+                key={c}
+                className={`fbdot ${c} ${edit.color === c ? 'on' : ''}`}
+                title={{ yellow: '重要', blue: '方法', green: '结论', red: '疑问' }[c]}
+                onClick={() => {
+                  onEditHl(edit.id, { color: c })
+                  setEdit({ ...edit, color: c })
+                }}
+              />
+            ))}
+          </span>
+          <input
+            className="hl-edit-input"
+            placeholder="备注…"
+            value={edit.comment}
+            onChange={(e2) => setEdit({ ...edit, comment: e2.target.value })}
+            onKeyDown={(e2) => {
+              if (e2.key === 'Enter') {
+                onEditHl(edit.id, { comment: edit.comment })
+                setEdit(null)
+              }
+              if (e2.key === 'Escape') setEdit(null)
+            }}
+          />
+          <button className="hl-edit-ok" title="保存备注" onClick={() => { onEditHl(edit.id, { comment: edit.comment }); setEdit(null) }}>
+            ✓
+          </button>
+          <button className="hl-edit-del" title="删除高亮" onClick={() => { onDeleteHl(edit.id); setEdit(null) }}>
+            <Icon.X size={11} />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

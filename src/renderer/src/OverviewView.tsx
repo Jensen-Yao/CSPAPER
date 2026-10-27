@@ -4,6 +4,7 @@ import { STATUS_KEYS, STATUS_META } from './types'
 import { catLabel, statusMeta, withAlpha } from './LibraryPane'
 import StatsView from './StatsView'
 import KnowledgeView from './KnowledgeViews'
+import * as Icon from './Icon'
 
 interface Props {
   papers: Paper[]
@@ -252,13 +253,13 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
     <div className="ov-wrap">
       <div className="ov-tabs">
         <button className={`ov-tab ${tab === 'table' ? 'on' : ''}`} onClick={() => onTabChange('table')}>
-          ☰ 文献表格
+          <Icon.Table size={13} /> 文献表格
         </button>
         <button className={`ov-tab ${tab === 'graph' ? 'on' : ''}`} onClick={() => onTabChange('graph')}>
-          ✦ 知识
+          <Icon.Graph size={13} /> 知识
         </button>
         <button className={`ov-tab ${tab === 'stats' ? 'on' : ''}`} onClick={() => onTabChange('stats')}>
-          ▤ 统计
+          <Icon.Chart size={13} /> 统计
         </button>
         <span className="ov-count">{papers.length} 篇</span>
       </div>
@@ -528,7 +529,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                         <div className="ov-files">
                           {(files[p.id] ?? []).map((f) => (
                             <span key={f} className="pd-file">
-                              📄 {f}
+                              <Icon.Doc size={11} /> {f}
                             </span>
                           ))}
                           {files[p.id]?.length === 0 && <span className="ov-dim">无附件</span>}

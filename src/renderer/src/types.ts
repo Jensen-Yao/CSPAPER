@@ -109,6 +109,8 @@ export interface Highlight {
   rects: HighlightRect[]
   text: string
   color?: string
+  comment?: string | null
+  tag?: string | null
 }
 
 export interface ImportOutcome {
@@ -211,6 +213,18 @@ export interface CompareTable {
 }
 
 // 卡片详情栏（信息 / 摘要 / 笔记 / 附件）
+export interface PaperExtract {
+  paper_id: number
+  problem: string
+  method: string
+  dataset: string
+  metrics: string
+  results: string
+  limitations: string
+  novelty: string
+  future: string
+  extracted_at: string
+}
 export interface PaperDetail {
   id: number
   slug: string
@@ -306,6 +320,12 @@ declare global {
       compareGenerate: (paperId: number, dimensions: string[]) => Promise<Record<string, CompareCell[]>>
       compareExport: (id: number, format: 'md' | 'csv') => Promise<void>
       paperDetail: (id: number) => Promise<PaperDetail | null>
+      paperExtractGet: (id: number) => Promise<PaperExtract | null>
+      paperExtractRun: (id: number) => Promise<{ summary: string; extract: PaperExtract | null }>
+      relatedList: (id: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
+      relatedSet: (a: number, b: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
+      relatedRemove: (a: number, b: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
+      relatedRefresh: (id: number) => Promise<{ auto: number; rows: Array<{ id: number; title: string; kind: 'manual' | 'auto' }> }>
       myNotesGet: (id: number) => Promise<string>
       myNotesSave: (id: number, text: string) => Promise<boolean>
       graphData: (category?: string) => Promise<{ nodes: Array<{ id: number; title: string; category: string; year: number | null; degree: number }>; edges: Array<{ a: number; b: number; w: number }> }>
@@ -317,6 +337,7 @@ declare global {
       addHighlight: (paperId: number, page: number, rects: HighlightRect[], text: string, color?: string) => Promise<number>
       listHighlights: (paperId: number) => Promise<Highlight[]>
       deleteHighlight: (id: number) => Promise<boolean>
+      updateHighlight: (id: number, patch: { color?: string; comment?: string }) => Promise<boolean>
       paperMenu: (id: number, x: number, y: number) => void
       categoryMenu: (cat: string, x: number, y: number) => void
       blankMenu: (x: number, y: number) => void

@@ -58,7 +58,12 @@ try {
     await wait(5000)
     await shot('p2-reader')
   }
-  await jsClick('.tb-q', '纵览')
+  
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.tb-q')].find((b) => (b.getAttribute('title') || '').includes('纵览'))
+    if (el) el.click(); else throw new Error('not found: 纵览')
+  })
+
   await wait(2500)
   await shot('p3-overview')
   await jsClick('.ov-tab', '知识')

@@ -17,6 +17,7 @@ import NotesView from './NotesView'
 import OnlineAddDialog from './OnlineAddDialog'
 import WebSearchView from './WebSearchView'
 import WorkbenchView from './WorkbenchView'
+import * as Icon from './Icon'
 import { STATUS_KEYS } from './types'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
@@ -25,24 +26,9 @@ export interface Tab {
   paper: Paper
 }
 
-const SidebarIcon = (): JSX.Element => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <rect x="3" y="4" width="18" height="16" rx="2.5" />
-    <path d="M9 4v16" />
-  </svg>
-)
-const PanelIcon = (): JSX.Element => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <rect x="3" y="4" width="18" height="16" rx="2.5" />
-    <path d="M15 4v16" />
-  </svg>
-)
-const GearIcon = (): JSX.Element => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3.2" />
-    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.12-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09A1.7 1.7 0 0 0 10.13 3V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z" />
-  </svg>
-)
+const SidebarIcon = (): JSX.Element => <Icon.Sidebar size={15} />
+const PanelIcon = (): JSX.Element => <Icon.Panel size={15} />
+const GearIcon = (): JSX.Element => <Icon.Gear size={15} />
 
 type MenuItem = { label: string; hint?: string; action?: () => void; sep?: boolean }
 
@@ -340,6 +326,9 @@ export default function App(): JSX.Element {
     setShowSide(true)
     sideControl.current?.explain(text, pageCtxRef.current)
   }, [])
+  const onEditHighlight = useCallback((hid: number, patch: { color?: string; comment?: string }) => {
+    void window.api.updateHighlight(hid, patch)
+  }, [])
   const onDeleteHighlight = useCallback((hid: number) => {
     void window.api.deleteHighlight(hid)
     viewerRef.current?.removeHighlightLocal(hid)
@@ -627,10 +616,10 @@ export default function App(): JSX.Element {
         <div className="tb-side tb-left">
           <div className="top-switch">
             <button className={topMode === 'work' ? 'on' : ''} title="科研工作台：给目标，agent 执行" onClick={() => setTopMode('work')}>
-              ⚡ Work
+              <Icon.Zap size={13} /> Work
             </button>
             <button className={topMode === 'paper' ? 'on' : ''} title="文献库：阅读 / 对话 / 纵览 / 笔记" onClick={() => setTopMode('paper')}>
-              📚 Paper
+              <Icon.Library size={13} /> Paper
             </button>
           </div>
           {topMode === 'paper' && (
@@ -651,7 +640,7 @@ export default function App(): JSX.Element {
           {topMode === 'paper' && (
           <div className="tb-quick">
             <button className={`tb-q ${mode === 'compare' ? 'on' : ''}`} title="AI 对比表格" onClick={() => { setTopMode('paper'); setMode('compare') }}>
-              ▦<span>对比</span>
+              <Icon.Compare size={15} />
             </button>
             <button
               className={`tb-q ${mode === 'overview' && overviewTab !== 'stats' ? 'on' : ''}`}
@@ -662,16 +651,16 @@ export default function App(): JSX.Element {
                 setOverviewTab('table')
               }}
             >
-              ☰<span>纵览</span>
+              <Icon.Table size={15} />
             </button>
             <button className={`tb-q ${mode === 'notes' ? 'on' : ''}`} title="笔记中心" onClick={() => { setTopMode('paper'); setMode('notes') }}>
-              ✎<span>笔记</span>
+              <Icon.Notes size={15} />
             </button>
             <button className={`tb-q ${mode === 'web' ? 'on' : ''}`} title="文献浏览器" onClick={() => { setTopMode('paper'); setMode('web') }}>
-              ◉<span>网页</span>
+              <Icon.Globe size={15} />
             </button>
             <button className="tb-q" title="在线添加文献（DOI / arXiv / 关键词）" onClick={() => setOnlineOpen(true)}>
-              ＋<span>添加</span>
+              <Icon.Plus size={15} />
             </button>
           </div>
           )}
@@ -772,6 +761,7 @@ export default function App(): JSX.Element {
                 }}
                 onSelect={onSelect}
                 onDeleteHighlight={onDeleteHighlight}
+                onEditHighlight={onEditHighlight}
                 visible={mode === 'read'}
                 onPageChange={setPageNo}
                 onOpenFulltext={() => sideControl.current?.openFulltext()}
@@ -885,18 +875,19 @@ export default function App(): JSX.Element {
       </div>
 
       <div className="statusbar">
-        <span className="chip">📚 {appStatus ? `${appStatus.papers} 篇 · ${appStatus.categories} 类` : ''}</span>
-        <span className="chip ellipsis" style={{ maxWidth: 420 }}>⚡ {statusLeft}</span>
+        <span className="chip"><Icon.Library size={12} /> {appStatus ? `${appStatus.papers} 篇 · ${appStatus.categories} 类` : ''}</span>
+        <span className="chip ellipsis" style={{ maxWidth: 420 }}><Icon.Zap size={12} /> {statusLeft}</span>
         <span style={{ flex: 1 }} />
         <span
           className={`chip bridge-chip ${appStatus?.bridge.running ? 'on' : 'off'}`}
           title={appStatus?.bridge.running ? `本地服务运行中（端口 ${appStatus.bridge.port}）——浏览器/Word 插件可连接` : '本地服务未运行'}
           onClick={() => void window.api.appStatus()}
         >
-          {appStatus?.bridge.running ? '● 服务就绪' : '○ 服务离线'}
+          <i className={`dot ${appStatus?.bridge.running ? 'ok' : ''}`} />
+          {appStatus?.bridge.running ? '服务就绪' : '服务离线'}
         </span>
         <span className="chip" title={llmChip} onClick={() => void refreshLlmChip()}>
-          🔑 {llmChip || `${settings?.model ?? ''}${settings ? ` · ${PROVIDER_LABEL[settings.provider] ?? ''}` : ''}`}
+          <Icon.Gear size={12} /> {llmChip || `${settings?.model ?? ''}${settings ? ` · ${PROVIDER_LABEL[settings.provider] ?? ''}` : ''}`}
         </span>
       </div>
 
@@ -907,9 +898,10 @@ export default function App(): JSX.Element {
           onMouseDown={(e) => e.stopPropagation()}
         >
           <span className="fbdots">
-            <button className="fbdot yellow" title="黄色高亮" onClick={() => doHighlight('yellow')} />
-            <button className="fbdot green" title="绿色高亮" onClick={() => doHighlight('green')} />
-            <button className="fbdot red" title="红色高亮" onClick={() => doHighlight('red')} />
+            <button className="fbdot yellow" title="高亮 · 重要" onClick={() => doHighlight('yellow')} />
+            <button className="fbdot blue" title="高亮 · 方法" onClick={() => doHighlight('blue')} />
+            <button className="fbdot green" title="高亮 · 结论" onClick={() => doHighlight('green')} />
+            <button className="fbdot red" title="高亮 · 疑问" onClick={() => doHighlight('red')} />
           </span>
           <button onClick={() => doTranslate(floatBar.text)}>翻译</button>
           <button onClick={() => doExplain(floatBar.text)}>解释</button>

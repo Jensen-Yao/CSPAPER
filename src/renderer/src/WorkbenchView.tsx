@@ -4,6 +4,7 @@
 // 底部合成器（＋模板 / 权限 / 模型 / 深度 / 发送·停止，执行中输入自动排队）。
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Paper } from './types'
+import * as Icon from './Icon'
 import './wb.css'
 
 interface PlanStep {
@@ -127,27 +128,6 @@ function workedMsOf(task: TaskFull, now: number): number {
     ms += Math.max(0, now - lastT)
   }
   return ms
-}
-
-/* ---------- 细线 SVG 图标（对齐 ZCode 的线性图标语言） ---------- */
-const I = {
-  plus: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M8 3v10M3 8h10" /></svg>,
-  search: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="7" cy="7" r="4.4" /><path d="M10.4 10.4 14 14" /></svg>,
-  clock: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="8" cy="8" r="5.6" /><path d="M8 5v3.2l2.2 1.4" /></svg>,
-  target: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /></svg>,
-  market: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1" /><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1" /><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1" /><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1" /></svg>,
-  gear: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="2.1" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" /></svg>,
-  up: <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" /></svg>,
-  stop: <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="3.5" width="9" height="9" rx="1.6" /></svg>,
-  down: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" /></svg>,
-  copy: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4" /><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" strokeLinecap="round" /></svg>,
-  save: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2M2.8 12.8h10.4" /></svg>,
-  wide: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 8h11M5 5.2 2.2 8 5 10.8M11 5.2 13.8 8 11 10.8" /></svg>,
-  doc: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M4 2.5h5.5L13 6v7.5H4z" strokeLinejoin="round" /><path d="M6 8.5h4M6 11h4" /></svg>,
-  shield: <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"><path d="M8 1.8 13 3.6v4.2c0 3.2-2.1 5.3-5 6.4-2.9-1.1-5-3.2-5-6.4V3.6z" /><path d="M5.8 8l1.5 1.5L10.2 6.4" strokeLinecap="round" /></svg>,
-  dot: <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><circle cx="5" cy="5" r="4" /></svg>,
-  chevR: <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></svg>,
-  pkg: <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M8 1.8 14 5v6L8 14.2 2 11V5z" /><path d="M2 5l6 3.2L14 5M8 8.2v6" /></svg>
 }
 
 export default function WorkbenchView({ visible, papers, models, onOpenPaper, onOpenCompare, onOpenNotes, onOpenSettings }: Props): JSX.Element | null {
@@ -406,24 +386,24 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               setTimeout(() => inputRef.current?.focus(), 30)
             }}
           >
-            <span className="wb-nav-icon">{I.plus}</span>
+            <span className="wb-nav-icon">{<Icon.Plus />}</span>
             <span className="wb-nav-label">新建任务</span>
             <span className="wb-nav-hint">Ctrl+N</span>
           </button>
           <button className={`wb-nav-item ${searchOpen ? 'on' : ''}`} onClick={() => setSearchOpen((v) => !v)}>
-            <span className="wb-nav-icon">{I.search}</span>
+            <span className="wb-nav-icon">{<Icon.Search />}</span>
             <span className="wb-nav-label">搜索</span>
           </button>
           <button className={`wb-nav-item ${nav === 'auto' ? 'on' : ''}`} onClick={() => setNav('auto')}>
-            <span className="wb-nav-icon">{I.clock}</span>
+            <span className="wb-nav-icon">{<Icon.Clock />}</span>
             <span className="wb-nav-label">自动化</span>
           </button>
           <button className={`wb-nav-item ${nav === 'skills' ? 'on' : ''}`} onClick={() => setNav('skills')}>
-            <span className="wb-nav-icon">{I.target}</span>
+            <span className="wb-nav-icon">{<Icon.Target />}</span>
             <span className="wb-nav-label">技能</span>
           </button>
           <button className={`wb-nav-item ${nav === 'mcp' ? 'on' : ''}`} onClick={() => setNav('mcp')}>
-            <span className="wb-nav-icon">{I.market}</span>
+            <span className="wb-nav-icon">{<Icon.Grid />}</span>
             <span className="wb-nav-label">插件市场</span>
           </button>
         </nav>
@@ -470,7 +450,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
             <span className="wb-user-badge">本地</span>
             <span style={{ flex: 1 }} />
             <button className="wb-icon-btn" title="设置" onClick={onOpenSettings}>
-              {I.gear}
+              {<Icon.Gear />}
             </button>
           </div>
         </div>
@@ -497,7 +477,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               <span style={{ flex: 1 }} />
               {running && (
                 <button className="wb-mini danger" onClick={() => void cancelTask()}>
-                  ⏹ 中止
+                  <Icon.Stop size={12} /> 中止
                 </button>
               )}
             </div>
@@ -526,7 +506,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                           {doneCount}/{progress.length} 步
                         </span>
                       )}
-                      <span className={`wb-chev ${workOpen ? 'open' : ''}`}>{I.chevR}</span>
+                      <span className={`wb-chev ${workOpen ? 'open' : ''}`}>{<Icon.ChevronR />}</span>
                     </button>
                     {workOpen && progress.length > 0 && (
                       <div className="wb-plan-list">
@@ -559,7 +539,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                     ))}
                     <div className="wb-confirm-foot">
                       <button className="wb-run" disabled={busy} onClick={() => void runTask()}>
-                        ▶ 确认并执行
+                        确认并执行
                       </button>
                     </div>
                   </div>
@@ -592,9 +572,9 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                     if (ev.kind === 'artifact') {
                       return (
                         <button key={i} className="wb-artifact" onClick={() => ev.artifact && openArtifact(ev.artifact)}>
-                          {I.pkg}
+                          {<Icon.Package />}
                           {ev.artifact?.title || '产物'} · 在文献库中查看
-                          <span className="wb-chev">{I.chevR}</span>
+                          <span className="wb-chev">{<Icon.ChevronR />}</span>
                         </button>
                       )
                     }
@@ -608,7 +588,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                             <span className="wb-tool-chip">{label}</span>
                             <span className="wb-tool-sum ellipsis">{(ev.text ?? '').split(' → ')[0]}</span>
                             {ev.ms != null && <span className="wb-tool-ms">{ev.ms >= 1000 ? `${(ev.ms / 1000).toFixed(1)}s` : `${ev.ms}ms`}</span>}
-                            <span className={`wb-chev ${open ? 'open' : ''}`}>{I.chevR}</span>
+                            <span className={`wb-chev ${open ? 'open' : ''}`}>{<Icon.ChevronR />}</span>
                           </div>
                           {open && ev.text && <div className="wb-tool-detail">{ev.text}</div>}
                         </div>
@@ -631,7 +611,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 {/* 执行总结（文档流收尾） */}
                 {task.answer && task.status === 'done' && (
                   <div className="wb-final">
-                    <div className="wb-final-label">✦ 执行总结</div>
+                    <div className="wb-final-label"><Icon.Sparkle size={12} /> 执行总结</div>
                     <div className="wb-final-body">{task.answer}</div>
                   </div>
                 )}
@@ -639,20 +619,20 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
             </div>
             {!atBottom && (
               <button className="wb-jump" title="回到底部" onClick={scrollBottom}>
-                {I.down}
+                {<Icon.ArrowD />}
               </button>
             )}
             <div className="wb-actions">
               <button className="wb-act" title="复制总结 / 报告" onClick={copyReport}>
-                {I.copy}
+                {<Icon.Copy />}
                 <span>复制</span>
               </button>
               <button className="wb-act" title="导出任务报告 (Markdown)" onClick={exportReport}>
-                {I.save}
+                {<Icon.Save />}
                 <span>报告</span>
               </button>
               <button className="wb-act" title={wide ? '收窄正文栏' : '加宽正文栏'} onClick={() => setWide((v) => !v)}>
-                {I.wide}
+                {<Icon.Expand />}
                 <span>{wide ? '收窄' : '加宽'}</span>
               </button>
               <button
@@ -662,7 +642,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                   inputRef.current?.focus()
                 }}
               >
-                {I.doc}
+                {<Icon.Doc />}
                 <span>继续</span>
               </button>
             </div>
@@ -716,14 +696,14 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
             <div className="wb-compose-bar">
               <div className="wb-pop-wrap">
                 <button className={`wb-pill ${pop === 'tpl' ? 'on' : ''}`} title="任务模板" onClick={() => setPop(pop === 'tpl' ? '' : 'tpl')}>
-                  {I.plus}
+                  {<Icon.Plus />}
                 </button>
                 <button
                   className={`wb-pill ${pop === 'perm' ? 'on' : ''}`}
                   title="执行权限：完全访问 = 计划生成后自动执行；执行前确认 = 每次先确认计划"
                   onClick={() => setPop(pop === 'perm' ? '' : 'perm')}
                 >
-                  {I.shield}
+                  {<Icon.Shield />}
                   {perm === 'auto' ? '完全访问' : '执行前确认'}
                   <span className="wb-pill-caret">▾</span>
                 </button>
@@ -781,7 +761,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               <span style={{ flex: 1 }} />
               <div className="wb-pop-wrap">
                 <button className={`wb-pill ${pop === 'model' ? 'on' : ''}`} title="智能体使用的模型" onClick={() => setPop(pop === 'model' ? '' : 'model')}>
-                  <span className="wb-pill-dot">{I.dot}</span>
+                  <span className="wb-pill-dot">{<Icon.Dot />}</span>
                   {agentModel || models[0] || '未配置模型'}
                   <span className="wb-pill-caret">▾</span>
                 </button>
@@ -812,7 +792,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               </div>
               <div className="wb-pop-wrap">
                 <button className={`wb-pill ${pop === 'effort' ? 'on' : ''}`} title="执行深度：智能体最多工具调用步数" onClick={() => setPop(pop === 'effort' ? '' : 'effort')}>
-                  {I.target}
+                  {<Icon.Target />}
                   {EFFORTS.find((x) => x.steps === effort)?.label ?? `${effort} 步`}
                   <span className="wb-pill-caret">▾</span>
                 </button>
@@ -843,11 +823,11 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               </div>
               {running ? (
                 <button className="wb-send stop" title="中止当前任务" onClick={() => void cancelTask()}>
-                  {I.stop}
+                  {<Icon.Stop />}
                 </button>
               ) : (
                 <button className="wb-send" disabled={!goal.trim() || busy} title={running ? '排队执行' : '创建任务'} onClick={submit}>
-                  {I.up}
+                  {<Icon.Up />}
                 </button>
               )}
             </div>

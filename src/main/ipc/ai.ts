@@ -15,6 +15,8 @@ import {
   deepSearch,
   exportCompare,
   paperDetail,
+  getExtract,
+  extractPaper,
   getMyNotesText,
   saveMyNotesText,
   knowledgeGraph,
@@ -37,19 +39,50 @@ export function registerAiIpc(ctx: IpcCtx): void {
   ipcMain.handle('compare:generate', (_e, paperId: number, dimensions: string[]) => generateCells(paperId, dimensions, send))
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, ctx.getWin()))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
+  ipcMain.handle('papers:extract-get', (_e, id: number) => getExtract(id))
+  ipcMain.handle('papers:extract-run', (_e, id: number) => extractPaper(id))
   ipcMain.handle('papers:similar', async (_e, id: number) => {
     const db = dbmod.getDb()
-    const p = db.prepare('SELECT id, title FROM papers WHERE id=?').get(id) as { id: number; title: string } | undefined
+    const p = db.prepare('SELECT id, title, abstract, summary FROM papers WHERE id=?').get(id) as
+      | { id: number; title: string; abstract: string | null; summary: string | null }
+      | undefined
     if (!p) return []
+    // 通道 1：标题+摘要 embed 对全库整篇向量（pvec）最近邻——真正的语义相似
+    // 通道 2：库内混合检索（chunk 级）——落到具体段落证据
+    // 两路 RRF 融合，取前 5
+    const query = `${p.title}\n${(p.abstract || p.summary || '').slice(0, 300)}`.trim()
+    const seenScore = new Map<number, number>()
+    try {
+      const pvs = db.prepare('SELECT id, pvec FROM papers WHERE pvec IS NOT NULL AND id != ?').all(id) as Array<{ id: number; pvec: Buffer }>
+      if (pvs.length > 0) {
+        const { embed } = await import('../embed')
+        const { vectors: qvs } = await embed([query], true)
+        const qv = qvs[0]
+        const sims: Array<{ id: number; s: number }> = []
+        for (const r of pvs) {
+          const v = new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4)
+          let dot = 0
+          const n = Math.min(v.length, qv.length)
+          for (let d = 0; d < n; d++) dot += v[d] * qv[d]
+          sims.push({ id: r.id, s: dot })
+        }
+        sims.sort((a, b) => b.s - a.s)
+        sims.slice(0, 10).forEach((x, i) => seenScore.set(x.id, (seenScore.get(x.id) ?? 0) + 1 / (60 + i + 1)))
+      }
+    } catch {
+      /* embed 不可用（未配 Key 且本地模型未下载）时只用通道 2 */
+    }
     const rs = await hybridSearch(p.title.slice(0, 120), undefined, 8)
-    const seen = new Set<number>([id])
+    rs.forEach((r, i) => {
+      if (r.paperId === id) return
+      seenScore.set(r.paperId, (seenScore.get(r.paperId) ?? 0) + 1 / (60 + i + 1))
+    })
+    const snippetOf = new Map(rs.map((r) => [r.paperId, r.snippet.slice(0, 100)]))
+    const ranked = [...seenScore.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
     const out: Array<{ id: number; title: string; snippet: string }> = []
-    for (const r of rs) {
-      if (seen.has(r.paperId)) continue
-      seen.add(r.paperId)
-      const row = db.prepare('SELECT id, title FROM papers WHERE id=?').get(r.paperId) as { id: number; title: string } | undefined
-      if (row) out.push({ id: row.id, title: row.title, snippet: r.snippet.slice(0, 100) })
-      if (out.length >= 5) break
+    for (const [pid] of ranked) {
+      const row = db.prepare('SELECT id, title FROM papers WHERE id=?').get(pid) as { id: number; title: string } | undefined
+      if (row) out.push({ id: row.id, title: row.title, snippet: snippetOf.get(pid) ?? '' })
     }
     return out
   })

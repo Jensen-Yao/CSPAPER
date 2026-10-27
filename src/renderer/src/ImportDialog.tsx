@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ImportOutcome, ImportPreviewItem } from './types'
 import { catLabel } from './LibraryPane'
+import * as Icon from './Icon'
 
 interface QueueItem {
   path: string
@@ -285,7 +286,7 @@ export default function ImportDialog({ initialFiles, initialCats, hasApiKey, onB
             }}
           >
             <div className="import-drop-side">
-              <div className="import-drop-icon">📄</div>
+              <div className="import-drop-icon"><Icon.Pdf size={30} /></div>
               <div>
                 <div className="import-drop-tip">{items.length > 0 || folders.length > 0 ? '继续添加 PDF' : '把 PDF 拖到这里'}</div>
                 <div className="import-drop-sub">支持多选，也可以整个文件夹</div>

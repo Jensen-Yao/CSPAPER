@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DeepHit, Paper, TagRow } from './types'
 import { STATUS_META } from './types'
+import * as Icon from './Icon'
 
 interface Props {
   papers: Paper[]
@@ -362,7 +363,7 @@ export default function LibraryPane({
       </div>
       {snippet && (
         <div className="deep-snip">
-          {snippet.from === 'note' ? '🖍' : '📄'} {snippet.page ? `p.${snippet.page} · ` : ''}
+          {snippet.from === 'note' ? <Icon.Highlight size={11} /> : <Icon.Doc size={11} />} {snippet.page ? `p.${snippet.page} · ` : ''}
           {snippet.snippet}
         </div>
       )}
@@ -375,16 +376,11 @@ export default function LibraryPane({
         {/* 阅读 / 对话 两个内容模式（对比/纵览/统计/笔记/网页 已上顶栏快捷区） */}
         <div className="mode-toggle">
           <button className={mode === 'read' ? 'on' : ''} onClick={() => onModeChange('read')} title="论文阅读（PDF + 翻译 + 问答）">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 6c-1.8-1.6-4.2-2-8-2v14c3.8 0 6.2.4 8 2 1.8-1.6 4.2-2 8-2V4c-3.8 0-6.2.4-8 2z" />
-              <path d="M12 6v14" />
-            </svg>
+            <Icon.Book size={14} />
             阅读
           </button>
           <button className={mode === 'chat' ? 'on' : ''} onClick={() => onModeChange('chat')} title="与全库文献对话（RAG）">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.6A8 8 0 1 1 21 12z" />
-            </svg>
+            <Icon.Chat size={14} />
             对话
           </button>
         </div>
@@ -396,16 +392,11 @@ export default function LibraryPane({
           <span className="cat-count">{papersView.length}</span>
         </div>
         <button className="add-btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon.Plus size={13} />
           添加文献
         </button>
         <button className="new-chat-btn" onClick={onNewChat} title="清空并开始新的全库对话">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 21c-4.4 0-8-3.1-8-7 0-2.2 1.2-4.2 3-5.5V4l3.2 1.8c.6-.1 1.2-.2 1.8-.2 4.4 0 8 3.1 8 7s-3.6 7-8 7z" />
-            <path d="M12 7.5v5M9.5 10h5" />
-          </svg>
+          <Icon.Chat size={13} />
           新建对话
         </button>
         <div className="search-wrap">
@@ -469,7 +460,7 @@ export default function LibraryPane({
                       >
                         <div className="t">{p?.title ?? h.title}</div>
                         <div className="deep-snip">
-                          {h.from === 'note' ? '🖍' : '📄'} {h.page ? `p.${h.page} · ` : ''}
+                          {h.from === 'note' ? <Icon.Highlight size={11} /> : <Icon.Doc size={11} />} {h.page ? `p.${h.page} · ` : ''}
                           {h.snippet}
                         </div>
                       </div>

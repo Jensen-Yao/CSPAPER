@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Settings } from './types'
+import * as Icon from './Icon'
 
 const PRESETS: Array<{ id: string; label: string; base: string; model: string }> = [
   { id: 'zhipu', label: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5-air' },
@@ -81,7 +82,7 @@ export default function SetupWizard({ initial, onDone, onZoteroImport }: Props):
     <div className="wizard-mask">
       <div className="wizard">
         <div className="wizard-head">
-          <div className="wizard-logo">📚</div>
+          <div className="wizard-logo"><Icon.Library size={26} /></div>
           <div>
             <h1>欢迎使用 CSPAPER</h1>
             <p>三步完成初始化</p>

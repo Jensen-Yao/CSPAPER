@@ -3,6 +3,7 @@ import { STATUS_KEYS, STATUS_META, type Paper, type PaperDetail, type StyleInfo,
 import { NOTE_TEMPLATES } from './note-templates'
 import NotesMarkmapButton from './NotesMarkmapButton'
 import { catLabel } from './LibraryPane'
+import * as Icon from './Icon'
 
 interface Props {
   paper: Paper
@@ -55,7 +56,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     } catch {
       /* 无记忆用默认 */
     }
-    return { info: true, ai: true, abs: true, cite: false, mine: true, notes: false, files: false }
+    return { info: true, ai: true, deep: false, rel: true, abs: true, cite: false, mine: true, notes: false, files: false }
   })
   const setOpenPersist = (next: Record<string, boolean>): void => {
     setOpen(next)
@@ -68,10 +69,61 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   const allOpen = Object.values(open).every(Boolean)
   const toggleAllSecs = (): void => {
     const next: Record<string, boolean> = {}
-    for (const k of ['info', 'ai', 'abs', 'cite', 'mine', 'notes', 'files']) next[k] = !allOpen
+    for (const k of ['info', 'ai', 'deep', 'rel', 'abs', 'cite', 'mine', 'notes', 'files']) next[k] = !allOpen
     setOpenPersist(next)
   }
   const [sumBusy, setSumBusy] = useState(false)
+  // 相关文献（manual 关联 + auto 语义建议，v0.13）
+  const [related, setRelated] = useState<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>([])
+  const [relBusy, setRelBusy] = useState(false)
+  const loadRelated = (id: number): void => {
+    void window.api
+      .relatedList(id)
+      .then((r) => setRelated(r ?? []))
+      .catch(() => setRelated([]))
+  }
+  useEffect(() => {
+    if (paper?.id) loadRelated(paper.id)
+  }, [paper?.id])
+  const refreshAuto = async (): Promise<void> => {
+    if (!paper?.id) return
+    setRelBusy(true)
+    try {
+      const r = await window.api.relatedRefresh(paper.id)
+      setRelated(r.rows ?? [])
+    } catch {
+      /* 保持原状 */
+    } finally {
+      setRelBusy(false)
+    }
+  }
+  // 深度解读（结构化精读，v0.13）
+  const [ext, setExt] = useState<import('./types').PaperExtract | null>(null)
+  const [extBusy, setExtBusy] = useState(false)
+  const [extErr, setExtErr] = useState('')
+  useEffect(() => {
+    if (!paper?.id) return
+    setExt(null)
+    setExtErr('')
+    void window.api
+      .paperExtractGet(paper.id)
+      .then((e) => setExt(e))
+      .catch(() => setExt(null))
+  }, [paper?.id])
+  const runExtract = async (): Promise<void> => {
+    if (!paper?.id) return
+    setExtBusy(true)
+    setExtErr('')
+    try {
+      const r = await window.api.paperExtractRun(paper.id)
+      setExt(r.extract)
+      if (r.summary) onSummarized?.(paper.id, r.summary)
+    } catch (e) {
+      setExtErr(String(e).replace(/^Error: /, '').slice(0, 100))
+    } finally {
+      setExtBusy(false)
+    }
+  }
   // 相似文献（papers:similar 混合检索）
   const [similar, setSimilar] = useState<Array<{ id: number; title: string; snippet: string }>>([])
   useEffect(() => {
@@ -281,7 +333,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     }
   }
 
-  const sec = (id: string, icon: string, title: string, body: JSX.Element, extra?: JSX.Element): JSX.Element => (
+  const sec = (id: string, icon: React.ReactNode, title: string, body: JSX.Element, extra?: JSX.Element): JSX.Element => (
     <div className={`pd-sec ${open[id] ? 'open' : ''}`}>
       <button className="pd-sec-head" onClick={() => setOpenPersist({ ...open, [id]: !open[id] })}>
         <span className="pd-sec-ic">{icon}</span>
@@ -328,7 +380,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
           <>
             {sec(
               'info',
-              'ℹ️',
+              <Icon.Info size={14} />,
               '信息',
               <>
                 <div className="pd-tags">
@@ -420,7 +472,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
             )}
             {sec(
               'ai',
-              '✨',
+              <Icon.Sparkle size={14} />,
               'AI 洞察',
               summary ? (
                 <div className="pd-summary">{summary}</div>
@@ -434,19 +486,56 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               ),
               summary ? (
                 <button className="cmp-mini" disabled={sumBusy} title="重新生成" onClick={() => void genSummary()}>
-                  {sumBusy ? '…' : '↻'}
+                  {sumBusy ? '…' : <Icon.Refresh size={12} />}
                 </button>
               ) : undefined
             )}
             {sec(
+              'deep',
+              <Icon.Target size={14} />,
+              '深度解读',
+              ext ? (
+                <div className="pd-deep">
+                  {(
+                    [
+                      ['研究问题', ext.problem],
+                      ['方法路线', ext.method],
+                      ['数据与对象', ext.dataset],
+                      ['评价指标', ext.metrics],
+                      ['核心结果', ext.results],
+                      ['创新点', ext.novelty],
+                      ['局限', ext.limitations],
+                      ['可跟进方向', ext.future]
+                    ] as const
+                  )
+                    .filter(([, v]) => v && v !== '未提及')
+                    .map(([k, v]) => (
+                      <div key={k} className="pd-deep-row">
+                        <span className="pd-deep-k">{k}</span>
+                        <span className="pd-deep-v">{v}</span>
+                      </div>
+                    ))}
+                  <div className="pd-deep-meta">抽取于 {ext.extracted_at} · <button className="pd-deep-redo" disabled={extBusy} onClick={() => void runExtract()}>{extBusy ? '重新精读中…' : '重新精读'}</button></div>
+                </div>
+              ) : (
+                <div>
+                  <button className="sum-gen" disabled={extBusy} onClick={() => void runExtract()}>
+                    {extBusy ? '深度精读中（读全文，约需 1-2 分钟）…' : '深度精读全文（研究问题 / 方法 / 数据 / 指标 / 结果 / 局限）'}
+                  </button>
+                  {extErr && <div className="sum-err">{extErr}</div>}
+                </div>
+              ),
+              ext ? <span className="pd-badge">8</span> : undefined
+            )}
+            {sec(
               'abs',
-              '📄',
+              <Icon.Doc size={14} />,
               '摘要',
               detail.abstract ? <div className="pd-abstract">{detail.abstract}</div> : <div className="pd-dim">未能从 PDF 中提取到摘要文本</div>
             )}
             {sec(
               'cite',
-              '📑',
+              <Icon.Quote size={14} />,
               '引用',
               <div className="pd-cite">
                 <div className="pd-cite-row">
@@ -479,8 +568,66 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               </div>
             )}
             {sec(
+              'rel',
+              <Icon.Star size={14} />,
+              '相关文献',
+              <div className="pd-similar">
+                {related.length === 0 && (
+                  <div className="pd-dim">
+                    还没有关联文献。<button className="pd-deep-redo" disabled={relBusy} onClick={() => void refreshAuto()}>按语义相似自动推荐</button>
+                  </div>
+                )}
+                {related.map((r) => (
+                  <div key={r.id} className="pd-similar-item pd-rel-item">
+                    <button
+                      className="pd-rel-open"
+                      title={r.title}
+                      onClick={() => {
+                        void window.api.listPapers().then((ps) => {
+                          const target = ps.find((x) => x.id === r.id)
+                          if (target) onOpen?.(target)
+                        })
+                      }}
+                    >
+                      <div className="pd-similar-title">{r.title}</div>
+                      <div className="pd-similar-snippet ellipsis">{r.kind === 'manual' ? '手动关联' : '智能推荐'}</div>
+                    </button>
+                    {r.kind === 'auto' ? (
+                      <button
+                        className="pd-rel-act"
+                        title="设为手动关联"
+                        onClick={() => {
+                          if (!paper?.id) return
+                          void window.api.relatedSet(paper.id, r.id).then(setRelated)
+                        }}
+                      >
+                        关联
+                      </button>
+                    ) : (
+                      <button
+                        className="pd-rel-act del"
+                        title="移除关联"
+                        onClick={() => {
+                          if (!paper?.id) return
+                          void window.api.relatedRemove(paper.id, r.id).then(setRelated)
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {related.length > 0 && (
+                  <button className="pd-deep-redo" style={{ marginTop: 4 }} disabled={relBusy} onClick={() => void refreshAuto()}>
+                    {relBusy ? '刷新中…' : '刷新智能推荐'}
+                  </button>
+                )}
+              </div>,
+              related.length > 0 ? <span className="pd-badge">{related.length}</span> : undefined
+            )}
+            {sec(
               'similar',
-              '🔗',
+              <Icon.Link size={14} />,
               '相似文献',
               similar.length === 0 ? (
                 <div className="pd-dim">库内暂无明显相关的其他文献。</div>
@@ -507,7 +654,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
             )}
             {sec(
               'mine',
-              '📝',
+              <Icon.Notes size={14} />,
               '我的笔记',
               <div className="pd-note-box">
                 <div className="pd-note-tpl">
@@ -544,14 +691,14 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
             )}
             {sec(
               'notes',
-              '✏️',
+              <Icon.Comment size={14} />,
               '笔记',
               <NotesPreview paperId={paper.id} count={detail.notesCount} />,
               <span className="pd-badge">{detail.notesCount}</span>
             )}
             {sec(
               'files',
-              '📎',
+              <Icon.Folder size={14} />,
               '附件',
               detail.files.length === 0 ? (
                 <div className="pd-dim">无附件</div>

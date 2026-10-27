@@ -60,7 +60,12 @@ try {
   }
 
   // ---- Bug 1：主题星系 ----
-  await jsClick('.tb-q', '纵览')
+  
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.tb-q')].find((b) => (b.getAttribute('title') || '').includes('纵览'))
+    if (el) el.click(); else throw new Error('not found: tb-q 纵览')
+  })
+
   await wait(2000)
   await jsClick('.ov-tab', '知识')
   await wait(2500)

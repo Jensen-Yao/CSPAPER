@@ -137,6 +137,10 @@ export function initDb(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_hl_paper ON highlights(paper_id);
   `)
+  // v0.13：标注增强——备注 + 语义标签（高亮色即标签：yellow=重要 blue=方法 green=结论 red=疑问）
+  const hcols = (db.prepare('PRAGMA table_info(highlights)').all() as Array<{ name: string }>).map((c) => c.name)
+  if (!hcols.includes('comment')) db.exec('ALTER TABLE highlights ADD COLUMN comment TEXT')
+  if (!hcols.includes('tag')) db.exec("ALTER TABLE highlights ADD COLUMN tag TEXT DEFAULT ''")
   // 迁移：papers 增加 pvec（整篇级向量：标题+作者+首页）与 opened_at（最近打开时间）
   const cols = (db.prepare('PRAGMA table_info(papers)').all() as Array<{ name: string }>).map((c) => c.name)
   if (!cols.includes('pvec')) db.exec('ALTER TABLE papers ADD COLUMN pvec BLOB')

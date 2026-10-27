@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
 import './websearch.css'
+import * as Icon from './Icon'
 
 // <webview> 的 JSX 属性由 @types/react（WebViewHTMLAttributes）内置提供，无需自行声明
 
@@ -381,7 +382,7 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
               <div className="ws-results-head">
                 「{q}」· {hits.length} 条结果
                 <button className="ws-chip" onClick={() => runAgg(q)} title="重新检索">
-                  ↻
+                  <Icon.Refresh size={13} />
                 </button>
               </div>
               {hits.map((h, i) => (
