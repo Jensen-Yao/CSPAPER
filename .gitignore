@@ -35,3 +35,4 @@ android-app/app/build/
 android-app/release/
 android-app/local.properties
 scripts/set-agnes.cjs
+scripts/fix-agnes.cjs
