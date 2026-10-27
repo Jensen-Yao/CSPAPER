@@ -34,11 +34,26 @@ export const STATUS_META: Record<string, { label: string; icon: string; color: s
 export const STATUS_KEYS = ['todo', 'unread', 'reading', 'read', 'paused']
 
 // 多服务商配置（设置页可维护多套，对话界面切换模型时自动激活所属配置）
+export interface ModelCaps {
+  /** 推理等级档位（模型自带，如 gpt-5 的 low/high/max；空 = 该模型不支持等级切换） */
+  reasoningLevels: string[]
+  /** 上下文窗口（tokens，0/缺省未知） */
+  context?: number
+  /** 最大输出 tokens */
+  maxOutput?: number
+  /** 支持的输入类型 */
+  inputs?: Array<'text' | 'image' | 'video' | 'pdf'>
+  /** 能力标记 */
+  caps?: Array<'json' | 'websearch' | 'system'>
+}
+
 export interface ProviderProfile {
   provider: string
   apiBase: string
   apiKey: string
   models: string[]
+  /** 模型名 → 能力/推理等级（v0.16.2；缺省从 PROVIDER_PRESET_CAPS 推断） */
+  modelCaps?: Record<string, ModelCaps>
 }
 
 export interface Settings {
@@ -341,6 +356,7 @@ declare global {
       papersMerge: (keepId: number, dropIds: number[]) => Promise<boolean>
       zoteroPushHighlights: (paperId: number) => Promise<{ pushed: number; itemKey: string | null }>
       enrichMeta: (limit?: number) => Promise<{ updated: number; checked: number }>
+      fetchModels: (apiBase: string, apiKey: string) => Promise<string[]>
       standaloneNotesList: () => Promise<Array<{ id: number; title: string; updated_at: string }>>
       standaloneNotesGet: (id: number) => Promise<{ id: number; title: string; body_md: string }>
       standaloneNotesSave: (id: number | null, title: string, body: string) => Promise<number>

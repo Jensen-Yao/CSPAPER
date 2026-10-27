@@ -87,6 +87,7 @@ const api = {
   papersMerge: (keepId: number, dropIds: number[]) => ipcRenderer.invoke('papers:merge', keepId, dropIds),
   zoteroPushHighlights: (paperId: number) => ipcRenderer.invoke('zotero:push-highlights', paperId),
   enrichMeta: (limit?: number) => ipcRenderer.invoke('papers:enrich-meta', limit),
+  fetchModels: (apiBase: string, apiKey: string) => ipcRenderer.invoke('models:fetch', apiBase, apiKey),
   standaloneNotesList: () => ipcRenderer.invoke('notes:standalone-list'),
   standaloneNotesGet: (id: number) => ipcRenderer.invoke('notes:standalone-get', id),
   standaloneNotesSave: (id: number | null, title: string, body: string) => ipcRenderer.invoke('notes:standalone-save', id, title, body),

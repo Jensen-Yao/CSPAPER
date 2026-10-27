@@ -567,9 +567,28 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
   running.set(id, ac)
 
   try {
-    const provider = createOpenAICompatible({ name: s.provider || 'cspaper', baseURL: s.apiBase, apiKey: s.apiKey })
     // 智能体独立模型绑定：设置里可给 agent 配更强模型（缺省回落对话模型）
     const agentModel = s.agentModel || s.model
+    // 推理等级（v0.16.2）：等级是模型自带能力——从所选模型的 modelCaps.reasoningLevels
+    // 取档位，把设置的思考等级映射到该模型实际的等级词（如 gpt-5: low/high/max），
+    // 走 customFetch 改写 body 的 reasoning_effort；无 caps 回落 provider 特定参数
+    const lvl = (s.thinkingLevel ?? 'default') as 'default' | 'off' | 'low' | 'medium' | 'high'
+    const activeProfile = (s.profiles ?? []).find((pf) => pf.models.includes(agentModel))
+    const capsLevels = activeProfile?.modelCaps?.[agentModel]?.reasoningLevels ?? []
+    const thinkBody: Record<string, unknown> = {}
+    if (capsLevels.length > 0) {
+      if (lvl !== 'default') {
+        const pick = lvl === 'off' ? capsLevels[0] : capsLevels[Math.min(capsLevels.length - 1, Math.max(0, Math.round((capsLevels.length - 1) * (lvl === 'low' ? 0.25 : lvl === 'medium' ? 0.5 : 0.75))))]
+        thinkBody.reasoning_effort = pick
+      }
+    } else if (lvl !== 'default') {
+      const off = lvl === 'off'
+      if (s.provider === 'zhipu') thinkBody.thinking = { type: off ? 'disabled' : 'enabled' }
+      else if (s.provider === 'qwen') {
+        thinkBody.enable_thinking = !off
+        if (!off) thinkBody.thinking_budget = lvl === 'high' ? 38912 : lvl === 'medium' ? 8192 : 2048
+      } else if (s.provider === 'openai') thinkBody.reasoning_effort = lvl === 'high' ? 'high' : lvl === 'medium' ? 'medium' : 'low'
+    }
     const maxSteps = Math.max(4, Math.min(60, s.agentMaxSteps || 24))
     const tools = buildTools(t)
     const planText = t.plan.map((p, i) => `${i + 1}. [${p.tool}] ${p.purpose}（参数：${JSON.stringify(p.args)}）`).join('\n')
@@ -586,6 +605,25 @@ export async function runTask(id: string): Promise<{ ok: boolean; error?: string
         .map((p) => `#${p.id}《${p.title.slice(0, 40)}》`)
         .join('；') +
       '。'
+    const provider = createOpenAICompatible({
+      name: s.provider || 'cspaper',
+      baseURL: s.apiBase,
+      apiKey: s.apiKey,
+      ...(Object.keys(thinkBody).length
+        ? {
+            fetch: (async (url: string | URL | undefined, init?: RequestInit) => {
+              try {
+                if (init?.body) {
+                  const body = JSON.parse(String(init.body)) as Record<string, unknown>
+                  Object.assign(body, thinkBody)
+                  init = { ...init, body: JSON.stringify(body) }
+                }
+              } catch { /* body 非 JSON 照发 */ }
+              return fetch(url as string, init)
+            }) as typeof fetch
+          }
+        : {})
+    })
     const result = streamText({
       model: provider(agentModel),
       abortSignal: ac.signal,

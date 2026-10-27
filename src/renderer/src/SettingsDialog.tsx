@@ -61,6 +61,8 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   )
   const [sec, setSec] = useState<Sec>('appear')
   const [showPicker, setShowPicker] = useState(false)
+  // 上游模型列表拉取状态（按 profile 下标）
+  const [fetchState, setFetchState] = useState<Record<number, { busy: boolean; list: string[]; msg: string }>>({})
   const [pickerKw, setPickerKw] = useState('')
   const [bridgeOn, setBridgeOn] = useState(false)
   const [bridgePort, setBridgePort] = useState(24517)
@@ -655,19 +657,45 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                         <input type="password" value={pf.apiKey} onChange={(e) => upd({ apiKey: e.target.value })} placeholder="sk-…" />
                       </div>
                       <div className="field">
-                        <label>模型（逗号分隔）</label>
-                        <input
-                          value={pf.models.join(', ')}
-                          onChange={(e) =>
-                            upd({
-                              models: e.target.value
-                                .split(/[,，]/)
-                                .map((s) => s.trim())
-                                .filter(Boolean)
-                            })
-                          }
-                          placeholder="deepseek-chat, deepseek-reasoner"
-                        />
+                        <label>模型（逗号分隔，或从服务端拉取）</label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            list={`dl-models-${i}`}
+                            value={pf.models.join(', ')}
+                            onChange={(e) =>
+                              upd({
+                                models: e.target.value
+                                  .split(/[,，]/)
+                                  .map((s) => s.trim())
+                                  .filter(Boolean)
+                              })
+                            }
+                            placeholder="点「拉取列表」自动填入"
+                          />
+                          <datalist id={`dl-models-${i}`}>
+                            {(fetchState[i]?.list ?? []).map((m) => (
+                              <option key={m} value={m} />
+                            ))}
+                          </datalist>
+                          <button
+                            className="btn ghost"
+                            style={{ flex: 'none', whiteSpace: 'nowrap' }}
+                            disabled={fetchState[i]?.busy}
+                            onClick={() => {
+                              setFetchState((st) => ({ ...st, [i]: { busy: true, list: st[i]?.list ?? [], msg: '' } }))
+                              void window.api
+                                .fetchModels(pf.apiBase, pf.apiKey)
+                                .then((list) => {
+                                  upd({ models: [...new Set([...list, ...pf.models])] })
+                                  setFetchState((st) => ({ ...st, [i]: { busy: false, list, msg: `已拉取 ${list.length} 个模型并填入（输入框可继续补）` } }))
+                                })
+                                .catch((e2) => setFetchState((st) => ({ ...st, [i]: { busy: false, list: st[i]?.list ?? [], msg: String(e2).replace(/^Error: /, '').slice(0, 90) } })))
+                            }}
+                          >
+                            {fetchState[i]?.busy ? '拉取中…' : '拉取列表'}
+                          </button>
+                        </div>
+                        {fetchState[i]?.msg && <div className="test-result" style={{ marginTop: 4, fontSize: 11 }}>{fetchState[i].msg}</div>}
                       </div>
                       </div>
                       <div className="profile-foot">
@@ -700,6 +728,106 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                     </div>
                   )
                 })}
+                {/* 模型能力编辑器（v0.16.2）：推理等级是模型自带档位，per-model 可视化编辑 */}
+                {(() => {
+                  const pi = profiles.findIndex((pf) => pf.models.includes(form.model) || (form.models ?? []).some((m) => pf.models.includes(m)))
+                  if (pi < 0) return null
+                  const pf = profiles[pi]
+                  const capsOf = (m: string) => pf.modelCaps?.[m] ?? { reasoningLevels: [] }
+                  const updCaps = (m: string, patch: Partial<import('./types').ModelCaps>) => {
+                    const nextCaps = { ...(pf.modelCaps ?? {}), [m]: { ...capsOf(m), ...patch } }
+                    setProfiles((list) => {
+                      const next = list.map((x, idx) => (idx === pi ? { ...x, modelCaps: nextCaps } : x))
+                      saveProfiles(next)
+                      return next
+                    })
+                  }
+                  return (
+                    <div className="section-title" style={{ marginTop: 20 }}>
+                      模型能力 · {pf.provider}
+                      <span className="ov-dim" style={{ fontWeight: 400, marginLeft: 8 }}>推理等级=模型自带档位（如 gpt-5 的 low/high/max），对话与 Work 的「推理」档位会映射到这里的词</span>
+                    </div>
+                  )
+                })()}
+                {profiles.flatMap((pf, pi) =>
+                  pf.models.slice(0, 24).map((m) => {
+                    const caps = pf.modelCaps?.[m] ?? { reasoningLevels: [] }
+                    const updCaps = (patch: Partial<import('./types').ModelCaps>): void => {
+                      const nextCaps = { ...(pf.modelCaps ?? {}), [m]: { ...caps, ...patch } }
+                      setProfiles((list) => {
+                        const next = list.map((x, idx) => (idx === pi ? { ...x, modelCaps: nextCaps } : x))
+                        saveProfiles(next)
+                        return next
+                      })
+                    }
+                    const isCur = form.model === m
+                    return (
+                      <div key={`${pi}-${m}`} className={`mcaps ${isCur ? 'cur' : ''}`}>
+                        <div className="mcaps-head">
+                          <b>{m}</b>
+                          {isCur && <span className="active-tag">当前</span>}
+                          <span style={{ flex: 1 }} />
+                          <input
+                            className="set-input"
+                            style={{ width: 110 }}
+                            placeholder="上下文 tokens"
+                            value={caps.context ?? ''}
+                            onChange={(e) => updCaps({ context: parseInt(e.target.value.replace(/\D/g, '')) || undefined })}
+                          />
+                          <input
+                            className="set-input"
+                            style={{ width: 110 }}
+                            placeholder="最大输出"
+                            value={caps.maxOutput ?? ''}
+                            onChange={(e) => updCaps({ maxOutput: parseInt(e.target.value.replace(/\D/g, '')) || undefined })}
+                          />
+                        </div>
+                        <div className="mcaps-row">
+                          <span className="mcaps-k">输入</span>
+                          {(['text', 'image', 'video', 'pdf'] as const).map((t) => {
+                            const on = (caps.inputs ?? ['text']).includes(t)
+                            return (
+                              <button key={t} className={`wb-chip ${on ? 'on' : ''}`} style={on ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined} onClick={() => updCaps({ inputs: on ? (caps.inputs ?? ['text']).filter((x) => x !== t) : [...(caps.inputs ?? ['text']), t] })}>
+                                {t === 'text' ? '文本' : t === 'image' ? '图片' : t === 'video' ? '视频' : 'PDF'}
+                              </button>
+                            )
+                          })}
+                          <span className="mcaps-k" style={{ marginLeft: 10 }}>能力</span>
+                          {(['json', 'websearch', 'system'] as const).map((t) => {
+                            const on = (caps.caps ?? []).includes(t)
+                            return (
+                              <button key={t} className={`wb-chip ${on ? 'on' : ''}`} style={on ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined} onClick={() => updCaps({ caps: on ? (caps.caps ?? []).filter((x) => x !== t) : [...(caps.caps ?? []), t] })}>
+                                {t === 'json' ? '结构化输出' : t === 'websearch' ? '联网搜索' : '系统消息'}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div className="mcaps-row">
+                          <span className="mcaps-k">推理等级</span>
+                          {caps.reasoningLevels.map((lv, li) => (
+                            <span key={li} className="wb-chip on" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>
+                              {lv}
+                              <button className="mcaps-x" title="删除该等级" onClick={() => updCaps({ reasoningLevels: caps.reasoningLevels.filter((_, j) => j !== li) })}>×</button>
+                            </span>
+                          ))}
+                          <input
+                            className="set-input"
+                            style={{ width: 80 }}
+                            placeholder="+ 等级"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const v = e.currentTarget.value.trim()
+                                if (v && !caps.reasoningLevels.includes(v)) updCaps({ reasoningLevels: [...caps.reasoningLevels, v] })
+                                e.currentTarget.value = ''
+                              }
+                            }}
+                          />
+                          <span className="ov-dim">从低到高排列（如 low / high / max）</span>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
                 <div className="profile-add-row">
                   <button className="profile-add" onClick={() => setShowPicker(true)}>
                     <Icon.Plus size={12} /> 从服务商库添加（自动填好接口与模型）

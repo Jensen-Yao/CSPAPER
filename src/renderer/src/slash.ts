@@ -15,7 +15,7 @@ export const SLASH_CMDS: SlashCmd[] = [
   { name: 'tpl', args: '模板名', desc: '套用任务模板（主题调研 / 精读论文 / 多文对比 / 睡眠日报 / 深度调研）', group: '任务' },
   { name: 'new', desc: '开始新任务（清空当前选择）', group: '任务' },
   { name: 'model', args: '关键词', desc: '切换智能体模型（支持模糊匹配，如 /model glm）', group: '模型' },
-  { name: 'deep', args: 'low|mid|high|max', desc: '切换执行深度（最多工具调用步数 8/16/24/48）', group: '模型' },
+  { name: 'deep', args: 'low|mid|high|default', desc: '切换推理强度（模型思考等级，与对话一致）', group: '模型' },
   { name: 'skills', desc: '打开技能面板', group: '导航' },
   { name: 'mcp', desc: '打开插件市场（MCP 服务器）', group: '导航' },
   { name: 'cron', desc: '打开自动化面板（定时任务）', group: '导航' },
@@ -49,4 +49,4 @@ export const TPL_ALIASES: Record<string, string> = {
   深度: '深度调研', 深读: '深度调研'
 }
 
-export const DEEP_ALIAS: Record<string, number> = { low: 8, mid: 16, high: 24, max: 48, 低: 8, 中: 16, 高: 24, 最高: 48 }
+export const DEEP_ALIAS: Record<string, 'low' | 'medium' | 'high' | 'default'> = { low: 'low', mid: 'medium', medium: 'medium', high: 'high', default: 'default', 低: 'low', 中: 'medium', 高: 'high', 默认: 'default' }

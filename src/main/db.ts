@@ -33,11 +33,20 @@ export interface Paper {
 export type Theme = 'system' | 'light' | 'dark'
 
 // 多服务商配置（与渲染端 types.ts 的 ProviderProfile 保持一致）
+export interface ModelCaps {
+  reasoningLevels: string[]
+  context?: number
+  maxOutput?: number
+  inputs?: Array<'text' | 'image' | 'video' | 'pdf'>
+  caps?: Array<'json' | 'websearch' | 'system'>
+}
+
 export interface ProviderProfile {
   provider: string
   apiBase: string
   apiKey: string
   models: string[]
+  modelCaps?: Record<string, ModelCaps>
 }
 
 export interface Settings {

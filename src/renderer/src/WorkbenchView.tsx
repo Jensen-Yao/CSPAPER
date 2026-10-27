@@ -62,11 +62,12 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   cancelled: { label: '已中止', cls: 'error' }
 }
 
-const EFFORTS: Array<{ label: string; steps: number }> = [
-  { label: '低', steps: 8 },
-  { label: '中', steps: 16 },
-  { label: '高', steps: 24 },
-  { label: '最高', steps: 48 }
+// 推理强度（模型思考等级，与对话一致）；工具步数上限在 设置→智能体 单独调
+const THINKINGS: Array<{ label: string; value: 'default' | 'low' | 'medium' | 'high' }> = [
+  { label: '默认', value: 'default' },
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' }
 ]
 
 const TOOL_LABEL: Record<string, string> = {
@@ -146,7 +147,8 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   const [queue, setQueue] = useState<string[]>([])
   const queueRef = useRef<string[]>([])
   const [perm, setPerm] = useState<'auto' | 'confirm'>(() => (localStorage.getItem('wb.perm') === 'confirm' ? 'confirm' : 'auto'))
-  const [effort, setEffort] = useState<number>(24)
+  const [thinking, setThinking] = useState<'default' | 'low' | 'medium' | 'high'>('default')
+  const [levels, setLevels] = useState<string[]>([])
   const [agentModel, setAgentModel] = useState<string>('')
   const [pop, setPop] = useState<'' | 'tpl' | 'model' | 'effort' | 'perm'>('')
   const [slashSel, setSlashSel] = useState(0)
@@ -196,9 +198,13 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
     void window.api
       .getSettings()
       .then((s) => {
-        const st = s as { agentModel?: string; agentMaxSteps?: number; agentGoal?: string }
+        const st = s as { agentModel?: string; agentMaxSteps?: number; agentGoal?: string; thinkingLevel?: 'default' | 'off' | 'low' | 'medium' | 'high'; model?: string; profiles?: Array<{ models: string[]; modelCaps?: Record<string, { reasoningLevels: string[] }> }> }
         if (st.agentModel) setAgentModel(st.agentModel)
-        if (st.agentMaxSteps) setEffort(st.agentMaxSteps)
+        if (st.thinkingLevel && st.thinkingLevel !== 'off') setThinking(st.thinkingLevel)
+        // 所选模型自带的推理等级档（如 gpt-5: low/high/max）——有则 pill 直接展示这些词
+        const cur = st.agentModel || st.model || ''
+        const pf = (st.profiles ?? []).find((x) => x.models.includes(cur))
+        setLevels(pf?.modelCaps?.[cur]?.reasoningLevels ?? [])
         if (st.agentGoal) setGoalLong(st.agentGoal)
       })
       .catch(() => {})
@@ -325,14 +331,14 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
       return true
     }
     if (name === 'deep') {
-      const n = DEEP_ALIAS[(args || '').toLowerCase()]
-      if (!n) {
-        flash('用法：/deep low|mid|high|max（8/16/24/48 步）')
+      const lv = DEEP_ALIAS[(args || '').toLowerCase()]
+      if (!lv) {
+        flash('用法：/deep low|mid|high|default（模型推理强度）')
         return true
       }
-      setEffort(n)
-      void window.api.saveSettings({ agentMaxSteps: n })
-      flash(`执行深度：${args}（最多 ${n} 步）`)
+      setThinking(lv)
+      void window.api.saveSettings({ thinkingLevel: lv })
+      flash(`推理强度：${lv}（模型思考等级，工具步数在 设置→智能体）`)
       setGoal('')
       return true
     }
@@ -950,32 +956,49 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 )}
               </div>
               <div className="wb-pop-wrap">
-                <button className={`wb-pill ${pop === 'effort' ? 'on' : ''}`} title="执行深度：智能体最多工具调用步数" onClick={() => setPop(pop === 'effort' ? '' : 'effort')}>
-                  {<Icon.Target />}
-                  {EFFORTS.find((x) => x.steps === effort)?.label ?? `${effort} 步`}
+                <button className={`wb-pill ${pop === 'effort' ? 'on' : ''}`} title="推理强度：模型的思考等级（工具步数上限在 设置→智能体）" onClick={() => setPop(pop === 'effort' ? '' : 'effort')}>
+                  {<Icon.Sparkle />}
+                  推理 {THINKINGS.find((x) => x.value === thinking)?.label ?? '默认'}
                   <span className="wb-pill-caret">▾</span>
                 </button>
                 {pop === 'effort' && (
                   <>
                     <div className="wb-pop-mask" onClick={() => setPop('')} />
                     <div className="wb-pop wb-pop-up">
-                      {EFFORTS.map((ef) => (
-                        <button
-                          key={ef.steps}
-                          className="wb-pop-item"
-                          onClick={() => {
-                            setEffort(ef.steps)
-                            void window.api.saveSettings({ agentMaxSteps: ef.steps })
-                            setPop('')
-                          }}
-                        >
-                          <b>
-                            {effort === ef.steps ? '✓ ' : ''}
-                            {ef.label}
-                          </b>
-                          <span>最多 {ef.steps} 步工具调用</span>
-                        </button>
-                      ))}
+                      <button
+                        className="wb-pop-item"
+                        onClick={() => {
+                          setThinking('default')
+                          void window.api.saveSettings({ thinkingLevel: 'default' })
+                          setPop('')
+                        }}
+                      >
+                        <b>{thinking === 'default' ? '✓ ' : ''}默认</b>
+                        <span>交由模型自行决定</span>
+                      </button>
+                      {(levels.length > 0
+                        ? levels.map((lv, li) => ({ key: lv, label: lv, frac: levels.length === 1 ? 0.75 : li / (levels.length - 1), native: true }))
+                        : THINKINGS.filter((t) => t.value !== 'default').map((t) => ({ key: t.value, label: t.label, frac: t.value === 'low' ? 0.25 : t.value === 'medium' ? 0.5 : 0.75, native: false }))
+                      ).map((opt) => {
+                        const mapped = opt.native ? (opt.frac <= 0.34 ? 'low' : opt.frac <= 0.67 ? 'medium' : 'high') : (opt.key as 'low' | 'medium' | 'high')
+                        return (
+                          <button
+                            key={opt.key}
+                            className="wb-pop-item"
+                            onClick={() => {
+                              setThinking(mapped)
+                              void window.api.saveSettings({ thinkingLevel: mapped })
+                              setPop('')
+                            }}
+                          >
+                            <b>
+                              {thinking === mapped ? '✓ ' : ''}
+                              {opt.label}
+                            </b>
+                            <span>{opt.native ? '模型自带推理档位' : '思考强度 ' + opt.label}</span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </>
                 )}

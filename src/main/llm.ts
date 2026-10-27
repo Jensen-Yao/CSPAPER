@@ -261,3 +261,18 @@ export function ragMessages(
     { role: 'user', content: `【检索到的文献片段】\n${ctx}\n\n【问题】\n${question}` }
   ]
 }
+
+
+// ---------- 上游模型列表（v0.16.2）：GET /models 拉取可用模型名 ----------
+export async function fetchModelList(apiBase: string, apiKey: string): Promise<string[]> {
+  const base = apiBase.replace(/\/$/, '')
+  const url = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`
+  const resp = await fetch(url, {
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    signal: AbortSignal.timeout(15000)
+  })
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}——检查 API Base 与 Key`)
+  const j = (await resp.json()) as { data?: Array<{ id?: string }> }
+  const ids = (j.data ?? []).map((m) => m.id).filter((x): x is string => !!x)
+  return ids.sort()
+}
