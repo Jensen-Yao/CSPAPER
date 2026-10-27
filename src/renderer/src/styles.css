@@ -2294,3 +2294,19 @@ button:disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
 }
 .pd-edit-input:hover { border-color: var(--border); }
 .pd-edit-input:focus { border-color: var(--accent); background: var(--bg); border-style: solid; }
+
+/* ---------- v0.17.3 窄屏防遮挡（≤1300/1100 两档） ---------- */
+/* 长标题永不撑爆工具栏：可缩 + 省略 */
+.viewer-toolbar .slug { min-width: 0; flex-shrink: 1; overflow: hidden; }
+.viewer-toolbar .slug b, .viewer-toolbar .slug span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1300px) {
+  .tb-title .tb-title-name { display: none; }          /* 顶栏中间 CSPAPER 字标让位 */
+  .statusbar .chip.ellipsis { display: none; }           /* 索引状态条窄屏隐藏 */
+}
+@media (max-width: 1100px) {
+  .tb-title .seal { display: none; }                     /* 印章也收起，只留快捷图标 */
+  .viewer-toolbar .ft-btn { padding: 3px 6px; font-size: 11px; }
+  .statusbar .chip:nth-child(2) { display: none; }       /* 模型 chip 让位服务状态 */
+  .viewer-toolbar { flex-wrap: wrap; row-gap: 4px; }     /* 工具栏允许换行而非重叠 */
+  .side-tab { font-size: 11.5px; letter-spacing: 0; }    /* 右侧栏 tab 收紧 */
+}
