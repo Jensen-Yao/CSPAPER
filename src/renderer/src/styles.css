@@ -366,6 +366,8 @@ button { font-family: inherit; }
 html[data-theme='dark'] .page-wrap { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 2px 12px rgba(0, 0, 0, 0.55); }
 .page-wrap canvas { display: block; }
 .hl-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+/* 高亮组自身可点（编辑条入口）：层容器 none 放行文本选择，组内恢复接收 */
+.hl-layer .hl-group { pointer-events: auto; cursor: pointer; }
 .hl-group { position: absolute; inset: 0; }
 .hl { position: absolute; background: var(--hl); border-radius: 2px; mix-blend-mode: multiply; pointer-events: auto; cursor: pointer; }
 .hl-group:hover .hl { outline: 1.5px solid var(--warn); }

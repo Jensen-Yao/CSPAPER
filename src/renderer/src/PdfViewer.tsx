@@ -1071,10 +1071,18 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, onAddSticky
           <div
             key={h.id}
             className="hl-group"
-            title={`${h.text.slice(0, 80)}\n（点击删除高亮）`}
+            title={`${h.text.slice(0, 80)}${h.comment ? `\n备注：${h.comment.slice(0, 60)}` : ''}\n（点击编辑）`}
             onClick={(e) => {
               e.stopPropagation()
-              onDeleteHl(h.id)
+              const host = (e.currentTarget.closest('.page-wrap') as HTMLElement | null) ?? e.currentTarget.parentElement
+              const hr = host?.getBoundingClientRect()
+              setEdit({
+                id: h.id,
+                cx: (hr ? e.clientX - hr.left : e.nativeEvent.offsetX) + 10,
+                cy: (hr ? e.clientY - hr.top : e.nativeEvent.offsetY) - 46,
+                color: h.color ?? 'yellow',
+                comment: h.comment ?? ''
+              })
             }}
           >
             {h.rects.map((r, i) => (
