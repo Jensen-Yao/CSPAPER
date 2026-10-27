@@ -589,6 +589,27 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 </button>
               )}
             </div>
+            {(() => {
+              const arts = task.events.filter((e) => e.kind === 'artifact' && e.artifact)
+              const seen = new Set<string>()
+              const uniq = arts.filter((e) => {
+                const k = `${e.artifact!.kind}:${e.artifact!.paperId ?? e.artifact!.tableId ?? e.artifact!.slug}`
+                if (seen.has(k)) return false
+                seen.add(k)
+                return true
+              })
+              if (uniq.length === 0) return null
+              return (
+                <div className="wb-arts">
+                  <span className="wb-arts-label">产物 {uniq.length}</span>
+                  {uniq.map((e, i) => (
+                    <button key={i} className="wb-chip on" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => e.artifact && openArtifact(e.artifact)}>
+                      {e.artifact!.kind === 'note' ? '笔记' : e.artifact!.kind === 'table' ? '对比表' : e.artifact!.kind === 'synthesis' ? '综述' : e.artifact!.kind === 'paper' ? '文献' : '产物'} · {e.artifact!.title.slice(0, 22)}
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
             <div
               className="wb-scroll"
               ref={scrollRef}

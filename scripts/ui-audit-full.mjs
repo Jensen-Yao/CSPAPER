@@ -57,6 +57,16 @@ try {
   await wait(5000); await shot('f12-reader')
   // Work
   await clickText('.top-switch button', 'Work'); await wait(1800); await shot('f13-work')
-  console.log('FULL-SHOT-DONE')
+  // 深色主题轮：核心屏重截
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
+  await wait(600)
+  await shot('d01-home')
+  await page.locator('.pcard').first().click().catch(() => {})
+  await wait(1200); await shot('d02-detail')
+  await page.evaluate(() => { const el = [...document.querySelectorAll('.tb-q')].find((b) => (b.getAttribute('title') || '').includes('纵览')); el?.click() })
+  await wait(1500); await shot('d06-overview')
+  await clickText('.ov-tab', '统计'); await wait(2000); await shot('d07-stats')
+  await clickText('.top-switch button', 'Work'); await wait(1500); await shot('d13-work')
+  console.log('DARK-ROUND-DONE')
 } catch (e) { console.log('ERR', String(e).slice(0, 200)) }
 finally { try { spawn('taskkill', ['/F', '/PID', String(electron.pid), '/T']) } catch {}; setTimeout(() => process.exit(0), 400) }
