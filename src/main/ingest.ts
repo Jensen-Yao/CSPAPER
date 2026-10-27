@@ -269,6 +269,7 @@ export interface RetrievedChunk {
 // 全库模式分两层召回：段落块负责精确定位（引用带页码与原文），
 // 整篇级（每篇最优块余弦 + 标题/作者 BM25）保证"这篇论文相关"就一定出现在来源里——
 // 否则一篇强相关论文可能因为没有单块挤进前列而永远检索不到
+const hybridCache: { rows: Array<{ id: number; paper_id: number; page: number; vec: Buffer }> | null; maxId: number } = { rows: null, maxId: -1 }
 export async function hybridSearch(query: string, scopePaperId?: number, topK = 12, category?: string): Promise<RetrievedChunk[]> {
   const db = getDb()
   let papers = db.prepare('SELECT id, slug, title FROM papers').all() as Array<{ id: number; slug: string; title: string }>
@@ -284,12 +285,22 @@ export async function hybridSearch(query: string, scopePaperId?: number, topK = 
   // 向量召回
   const { vectors } = await embed([query], true)
   const qv = vectors[0]
-  const rows = db
-    .prepare(
-      `SELECT c.id, c.paper_id, c.page, c.vec FROM chunks c
-       WHERE (? IS NULL OR c.paper_id IN (SELECT id FROM papers WHERE category=?))`
-    )
-    .all(category ?? null, category ?? '') as Array<{ id: number; paper_id: number; page: number; vec: Buffer }>
+  // 进程内向量缓存：每次检索全量拉 vec BLOB + 同步点积会阻塞主进程数百 ms；
+  // 缓存按 (最大 chunk id, 维度) 失效——新块写入（id 递增）或换 embed 供应商（维度变）自动重载
+  const maxId = (db.prepare('SELECT MAX(id) m FROM chunks').get() as { m: number | null }).m ?? 0
+  const catScope: Record<number, true> = {}
+  if (category) {
+    for (const r of db.prepare('SELECT id FROM papers WHERE category=?').all(category) as Array<{ id: number }>) catScope[r.id] = true
+  }
+  if (!hybridCache.rows || hybridCache.maxId !== maxId || (hybridCache.rows[0] && hybridCache.rows[0].vec.byteLength / 4 !== qv.length)) {
+    hybridCache.rows = db
+      .prepare(`SELECT c.id, c.paper_id, c.page, c.vec FROM chunks`)
+      .all() as Array<{ id: number; paper_id: number; page: number; vec: Buffer }>
+    hybridCache.maxId = maxId
+  }
+  const rows = category
+    ? hybridCache.rows.filter((r) => r.paper_id in catScope)
+    : hybridCache.rows
   const scored: Array<{ id: number; s: number }> = []
   // 每篇论文的最强块：整篇级相关度 = max(块余弦)（在全部块上统计，不受 top-60 截断影响）
   const bestByPaper = new Map<number, { chunkId: number; max: number }>()

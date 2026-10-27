@@ -493,6 +493,102 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   ipcMain.on('index:start', () => {
     if (!isIndexRunning()) void buildIndex(send).catch((e) => send('index:error', String(e)))
   })
+  // 元数据编辑（v0.15.2：卷/期/页/出版社/语言此前只活在 csl 侧车，不可编辑不可检索）
+  ipcMain.handle('papers:update-meta', (_e, id: number, patch: Partial<Record<'title' | 'authors' | 'year' | 'venue' | 'volume' | 'issue' | 'pages' | 'publisher' | 'doi' | 'language', string | number | null>>) => {
+    const db = dbmod.getDb()
+    const sets: string[] = []
+    const vals: unknown[] = []
+    for (const [k, v] of Object.entries(patch)) {
+      sets.push(`${k}=?`)
+      vals.push(v)
+    }
+    if (!sets.length) return false
+    vals.push(id)
+    db.prepare(`UPDATE papers SET ${sets.join(', ')} WHERE id=?`).run(...vals)
+    return true
+  })
+  // 保存的搜索（迁出 localStorage，随库迁移）
+  ipcMain.handle('searches:list', () =>
+    (dbmod.getDb().prepare('SELECT id, name, conditions FROM saved_searches ORDER BY id DESC').all() as Array<{ id: number; name: string; conditions: string }>).map((r) => ({ id: r.id, name: r.name, cond: JSON.parse(r.conditions) }))
+  )
+  ipcMain.handle('searches:save', (_e, name: string, cond: unknown) => {
+    dbmod.getDb().prepare('INSERT INTO saved_searches(name, conditions) VALUES(?,?)').run(name, JSON.stringify(cond))
+    return true
+  })
+  ipcMain.handle('searches:remove', (_e, id: number) => {
+    dbmod.getDb().prepare('DELETE FROM saved_searches WHERE id=?').run(id)
+    return true
+  })
+  // 多分类（collections 树 + 挂接）
+  ipcMain.handle('collections:list', () =>
+    dbmod.getDb().prepare('SELECT c.id, c.name, c.parent_id, COUNT(pc.paper_id) n FROM collections c LEFT JOIN paper_collections pc ON pc.collection_id=c.id GROUP BY c.id ORDER BY c.name').all()
+  )
+  ipcMain.handle('collections:create', (_e, name: string, parentId?: number) => {
+    const r = dbmod.getDb().prepare('INSERT INTO collections(name, parent_id) VALUES(?,?)').run(name, parentId ?? null)
+    return Number(r.lastInsertRowid)
+  })
+  ipcMain.handle('collections:remove', (_e, id: number) => {
+    dbmod.getDb().prepare('DELETE FROM collections WHERE id=?').run(id)
+    return true
+  })
+  ipcMain.handle('collections:toggle-paper', (_e, paperId: number, collectionId: number, on: boolean) => {
+    const db = dbmod.getDb()
+    if (on) db.prepare('INSERT OR IGNORE INTO paper_collections(paper_id, collection_id) VALUES(?,?)').run(paperId, collectionId)
+    else db.prepare('DELETE FROM paper_collections WHERE paper_id=? AND collection_id=?').run(paperId, collectionId)
+    return true
+  })
+  ipcMain.handle('collections:papers', (_e, collectionId: number) =>
+    (dbmod.getDb().prepare('SELECT paper_id FROM paper_collections WHERE collection_id=?').all(collectionId) as Array<{ paper_id: number }>).map((r) => r.paper_id)
+  )
+  // 重复条目检测（同 DOI 或同规范化标题）+ 一键合并
+  ipcMain.handle('papers:duplicates', () => {
+    const db = dbmod.getDb()
+    const norm = 'lower(replace(replace(replace(title, " ", ""), "　", ""), ":", ""))'
+    const groups: Array<Array<{ id: number; title: string; year: number | null; added_at: string }>> = []
+    const seen = new Set<number>()
+    const rows = db.prepare(`SELECT id, title, year, added_at, doi FROM papers WHERE deleted_at IS NULL`).all() as Array<{ id: number; title: string; year: number | null; added_at: string; doi: string | null }>
+    const byKey = new Map<string, typeof rows>()
+    for (const r of rows) {
+      const key = r.doi ? `doi:${r.doi.toLowerCase()}` : `t:${r.title.toLowerCase().replace(/[\s　:：]/g, '')}`
+      const arr = byKey.get(key) ?? []
+      arr.push(r)
+      byKey.set(key, arr)
+    }
+    for (const [, arr] of byKey) {
+      if (arr.length > 1) {
+        groups.push(arr)
+        for (const r of arr) seen.add(r.id)
+      }
+    }
+    return groups
+  })
+  ipcMain.handle('papers:merge', (_e, keepId: number, dropIds: number[]) => {
+    const db = dbmod.getDb()
+    const tx = db.transaction(() => {
+      for (const drop of dropIds) {
+        // 标签并集 + 高亮/关联/分类挂接迁移到保留行
+        db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id, tag_id) SELECT ?, tag_id FROM paper_tags WHERE paper_id=?').run(keepId, drop)
+        db.prepare('UPDATE highlights SET paper_id=? WHERE paper_id=?').run(keepId, drop)
+        db.prepare('UPDATE paper_collections SET paper_id=? WHERE paper_id=?').run(keepId, drop)
+        db.prepare('DELETE FROM papers WHERE id=?').run(drop)
+      }
+    })
+    tx()
+    return true
+  })
+  // 回收站（软删除）
+  ipcMain.handle('papers:trash', (_e, id: number) => {
+    dbmod.getDb().prepare("UPDATE papers SET deleted_at=datetime('now','localtime') WHERE id=?").run(id)
+    return true
+  })
+  ipcMain.handle('papers:restore', (_e, id: number) => {
+    dbmod.getDb().prepare('UPDATE papers SET deleted_at=NULL WHERE id=?').run(id)
+    return true
+  })
+  ipcMain.handle('papers:trashed', () =>
+    dbmod.getDb().prepare("SELECT id, title, deleted_at FROM papers WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").all()
+  )
+
   // 条目关联（v0.13）
   ipcMain.handle('papers:related-list', (_e, id: number) => listRelated(id))
   ipcMain.handle('papers:related-set', (_e, a: number, b: number) => {

@@ -108,6 +108,19 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
 
   // ---------- 高级检索（v0.9，对标 Zotero 高级搜索，可保存为智能搜索） ----------
   const [nameEdit, setNameEdit] = useState<string | null>(null)
+  // 重复条目检测（v0.15.2：同 DOI/同标题聚类 + 保留一篇合并）
+  const [dupOpen, setDupOpen] = useState(false)
+  const [dupGroups, setDupGroups] = useState<Array<Array<{ id: number; title: string; year: number | null; added_at: string; doi: string | null }>>>([])
+  const openDup = (): void => {
+    setDupOpen(true)
+    void window.api.papersDuplicates().then(setDupGroups).catch(() => setDupGroups([]))
+  }
+  const mergeGroup = (keepId: number, dropIds: number[]): void => {
+    void window.api.papersMerge(keepId, dropIds).then(() => {
+      setDupGroups((gs) => gs.filter((g) => !g.some((x) => x.id === keepId)))
+      onRefresh()
+    })
+  }
   interface AdvCond {
     title: string
     authors: string
@@ -115,30 +128,49 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
     yearTo: string
     status: string
     category: string
+    tag: string
+    doi: string
   }
-  const EMPTY_ADV: AdvCond = { title: '', authors: '', yearFrom: '', yearTo: '', status: '', category: '' }
+  const EMPTY_ADV: AdvCond = { title: '', authors: '', yearFrom: '', yearTo: '', status: '', category: '', tag: '', doi: '' }
   const [advOpen, setAdvOpen] = useState(false)
   const [adv, setAdv] = useState<AdvCond>(EMPTY_ADV)
-  const [savedSearches, setSavedSearches] = useState<Array<{ name: string; cond: AdvCond }>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ov.savedSearches') ?? '[]')
-    } catch {
-      return []
-    }
-  })
-  const persistSaved = (list: Array<{ name: string; cond: AdvCond }>): void => {
+  // 保存的搜索迁入数据库（随库迁移；首启自动把 localStorage 旧数据搬过去）
+  const [savedSearches, setSavedSearches] = useState<Array<{ id?: number; name: string; cond: AdvCond }>>([])
+  useEffect(() => {
+    void (async () => {
+      let rows: Array<{ id?: number; name: string; cond: AdvCond }> = []
+      try {
+        rows = (await window.api.searchesList()).map((r) => ({ id: r.id, name: r.name, cond: { ...EMPTY_ADV, ...r.cond } }))
+      } catch { /* 库不可用时空 */ }
+      if (rows.length === 0) {
+        try {
+          const legacy = JSON.parse(localStorage.getItem('ov.savedSearches') ?? '[]') as Array<{ name: string; cond: AdvCond }>
+          for (const l of legacy) await window.api.searchesSave(l.name, { ...EMPTY_ADV, ...l.cond })
+          localStorage.removeItem('ov.savedSearches')
+          rows = (await window.api.searchesList()).map((r) => ({ id: r.id, name: r.name, cond: { ...EMPTY_ADV, ...r.cond } }))
+        } catch { /* 迁移失败忽略 */ }
+      }
+      setSavedSearches(rows)
+    })()
+  }, [])
+  const persistSaved = (list: Array<{ id?: number; name: string; cond: AdvCond }>): void => {
     setSavedSearches(list)
-    try {
-      localStorage.setItem('ov.savedSearches', JSON.stringify(list))
-    } catch {
-      /* 忽略 */
-    }
   }
-  const advActive = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category)
+  const saveSearch = (name: string, cond: AdvCond): void => {
+    void window.api.searchesSave(name, cond).then(() =>
+      window.api.searchesList().then((rs) => setSavedSearches(rs.map((r) => ({ id: r.id, name: r.name, cond: { ...EMPTY_ADV, ...r.cond } }))))
+    )
+  }
+  const removeSearch = (name: string): void => {
+    const hit = savedSearches.find((x) => x.name === name)
+    if (hit?.id != null) void window.api.searchesRemove(hit.id)
+    setSavedSearches(savedSearches.filter((x) => x.name !== name))
+  }
+  const advActive = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category || adv.tag || adv.doi)
 
   const filtered = useMemo(() => {
     const cf = catFilter, sf = statusFilter, tf = effTag
-    const hasAdv = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category)
+    const hasAdv = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category || adv.tag || adv.doi)
     if (!cf && !sf && !tf && !hasAdv) return papers
     const yf = parseInt(adv.yearFrom, 10) || -Infinity
     const yt = parseInt(adv.yearTo, 10) || Infinity
@@ -154,6 +186,8 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
         if ((p.year ?? -Infinity) < yf || (p.year ?? Infinity) > yt) return false
         if (adv.status && p.status !== adv.status) return false
         if (adv.category && p.category !== adv.category) return false
+        if (adv.tag && !(p.tags ?? []).includes(adv.tag)) return false
+        if (adv.doi && !(p.doi ?? '').toLowerCase().includes(adv.doi.toLowerCase())) return false
       }
       return true
     })
@@ -252,6 +286,28 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
 
   return (
     <div className="ov-wrap">
+      {dupOpen && (
+        <div className="modal-mask" onMouseDown={() => setDupOpen(false)}>
+          <div className="modal modal-pad" style={{ width: 620 }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head"><h2>重复条目（{dupGroups.length} 组）</h2>
+              <button className="modal-x" onClick={() => setDupOpen(false)}>✕</button></div>
+            <div className="modal-scroll">
+              {dupGroups.length === 0 && <div className="ov-dim" style={{ padding: 20 }}>没有检测到重复条目（按 DOI 与规范化标题比对）。</div>}
+              {dupGroups.map((g, gi) => (
+                <div key={gi} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                  {g.map((r) => (
+                    <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, padding: '3px 0' }}>
+                      <span style={{ flex: 1, minWidth: 0 }} className="ellipsis">{r.title}</span>
+                      <span className="ov-dim">{r.year ?? ''} · {(r.added_at || '').slice(0, 10)}</span>
+                      <button className="cmp-mini" onClick={() => mergeGroup(r.id, g.filter((x) => x.id !== r.id).map((x) => x.id))}>保留此篇</button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="ov-tabs">
         <button className={`ov-tab ${tab === 'table' ? 'on' : ''}`} onClick={() => onTabChange('table')}>
           <Icon.Table size={13} /> 文献表格
@@ -309,6 +365,9 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             >
               {citedBusy ? '更新中…' : '更新被引'}
             </button>
+            <button className="btn ghost" title="检测重复条目（同 DOI / 同标题），保留一篇合并标签与高亮" onClick={openDup}>
+              查重
+            </button>
             {checked.size > 0 && (
               <>
                 <button className="btn ghost" title="导出所选文献为 BibTeX 文件" onClick={() => void window.api.exportBibtex([...checked])}>
@@ -336,6 +395,10 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                 <div className="ov-adv-row">
                   <input className="ov-adv-input" placeholder="标题包含…" value={adv.title} onChange={(e) => setAdv({ ...adv, title: e.target.value })} />
                   <input className="ov-adv-input" placeholder="作者包含…" value={adv.authors} onChange={(e) => setAdv({ ...adv, authors: e.target.value })} />
+                </div>
+                <div className="ov-adv-row">
+                  <input className="ov-adv-input" placeholder="标签包含…" value={adv.tag} onChange={(e) => setAdv({ ...adv, tag: e.target.value })} />
+                  <input className="ov-adv-input" placeholder="DOI 包含…" value={adv.doi} onChange={(e) => setAdv({ ...adv, doi: e.target.value })} />
                 </div>
                 <div className="ov-adv-row">
                   <input className="ov-adv-input" placeholder="年份从" value={adv.yearFrom} onChange={(e) => setAdv({ ...adv, yearFrom: e.target.value.replace(/\D/g, '') })} />
@@ -371,7 +434,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                       onChange={(e) => setNameEdit(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && nameEdit.trim()) {
-                          persistSaved([...savedSearches, { name: nameEdit.trim(), cond: adv }])
+                          saveSearch(nameEdit.trim(), adv)
                           setNameEdit(null)
                         }
                         if (e.key === 'Escape') setNameEdit(null)
@@ -399,7 +462,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                       >
                         {sv.name}
                       </button>
-                      <button className="ov-adv-del" title="删除" onClick={() => persistSaved(savedSearches.filter((x) => x.name !== sv.name))}>
+                      <button className="ov-adv-del" title="删除" onClick={() => removeSearch(sv.name)}>
                         ×
                       </button>
                     </span>

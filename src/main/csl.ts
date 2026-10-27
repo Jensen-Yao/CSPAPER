@@ -290,7 +290,11 @@ export async function formatCite(ids: number[], styleId: string): Promise<{ ok: 
     if (!dl.ok) return { ok: false, error: `样式「${styleId}」下载失败：${dl.error}` }
   }
   if (!engineStatus().downloaded) {
-    return { ok: false, error: 'CSL 样式需要可选引擎：请在 设置 → 引文样式 → 下载 CSL 引擎（外部组件，按需下载到本机）' }
+    // v0.15.2：引擎按需自动静默下载（一次性 ~250KB），用户不再需要理解"引擎"概念
+    const auto = await downloadEngine()
+    if (!auto.ok) {
+      return { ok: false, error: 'CSL 引擎自动下载失败（可到 设置 → 引文样式 手动下载）：' + (auto.error ?? '') }
+    }
   }
   try {
     return { ok: true, items: await cslEngineFormat(items, styleId), style: styleId }

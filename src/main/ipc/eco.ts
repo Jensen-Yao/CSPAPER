@@ -107,7 +107,7 @@ export function registerEcoIpc(ctx: IpcCtx): void {
 }
 
 // ---------- Zotero Web API 同步（v0.9） ----------
-import { apiStatus as zoteroApiStatus, verifyApi as zoteroVerifyApi, syncZotero } from '../zotero-api'
+import { apiStatus as zoteroApiStatus, verifyApi as zoteroVerifyApi, syncZotero, pushHighlightsToZotero } from '../zotero-api'
 
 export function registerZoteroApiIpc(ctx: IpcCtx): void {
   ipcMain.handle('zotero:api-status', () => zoteroApiStatus())
@@ -118,6 +118,8 @@ export function registerZoteroApiIpc(ctx: IpcCtx): void {
         mode,
         onProgress: (p) => ctx.send('zotero:progress', p)
       })
+  ipcMain.handle('zotero:push-highlights', (_e, paperId: number) => pushHighlightsToZotero(paperId))
+
       if (r.ok) ctx.send('zotero:sync-done', { ok: true, imported: r.imported, skipped: r.skipped, failed: r.failed, fetched: r.fetched })
       else ctx.send('zotero:sync-done', { ok: false, error: r.error })
     })()

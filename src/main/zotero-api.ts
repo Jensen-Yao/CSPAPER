@@ -73,6 +73,7 @@ interface ApiChild {
 }
 interface ApiItem {
   key: string
+  version?: number
   data: {
     itemType: string
     title?: string
@@ -131,6 +132,7 @@ export interface SyncResult {
   fetched: number
   imported: number
   skipped: number
+  updated?: number
   failed: number
   version: number | null
 }
@@ -219,9 +221,30 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       const dir = upsertDir(catName)
       const existing = fs.existsSync(dir) ? fs.readdirSync(dir).find((d) => eqKey(d, it.key))
         : (fs.existsSync(libPapers) ? findDupAcrossDirs(libPapers, it.key) : undefined)
+      let isUpdate = false
       if (existing) {
-        res.skipped++
-        continue
+        // upsert：远端版本更新则重写 md（此前永远 skip，Zotero 改了卷期页本地不变）
+        try {
+          const mdFile = fs.readdirSync(existing).find((f) => f.toLowerCase().endsWith('.md'))
+          if (mdFile) {
+            const raw = fs.readFileSync(path.join(existing, mdFile), 'utf8')
+            const mVer = raw.match(/^zotero-version:\s*(\d+)/m)
+            const localVer = mVer ? parseInt(mVer[1], 10) : 0
+            if ((it.version ?? 0) > localVer) {
+              isUpdate = true
+              res.updated = (res.updated ?? 0) + 1
+            } else {
+              res.skipped++
+              continue
+            }
+          } else {
+            res.skipped++
+            continue
+          }
+        } catch {
+          res.skipped++
+          continue
+        }
       }
       const year = parseInt((it.data.date ?? '').match(/(19|20)\d{2}/)?.[0] ?? '', 10) || null
       const venue = it.data.publicationTitle || it.data.proceedingsTitle || it.data.bookTitle || it.data.publisher || ''
@@ -265,12 +288,15 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
 
       // 3b) 目录 + slug + 去重后落地
       const slug = `${year ?? 'nd'}-${it.key.toLowerCase()}`
-      const dest = path.join(dir, slug)
+      const dest = existing ?? path.join(dir, slug)
       fs.mkdirSync(dest, { recursive: true })
 
-      // PDF：stored 附件下载；拿不到就题录占位
+      // PDF：stored 附件下载；拿不到就题录占位（更新时保留本地已有 PDF，不重下）
       let hasPdf = false
-      if (downloadPdf && pdfKey) {
+      if (isUpdate && fs.existsSync(path.join(dest, 'paper.pdf'))) {
+        hasPdf = true
+      }
+      if (!isUpdate && downloadPdf && pdfKey) {
         try {
           const u = `${API}/users/${encodeURIComponent(userId)}/items/${pdfKey}/file`
           const resp = await fetch(u, { headers: { 'Zotero-API-Version': API_VERSION, Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(60000) })
@@ -299,6 +325,8 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       let md =
         `---\ntitle: "${q(title)}"\nauthors: "${q(authors)}"\nyear: ${year ?? 'null'}\nvenue: "${q(venue)}"\nzotero: "${it.key}"\n` +
         (doi ? `doi: "${q(doi)}"\n` : '') +
+        `zotero-version: ${it.version ?? 0}
+` +
         `${tagLine}\nstatus: unread\n---\n\n# ${title}\n\n` +
         `- **作者:** ${authors || '（作者见原文）'}\n- **发表:** ${venue || `${year ?? ''}（待核实）`}\n` +
         (doi ? `- **DOI:** ${doi}\n` : '') +
@@ -345,4 +373,56 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
 
 export function zoteroDataDirHint(): string {
   return path.join(app.getPath('appData'), 'Zotero')
+}
+
+
+// ---------- 标注写回 Zotero（v0.15.2：本地高亮 → 远端 annotation 子条目） ----------
+// 找到论文对应的 Zotero 条目 key（目录名 -key 后缀约定），把未写回过的高亮逐条 POST。
+export async function pushHighlightsToZotero(paperId: number): Promise<{ pushed: number; itemKey: string | null }> {
+  const db = (await import('./db')).getDb()
+  const s = (await import('./db')).getSettings()
+  const userId = s.zoteroUserId ?? ''
+  const apiKey = s.zoteroApiKey ?? ''
+  if (!userId || !apiKey) throw new Error('未配置 Zotero 用户 ID / API Key')
+  const row = db.prepare('SELECT path, slug FROM papers WHERE id=?').get(paperId) as { path: string; slug: string } | undefined
+  if (!row) throw new Error('论文不存在')
+  const key = row.slug.match(/-([a-z0-9]{8})$/i)?.[1]
+  if (!key) throw new Error('该文献不是 Zotero 同步来源（目录名无 -key 后缀），无法写回')
+  // 已写回标记：tag=csl 写在 highlights.tag 列（写回过的存 zotero:<annotationKey>）
+  const hls = db.prepare("SELECT id, page, text, color FROM highlights WHERE paper_id=? AND (tag IS NULL OR tag='' OR tag NOT LIKE 'zotero:%') ORDER BY id").all(paperId) as Array<{
+    id: number
+    page: number | null
+    text: string
+    color: string | null
+  }>
+  let pushed = 0
+  const mark = db.prepare('UPDATE highlights SET tag=? WHERE id=?')
+  for (const h of hls) {
+    const body = {
+      itemType: 'annotation',
+      parentItem: key,
+      annotationType: 'highlight',
+      annotationText: h.text.slice(0, 2000),
+      annotationColor: h.color === 'blue' ? '#4285f4' : h.color === 'green' ? '#46c882' : h.color === 'red' ? '#eb5050' : '#ffd200',
+      annotationPageLabel: h.page != null ? String(h.page) : '',
+      tags: []
+    }
+    try {
+      const resp = await fetch(`${API}/users/${encodeURIComponent(userId)}/items`, {
+        method: 'POST',
+        headers: { 'Zotero-API-Version': API_VERSION, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([body]),
+        signal: AbortSignal.timeout(30_000)
+      })
+      if (!resp.ok) continue
+      const j = (await resp.json()) as { success?: Record<string, string>; successKeys?: string[] }
+      const newKey = j.success?.['0'] ?? j.successKeys?.[0]
+      mark.run(newKey ? `zotero:${newKey}` : 'zotero:sent', h.id)
+      pushed++
+      await new Promise((r) => setTimeout(r, 200)) // 限速
+    } catch {
+      break // 网络问题中止剩余（下次续传）
+    }
+  }
+  return { pushed, itemKey: key }
 }

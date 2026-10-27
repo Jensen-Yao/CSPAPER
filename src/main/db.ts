@@ -146,6 +146,54 @@ export function initDb(): void {
   if (!hcols.includes('tag')) db.exec("ALTER TABLE highlights ADD COLUMN tag TEXT DEFAULT ''")
   // 迁移：papers 增加 pvec（整篇级向量：标题+作者+首页）与 opened_at（最近打开时间）
   const cols = (db.prepare('PRAGMA table_info(papers)').all() as Array<{ name: string }>).map((c) => c.name)
+  // v0.15.2：结构化元数据（卷/期/页/出版社/语言 + 结构化作者）与软删除
+  for (const col of [
+    'volume TEXT', 'issue TEXT', 'pages TEXT', 'publisher TEXT', 'language TEXT',
+    'creators TEXT',            // [{family,given}] JSON，兼容旧 authors 字符串
+    'deleted_at TEXT'           // 软删除（回收站）
+  ]) {
+    if (!cols.includes(col.split(' ')[0])) db.exec(`ALTER TABLE papers ADD COLUMN ${col}`)
+  }
+  // 一次性回填：从 papers.csl JSON 侧车提取卷期页出版社到独立列
+  try {
+    const needBackfill = (db.prepare("SELECT COUNT(*) c FROM papers WHERE (volume IS NULL OR volume='') AND csl IS NOT NULL").get() as { c: number }).c
+    if (needBackfill > 0) {
+      const rows = db.prepare('SELECT id, csl FROM papers WHERE csl IS NOT NULL').all() as Array<{ id: number; csl: string }>
+      const upd = db.prepare('UPDATE papers SET volume=?, issue=?, pages=?, publisher=?, language=? WHERE id=?')
+      for (const r of rows) {
+        try {
+          const j = JSON.parse(r.csl) as Record<string, unknown>
+          const g = (k: string): string => {
+            const v = j[k]
+            return v == null ? '' : String(v)
+          }
+          if (g('volume') || g('issue') || g('page') || g('publisher') || g('language')) {
+            upd.run(g('volume'), g('issue'), g('page'), g('publisher'), g('language'), r.id)
+          }
+        } catch { /* csl 损坏跳过 */ }
+      }
+    }
+  } catch { /* 回填失败不阻断启动 */ }
+  // 多分类（逻辑归属；物理目录仍用 category 单值）
+  db.exec(`CREATE TABLE IF NOT EXISTS collections(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    parent_id INTEGER REFERENCES collections(id) ON DELETE CASCADE,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`)
+  db.exec(`CREATE TABLE IF NOT EXISTS paper_collections(
+    paper_id INTEGER NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    PRIMARY KEY(paper_id, collection_id)
+  )`)
+  // 保存的搜索（迁出 localStorage）
+  db.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    conditions TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`)
+
   if (!cols.includes('pvec')) db.exec('ALTER TABLE papers ADD COLUMN pvec BLOB')
   if (!cols.includes('opened_at')) db.exec('ALTER TABLE papers ADD COLUMN opened_at TEXT')
   if (!cols.includes('summary')) db.exec('ALTER TABLE papers ADD COLUMN summary TEXT')
@@ -338,6 +386,25 @@ export function scanLibrary(libPath: string): ScanResult {
       }
     }
   }
+  // 门控前移：md 的全量同步读发生在 upsertOne 内部门控之前，每 60s 聚焦扫描都白读全库 md；
+  // 调用点先做四元组快检，未变直接跳过 parseNote
+  const unchanged = (pdf: string, mdPath: string): boolean => {
+    try {
+      const pstat = fs.statSync(pdf)
+      const prev = existing.get(norm(pdf))
+      if (!prev) return false
+      let mtMd = 0
+      let mdSize = 0
+      try {
+        const mstat = fs.statSync(mdPath)
+        mtMd = Math.round(mstat.mtimeMs)
+        mdSize = mstat.size
+      } catch { /* md 缺失视为 0 */ }
+      return prev.file_mtime === Math.round(pstat.mtimeMs) && prev.file_size === pstat.size && prev.md_mtime === mtMd && prev.md_size === mdSize
+    } catch {
+      return false
+    }
+  }
   const upsertOne = (params: Record<string, unknown>, pdf: string, mdPath: string, prevCat: string | undefined, fmTags: string): void => {
     try {
       let pstat: fs.Stats | null = null
@@ -398,6 +465,7 @@ export function scanLibrary(libPath: string): ScanResult {
       const pdf = path.join(root, f)
       if (!fs.statSync(pdf).isFile()) continue
       const slug = f.slice(0, -4)
+      if (unchanged(pdf, path.join(root, `${slug}.md`))) { res.total++; continue }
       const note = parseNote(path.join(root, `${slug}.md`))
       const year = parseInt(note.year || slug.slice(0, 4), 10) || null
       const dtitle = note.title || slug.replace(/^\d{4}-/, '').replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -430,6 +498,7 @@ export function scanLibrary(libPath: string): ScanResult {
           if (!any) continue
           pdf = path.join(d, any)
         }
+        if (unchanged(pdf, path.join(d, `${slug}.md`))) { res.total++; continue }
         const note = parseNote(path.join(d, `${slug}.md`))
         const year = parseInt(note.year || slug.slice(0, 4), 10) || null
         const dtitle = note.title || slug.replace(/^\d{4}-/, '').replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -480,7 +549,8 @@ export function scanLibrary(libPath: string): ScanResult {
 }
 
 export function listPapers(): Paper[] {
-  const rows = db.prepare('SELECT * FROM papers ORDER BY category, year, slug').all() as unknown as Paper[]
+  // 排除 pvec/csl 大字段（agent/渲染端只需要题录，全量 BLOB 每任务白读几十 MB）+ 过滤回收站
+  const rows = db.prepare("SELECT id, slug, title, authors, year, venue, category, path, status, n_pages, indexed, added_at, opened_at, summary, doi, abstract, item_type, last_page, read_seconds, cited_by, jcr, volume, issue, pages, publisher, language, deleted_at FROM papers WHERE deleted_at IS NULL ORDER BY category, year, slug").all() as unknown as Paper[]
   // 标签聚合：一次查出全部映射，内存归并（比每行子查询快一个量级）
   let byPaper = new Map<number, string[]>()
   try {

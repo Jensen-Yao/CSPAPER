@@ -162,6 +162,7 @@ export const WORD_TASKPANE_HTML = `<!doctype html>
     <option value="ieee">IEEE</option>
   </select>
   <button class="act primary" id="insCite">在光标处插入引用 [n]</button>
+  <button class="act ghost" id="refreshCite">刷新全部引文（重排编号）</button>
   <button class="act ghost" id="insRef">文末插入参考文献列表</button>
   <div id="msg"></div>
 </div>
@@ -211,31 +212,64 @@ async function citeText() {
   if (!data.ok) { msg.style.color = '#a12c2c'; msg.textContent = data.error || '生成失败'; return null; }
   return data.text;
 }
+// ---------- v0.15.2 域引文：ContentControl 包裹（tag=cspaper-cite，title 存 payload）----------
+// 插入后支持「刷新全部」：按文档顺序重排 [n] 编号、非数字样式重取格式化文本。
+async function citeItems() {
+  const ids = [...picked.keys()].join(',');
+  if (!ids) { msg.style.color = '#a12c2c'; msg.textContent = '先勾选文献'; return null; }
+  const style = document.getElementById('style')?.value || 'gbt7714-num';
+  const r = await fetch('/cite?ids=' + ids + '&style=' + encodeURIComponent(style));
+  const data = await r.json();
+  if (!data.ok || !data.items) { msg.style.color = '#a12c2c'; msg.textContent = data.error || '生成失败'; return null; }
+  return { style, ids: [...picked.keys()], items: data.items };
+}
 document.getElementById('insCite').onclick = async () => {
-  const ids = [...picked.keys()];
-  if (!ids.length) { msg.style.color = '#a12c2c'; msg.textContent = '先勾选一篇文献'; return; }
-  const text = await citeText();
-  if (!text) return;
-  const first = text.split('\\n')[0];
-  const num = (first.match(/^\\[(\\d+)\\]/) || [])[1] || '1';
+  const r = await citeItems();
+  if (!r) return;
   await Word.run(async ctx => {
-    ctx.document.getSelection().insertText('[' + num + ']', Word.InsertLocation.replace);
+    const sel = ctx.document.getSelection();
+    sel.insertText('[?]', Word.InsertLocation.replace);
+    const cc = sel.insertContentControl();
+    cc.tag = 'cspaper-cite';
+    cc.title = JSON.stringify({ ids: r.ids, style: r.style, t: r.items[0] });
     await ctx.sync();
   });
-  msg.style.color = '#1c7a2e'; msg.textContent = '✓ 已插入 [' + num + ']，记得在文末附参考文献列表';
+  await refreshAllCites();
+  msg.style.color = '#1c7a2e'; msg.textContent = '✓ 已插入域引文（可「刷新全部」重排编号/换样式）';
 };
-document.getElementById('insRef').onclick = async () => {
-  const text = await citeText();
-  if (!text) return;
+async function refreshAllCites() {
   await Word.run(async ctx => {
-    const body = ctx.document.body;
-    body.insertParagraph('参考文献', Word.InsertLocation.end).styleBuiltIn = 'Heading1';
-    for (const line of text.split('\\n')) {
-      body.insertParagraph(line, Word.InsertLocation.end);
+    const ccs = ctx.document.contentControls.getByTag('cspaper-cite');
+    ccs.load(['title']);
+    await ctx.sync();
+    const items = ccs.items;
+    for (let i = 0; i < items.length; i++) {
+      let meta = {};
+      try { meta = JSON.parse(items[i].title || '{}'); } catch (e) { /* 损坏 payload 降级 */ }
+      const numeric = !/apa|mla|harvard|chicago-ad/.test(String(meta.style || ''));
+      const txt = numeric ? '[' + (i + 1) + ']' : String(meta.t || '[?]').split('\n')[0].slice(0, 120);
+      items[i].insertText(txt, Word.InsertLocation.replace);
     }
     await ctx.sync();
   });
-  msg.style.color = '#1c7a2e'; msg.textContent = '✓ 参考文献列表已插入文末';
+}
+document.getElementById('insRef').onclick = async () => {
+  const r = await citeItems();
+  if (!r) return;
+  await Word.run(async ctx => {
+    const body = ctx.document.body;
+    body.insertParagraph('参考文献', Word.InsertLocation.end).styleBuiltIn = 'Heading1';
+    for (const line of r.items) {
+      body.insertParagraph(line, Word.InsertLocation.end);
+    }
+    await ctx.sync();
+    await refreshAllCites();
+  });
+  msg.style.color = '#1c7a2e'; msg.textContent = '✓ 参考文献列表已插入文末，编号已刷新';
+};
+document.getElementById('refreshCite').onclick = async () => {
+  await refreshAllCites();
+  msg.style.color = '#1c7a2e'; msg.textContent = '✓ 全部引文已按文档顺序重排编号';
 };
 Office.onReady(() => search());
 </script>

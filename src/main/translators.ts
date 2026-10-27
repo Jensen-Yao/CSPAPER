@@ -370,8 +370,11 @@ async function applyStep(step: TranslatorStep, ctx: ExecCtx): Promise<void> {
 // transform 沙箱：无 require/process/fetch，只有字段对象 t，200ms 超时熔断
 function runTransform(fields: Record<string, string>, code: string): Record<string, string> {
   try {
-    const sandbox: Record<string, unknown> = { t: { ...fields } }
+    // 加固：t 在 context 内部由 JSON 克隆构造——主 realm 对象原型链直通主进程 Function，
+    // 恶意社区脚本可借 t.constructor.constructor("return process") 逃逸拿完整权限
+    const sandbox: Record<string, unknown> = { __raw: JSON.stringify(fields) }
     vm.createContext(sandbox)
+    vm.runInContext('var t = JSON.parse(__raw); delete __raw;', sandbox, { timeout: 50 })
     const v = vm.runInContext(`(function(t){ "use strict"; ${code}\n })(t)`, sandbox, { timeout: 200 })
     if (v && typeof v === 'object') {
       const out: Record<string, string> = { ...fields }
