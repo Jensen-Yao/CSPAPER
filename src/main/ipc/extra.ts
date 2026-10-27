@@ -1,7 +1,7 @@
 // 扩展域 IPC：参考文献抓取/导入、OpenAlex 被引更新、统计概览、期刊影响因子查询/CSV 导入
 import { ipcMain } from 'electron'
 import { listRefs, importRef } from '../refs'
-import { updateCitations, venueLookup, importVenuesCsv } from '../openalex'
+import { updateCitations, venueLookup, importVenuesCsv, enrichMeta } from '../openalex'
 import { statsOverview, weeklyReport } from '../stats'
 
 export function registerExtraIpc(ctx: { send: (ev: string, p: unknown) => void }): void {
@@ -28,4 +28,5 @@ export function registerKnowledgeIpc(): void {
   ipcMain.handle('graph:topics', (_e, category?: string) => topicClusters(category || undefined))
   ipcMain.handle('stats:extra', () => ({ wordsByYear: wordsByYear(10), authorsTop: authorsTop(15), heatmap: readHeatmap() }))
   ipcMain.handle('stats:weekly', () => weeklyReport())
+  ipcMain.handle('papers:enrich-meta', (_e, limit?: number) => enrichMeta(limit ?? 50))
 }

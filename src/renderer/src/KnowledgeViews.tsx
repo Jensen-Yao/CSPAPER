@@ -1071,7 +1071,7 @@ function TopicGalaxyView({
                 width: c.r * 2,
                 height: c.r * 2,
                 borderColor: c.color,
-                background: withAlpha(c.color, dark ? 0.14 : 0.07)
+                background: withAlpha(c.color, dark ? 0.26 : 0.18)
               }}
               title={c.t.label}
               onClick={() => setSelLabel(selLabel === c.t.label ? null : c.t.label)}

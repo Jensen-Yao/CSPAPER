@@ -223,3 +223,39 @@ export async function importVenuesCsv(): Promise<{ imported: number }> {
   tx()
   return { imported }
 }
+
+
+// ---------- 元数据自动补全（v0.16）：有 DOI 缺卷期页的条目批量从 Crossref 回填 ----------
+export async function enrichMeta(limit = 50): Promise<{ updated: number; checked: number }> {
+  const db = getDb()
+  const rows = db
+    .prepare("SELECT id, doi FROM papers WHERE doi IS NOT NULL AND doi != '' AND (volume IS NULL OR volume = '') AND deleted_at IS NULL LIMIT ?")
+    .all(limit) as Array<{ id: number; doi: string }>
+  const upd = db.prepare('UPDATE papers SET volume=?, issue=?, pages=?, publisher=?, venue=CASE WHEN venue IS NULL OR venue=? THEN ? ELSE venue END WHERE id=?')
+  let updated = 0
+  for (const r of rows) {
+    try {
+      const resp = await fetch(`https://api.crossref.org/works/${encodeURIComponent(r.doi.trim())}`, {
+        headers: { 'User-Agent': 'CSPAPER/0.16 (mailto:lib@example.com)' },
+        signal: AbortSignal.timeout(15000)
+      })
+      if (!resp.ok) continue
+      const j = (await resp.json()) as { message?: Record<string, unknown> }
+      const m = j.message ?? {}
+      const g = (k: string): string => (m[k] == null ? '' : String(m[k]))
+      const vol = g('volume')
+      const iss = g('issue')
+      const pg = g('page')
+      const pub = typeof m.publisher === 'string' ? String(m.publisher) : ''
+      const cont = Array.isArray(m['container-title']) ? String((m['container-title'] as string[])[0] ?? '') : ''
+      if (vol || iss || pg || cont) {
+        upd.run(vol, iss, pg, pub, '', cont, r.id)
+        updated++
+      }
+      await new Promise((r2) => setTimeout(r2, 120)) // Crossref 礼貌限速
+    } catch {
+      /* 单条失败继续 */
+    }
+  }
+  return { updated, checked: rows.length }
+}

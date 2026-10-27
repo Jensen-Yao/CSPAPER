@@ -836,6 +836,19 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
               hls={hls.filter((h) => h.page === i + 1)}
               onDeleteHl={onDeleteHighlight}
               onEditHl={onEditHighlight}
+              onAddSticky={(page, x, y) => {
+                if (!active?.paper) return
+                const comment = window.prompt('便签内容（贴在页面此位置）：')
+                if (!comment?.trim()) return
+                void window.api
+                  .addHighlight(active.paper.id, page, [{ x: x - 0.015, y: y - 0.012, w: 0.03, h: 0.024 }], `📌 ${comment.trim().slice(0, 200)}`, 'yellow')
+                  .then(() => {
+                    void window.api
+                      .listHighlights(active.paper.id)
+                      .then((hs) => setHls(hs))
+                      .catch(() => {})
+                  })
+              }}
               registerRef={(el) => {
                 if (el) pageRefs.current.set(i + 1, el)
                 else pageRefs.current.delete(i + 1)
@@ -934,13 +947,14 @@ interface PageViewProps {
   hls: Highlight[]
   onDeleteHl: (id: number) => void
   onEditHl: (id: number, patch: { color?: string; comment?: string }) => void
+  onAddSticky?: (page: number, xPct: number, yPct: number) => void
   registerRef: (el: HTMLDivElement | null) => void
   onPageText: (n: number, text: string) => void
   // 该页 textLayer 渲染完成（首次/缩放重建后）
   onLayerReady?: (n: number) => void
 }
 
-function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, registerRef, onPageText, onLayerReady }: PageViewProps): JSX.Element {
+function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, onAddSticky, registerRef, onPageText, onLayerReady }: PageViewProps): JSX.Element {
   const [edit, setEdit] = useState<{ id: number; cx: number; cy: number; color: string; comment: string } | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1041,6 +1055,12 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, registerRef
     <div
       className="page-wrap"
       ref={(el) => { registerRef(el); (wrapRef as any).current = el }}
+      onDoubleClick={(e) => {
+        if (!onAddSticky || dim == null) return
+        if ((e.target as HTMLElement).closest('.hl-group, .textLayer')) return
+        const r = e.currentTarget.getBoundingClientRect()
+        onAddSticky(num, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height)
+      }}
       style={dim ? { width: Math.floor(dim.w * scale), height: Math.floor(dim.h * scale) } : undefined}
     >
       <canvas ref={canvasRef} style={dim ? { width: Math.floor(dim.w * scale), height: Math.floor(dim.h * scale) } : undefined} />

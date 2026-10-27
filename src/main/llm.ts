@@ -39,6 +39,12 @@ export interface LlmEndpoint {
 
 function friendlyFetchError(err: unknown, apiBase: string): Error {
   const code = (err as { cause?: { code?: string } })?.cause?.code ?? ''
+  const msg = String((err as Error)?.message ?? err)
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return new Error(`域名解析失败（${apiBase}）：API Base 地址可能拼写错误，到设置里核对`)
+  if (code === 'ECONNREFUSED') return new Error(`连接被拒绝：${apiBase} 服务未启动（本地模型先启动 Ollama/LM Studio）`)
+  if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || /timeout/i.test(msg)) return new Error('连接超时：网络不通或代理未放行该域名')
+  if (/401|invalid.*key|Unauthorized/i.test(msg)) return new Error('API Key 无效（401）：到设置里重新粘贴 Key（注意是否复制了空格/用了错误平台的 Key）')
+  if (/429|rate.*limit|Quota/i.test(msg)) return new Error('请求被限流或额度不足（429）：稍等重试，或到服务商控制台查看余额')
   return new Error(`无法连接 ${apiBase}${code ? `（${code}）` : ''}：请检查网络与 API Base 地址是否正确`)
 }
 

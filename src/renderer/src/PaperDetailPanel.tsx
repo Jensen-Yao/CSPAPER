@@ -73,6 +73,34 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     setOpenPersist(next)
   }
   const [sumBusy, setSumBusy] = useState(false)
+  // 集合挂接（v0.16 多分类）
+  const [colls, setColls] = useState<Array<{ id: number; name: string; parent_id: number | null; n: number }>>([])
+  const [myCollIds, setMyCollIds] = useState<Set<number>>(new Set())
+  useEffect(() => {
+    void window.api.collectionsList().then(setColls).catch(() => setColls([]))
+    setMyCollIds(new Set())
+    void window.api
+      .collectionsList()
+      .then(async (cs) => {
+        const mine = new Set<number>()
+        for (const c of cs) {
+          const ids = await window.api.collectionsPapers(c.id)
+          if (ids.includes(paper.id)) mine.add(c.id)
+        }
+        setMyCollIds(mine)
+      })
+      .catch(() => {})
+  }, [paper.id])
+  const toggleColl = (cid: number, on: boolean): void => {
+    void window.api.collectionsTogglePaper(paper.id, cid, on).then(() => {
+      setMyCollIds((prev) => {
+        const n = new Set(prev)
+        if (on) n.add(cid)
+        else n.delete(cid)
+        return n
+      })
+    })
+  }
   // 相关文献（manual 关联 + auto 语义建议，v0.13）
   const [related, setRelated] = useState<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>([])
   const [relBusy, setRelBusy] = useState(false)
@@ -383,6 +411,24 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               <Icon.Info size={14} />,
               '信息',
               <>
+                <div className="pd-colls">
+                  <span className="pd-flabel" style={{ minWidth: 32 }}>集合</span>
+                  {colls.length === 0 && <span className="pd-dim">暂无集合（左栏「集合」区可新建，一篇文献可挂多个）</span>}
+                  {colls.map((c) => {
+                    const on = myCollIds.has(c.id)
+                    return (
+                      <button
+                        key={c.id}
+                        className={`wb-chip ${on ? 'on' : ''}`}
+                        style={on ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+                        onClick={() => toggleColl(c.id, !on)}
+                        title={on ? '点击移出该集合' : '点击加入该集合'}
+                      >
+                        {c.name}
+                      </button>
+                    )
+                  })}
+                </div>
                 <div className="pd-tags">
                   {tags.length > 0 && (
                     <div className="pd-tags-chips">

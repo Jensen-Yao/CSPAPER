@@ -836,7 +836,8 @@ export default function App(): JSX.Element {
               resetKey={chatReset}
               fs={chatFs}
               onFs={changeFs}
-            />
+              onOpenSettings={() => setShowSettings(true)}
+          />
             {refView && (
               <>
                 <div

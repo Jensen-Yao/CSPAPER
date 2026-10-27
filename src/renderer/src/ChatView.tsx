@@ -22,6 +22,7 @@ interface Props {
   // 对话字号（问答/翻译/对话共用）
   fs: number
   onFs: (delta: number) => void
+  onOpenSettings?: () => void
 }
 
 // 全库对话主界面（Chat 模式）：hero 欢迎态 + 全屏 RAG 问答。
@@ -41,7 +42,8 @@ export default function ChatView({
   onJump,
   resetKey,
   fs,
-  onFs
+  onFs,
+  onOpenSettings
 }: Props): JSX.Element {
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
@@ -196,7 +198,26 @@ export default function ChatView({
 
   return (
     <div className="chat-view">
-      {msgs.length === 0 ? (
+      {msgs.length === 0 && models.length === 0 && onOpenSettings ? (
+        <div className="chat-hero">
+          <div className="chat-hero-title" style={{ fontFamily: 'var(--serif)', fontSize: 24, fontWeight: 600, letterSpacing: 2 }}>十分钟后你就用得上</div>
+          <div className="chat-hero-steps" style={{ display: 'flex', gap: 14, margin: '28px 0', flexWrap: 'wrap' }}>
+            {[
+              ['1', '配一次 Key', '设置 → 模型服务，选 Agnes 免费中转或智谱，粘贴 Key 即用'],
+              ['2', '拖入 PDF', '划词秒出中文翻译；选中文字点高亮，四色标注重点'],
+              ['3', '问它要答案', '「这篇的方法一句话讲清」——全文检索引用，答案带页码']
+            ].map(([n, t, d]) => (
+              <div key={n} style={{ width: 230, border: '1px solid var(--border)', borderRadius: 12, padding: '16px 16px 14px', textAlign: 'left', background: 'var(--bg)' }}>
+                <div style={{ display: 'inline-flex', width: 22, height: 22, borderRadius: 6, background: 'var(--accent)', color: '#f8f4ec', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{n}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{t}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>{d}</div>
+              </div>
+            ))}
+          </div>
+          <button className="btn" onClick={onOpenSettings}>去配置模型（1 分钟）</button>
+          <div style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 10 }}>不配 Key 也能用：阅读、划词翻译（免费通道）、高亮、笔记、引文</div>
+        </div>
+      ) : msgs.length === 0 ? (
         <div className="chat-hero-wrap">
           <div className="chat-hero">
             <div className="big">💬</div>

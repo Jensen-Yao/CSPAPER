@@ -187,6 +187,13 @@ export function initDb(): void {
     PRIMARY KEY(paper_id, collection_id)
   )`)
   // 保存的搜索（迁出 localStorage）
+  db.exec(`CREATE TABLE IF NOT EXISTS standalone_notes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body_md TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`)
   db.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

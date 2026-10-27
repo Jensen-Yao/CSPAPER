@@ -200,6 +200,28 @@ export default function LibraryPane({
   )
 
   const [view, setView] = useState<'recent' | 'cats'>('recent')
+  // v0.16：集合（多分类挂接）与回收站
+  const [colls, setColls] = useState<Array<{ id: number; name: string; parent_id: number | null; n: number }>>([])
+  const [selColl, setSelColl] = useState<number | null>(null)
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [trashed, setTrashed] = useState<Array<{ id: number; title: string; deleted_at: string }>>([])
+  const refreshColls = (): void => {
+    void window.api.collectionsList().then(setColls).catch(() => setColls([]))
+  }
+  const [collPapersCache, setCollPapersCache] = useState<Map<number, Paper[]>>(new Map())
+  useEffect(() => {
+    if (selColl == null) return
+    void window.api.collectionsPapers(selColl).then((ids) => {
+      const m = new Map<number, Paper>()
+      for (const p of papers) m.set(p.id, p)
+      setCollPapersCache((c) => new Map(c).set(selColl, ids.map((id) => m.get(id)).filter((x): x is Paper => !!x)))
+    })
+  }, [selColl, papers])
+  useEffect(refreshColls, [papers])
+  const openTrash = (): void => {
+    setTrashOpen(true)
+    void window.api.papersTrashed().then(setTrashed).catch(() => setTrashed([]))
+  }
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const toggle = (c: string): void =>
     setExpanded((s) => {
@@ -535,6 +557,84 @@ export default function LibraryPane({
             ))
           )}
         </div>
+        {/* 集合区（v0.16 多分类挂接）：一篇文献可属于多个集合，与物理分类并行 */}
+        <div className="tag-section">
+          <div className="tag-section-head">
+            <span className="tag-section-title">集合{selColl != null ? ` · ${colls.find((c) => c.id === selColl)?.name ?? ''}` : ''}</span>
+            <span style={{ flex: 1 }} />
+            <button
+              className="tag-add-btn"
+              title="新建集合（逻辑分组，不动文件目录）"
+              onClick={() => {
+                const name = window.prompt('新建集合名称：')
+                if (name?.trim()) void window.api.collectionsCreate(name.trim()).then(refreshColls)
+              }}
+            >
+              ＋
+            </button>
+          </div>
+          {colls.length === 0 && <div className="tag-empty">暂无集合——集合是跨分类的逻辑分组（如「导师书单」「综述素材」），一篇文献可同时挂多个</div>}
+          {colls.filter((c) => c.parent_id == null).map((c) => (
+            <div key={c.id}>
+              <div
+                className={`cat-item ${selColl === c.id ? 'drop-on' : ''}`}
+                onClick={() => setSelColl(selColl === c.id ? null : c.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  if (window.confirm(`删除集合「${c.name}」？（只解除挂接，不动文献与文件）`)) {
+                    void window.api.collectionsRemove(c.id).then(refreshColls)
+                  }
+                }}
+                title="点击查看集合内文献；右键删除集合（文献不受影响）"
+              >
+                <span className="ellipsis" style={{ flex: 1 }}>{c.name}</span>
+                <span className="cat-count">{c.n}</span>
+              </div>
+              {selColl === c.id && (
+                <div className="tree-papers">
+                  {(collPapersCache.get(c.id) ?? []).map((p) => paperRow(p))}
+                  {(collPapersCache.get(c.id) ?? []).length === 0 && <div className="tree-empty">空集合——在文献详情右键「加入集合」，或在纵览勾选后批量挂接</div>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {/* 回收站（软删除，可恢复） */}
+        <div className="tag-section">
+          <button className="lib-trash-btn" onClick={openTrash}>
+            回收站
+          </button>
+        </div>
+        {trashOpen && (
+          <div className="modal-mask" onMouseDown={() => setTrashOpen(false)}>
+            <div className="modal modal-pad" style={{ width: 560 }} onMouseDown={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <h2>回收站（{trashed.length}）</h2>
+                <button className="modal-x" onClick={() => setTrashOpen(false)}>✕</button>
+              </div>
+              <div className="modal-scroll">
+                {trashed.length === 0 && <div className="tag-empty" style={{ padding: 18 }}>回收站是空的。</div>}
+                {trashed.map((t) => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '6px 0' }}>
+                    <span className="ellipsis" style={{ flex: 1 }}>{t.title}</span>
+                    <span className="cat-count">{(t.deleted_at || '').slice(0, 10)}</span>
+                    <button
+                      className="cmp-mini"
+                      onClick={() => {
+                        void window.api.papersRestore(t.id).then(() => {
+                          setTrashed((ts) => ts.filter((x) => x.id !== t.id))
+                          onPapersChanged()
+                        })
+                      }}
+                    >
+                      恢复
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         {/* 标签区：点击筛选，右键重命名 / 改色 / 删除，「＋」新建 */}
         <div className="tag-section">
           <div className="tag-section-head">

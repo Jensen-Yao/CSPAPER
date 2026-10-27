@@ -108,6 +108,18 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
 
   // ---------- 高级检索（v0.9，对标 Zotero 高级搜索，可保存为智能搜索） ----------
   const [nameEdit, setNameEdit] = useState<string | null>(null)
+  // 空列自动隐藏（PM 评审#12：年份/期刊/被引大面积空时占 440px 还把标题列挤窄）
+  const visibleCols = useMemo(() => {
+    const has = (k: string): boolean => {
+      if (k === 'year') return papers.some((p) => p.year != null)
+      if (k === 'venue') return papers.some((p) => !!p.venue)
+      if (k === 'cited') return papers.some((p) => p.cited_by != null)
+      return true
+    }
+    return COLS.filter((c) => has(c.key))
+  }, [papers])
+  const [enrichBusy, setEnrichBusy] = useState(false)
+  const [enrichMsg, setEnrichMsg] = useState('')
   // 重复条目检测（v0.15.2：同 DOI/同标题聚类 + 保留一篇合并）
   const [dupOpen, setDupOpen] = useState(false)
   const [dupGroups, setDupGroups] = useState<Array<Array<{ id: number; title: string; year: number | null; added_at: string; doi: string | null }>>>([])
@@ -368,6 +380,21 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             <button className="btn ghost" title="检测重复条目（同 DOI / 同标题），保留一篇合并标签与高亮" onClick={openDup}>
               查重
             </button>
+            <button
+              className="btn ghost"
+              title="按 DOI 从 Crossref 批量补全卷/期/页/出版社/期刊（有 DOI 且缺卷期的条目）"
+              onClick={() => {
+                setEnrichBusy(true)
+                void window.api
+                  .enrichMeta()
+                  .then((r) => window.setTimeout(() => { setEnrichMsg(`补全完成：${r.updated}/${r.checked} 篇`); onRefresh() }, 0))
+                  .catch(() => setEnrichMsg('补全失败（网络）'))
+                  .finally(() => setEnrichBusy(false))
+              }}
+            >
+              {enrichBusy ? '补全中…' : '补全元数据'}
+            </button>
+            {enrichMsg && <span className="ov-dim">{enrichMsg}</span>}
             {checked.size > 0 && (
               <>
                 <button className="btn ghost" title="导出所选文献为 BibTeX 文件" onClick={() => void window.api.exportBibtex([...checked])}>
@@ -501,7 +528,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                     onChange={(e) => setChecked(e.target.checked ? new Set(sorted.map((p) => p.id)) : new Set())}
                   />
                 </th>
-                {COLS.map((c) => (
+                {visibleCols.map((c) => (
                   <th
                     key={c.key}
                     style={{ width: c.w }}
@@ -524,7 +551,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             <tbody>
               {range[0] > 0 && (
                 <tr className="ov-spacer" style={{ height: range[0] * WIN_ROW_H }}>
-                  <td colSpan={COLS.length + 1} />
+                  <td colSpan={visibleCols.length + 1} />
                 </tr>
               )}
               {sorted.slice(range[0], range[1]).map((p) => (
@@ -550,8 +577,8 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                       {tagChips(p)}
                     </td>
                     <td>{p.authors || '—'}</td>
-                    <td>{p.year ?? '—'}</td>
-                    <td>{p.venue || '—'}</td>
+                    {visibleCols.some((c) => c.key === 'year') && <td>{p.year ?? '—'}</td>}
+                    {visibleCols.some((c) => c.key === 'venue') && <td>{p.venue || '—'}</td>}
                     <td>{catLabel(p.category)}</td>
                     <td>
                       <div className="ov-status-cell">
@@ -585,12 +612,12 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                         })()}
                       </div>
                     </td>
-                    <td className="ov-cited">{p.cited_by ?? '—'}</td>
+                    {visibleCols.some((c) => c.key === 'cited') && <td className="ov-cited">{p.cited_by ?? '—'}</td>}
                   </tr>
                   {expanded === p.id && (
                     <tr className="ov-expand">
                       <td />
-                      <td colSpan={COLS.length}>
+                      <td colSpan={visibleCols.length}>
                         <div className="ov-detail">
                           <div>
                             <b>{p.title}</b>
@@ -618,7 +645,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
               ))}
               {range[1] < sorted.length && (
                 <tr className="ov-spacer" style={{ height: (sorted.length - range[1]) * WIN_ROW_H }}>
-                  <td colSpan={COLS.length + 1} />
+                  <td colSpan={visibleCols.length + 1} />
                 </tr>
               )}
             </tbody>

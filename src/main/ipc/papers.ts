@@ -576,6 +576,26 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     tx()
     return true
   })
+  // 独立笔记（库级，不挂某篇文献）
+  ipcMain.handle('notes:standalone-list', () =>
+    dbmod.getDb().prepare('SELECT id, title, updated_at FROM standalone_notes ORDER BY updated_at DESC').all()
+  )
+  ipcMain.handle('notes:standalone-get', (_e, id: number) =>
+    dbmod.getDb().prepare('SELECT id, title, body_md FROM standalone_notes WHERE id=?').get(id)
+  )
+  ipcMain.handle('notes:standalone-save', (_e, id: number | null, title: string, body: string) => {
+    const db = dbmod.getDb()
+    if (id != null) {
+      db.prepare("UPDATE standalone_notes SET title=?, body_md=?, updated_at=datetime('now','localtime') WHERE id=?").run(title, body, id)
+      return id
+    }
+    const r = db.prepare('INSERT INTO standalone_notes(title, body_md) VALUES(?,?)').run(title, body)
+    return Number(r.lastInsertRowid)
+  })
+  ipcMain.handle('notes:standalone-remove', (_e, id: number) => {
+    dbmod.getDb().prepare('DELETE FROM standalone_notes WHERE id=?').run(id)
+    return true
+  })
   // 回收站（软删除）
   ipcMain.handle('papers:trash', (_e, id: number) => {
     dbmod.getDb().prepare("UPDATE papers SET deleted_at=datetime('now','localtime') WHERE id=?").run(id)

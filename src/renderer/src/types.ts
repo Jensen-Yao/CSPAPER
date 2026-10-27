@@ -340,6 +340,11 @@ declare global {
       papersDuplicates: () => Promise<Array<Array<{ id: number; title: string; year: number | null; added_at: string; doi: string | null }>>>
       papersMerge: (keepId: number, dropIds: number[]) => Promise<boolean>
       zoteroPushHighlights: (paperId: number) => Promise<{ pushed: number; itemKey: string | null }>
+      enrichMeta: (limit?: number) => Promise<{ updated: number; checked: number }>
+      standaloneNotesList: () => Promise<Array<{ id: number; title: string; updated_at: string }>>
+      standaloneNotesGet: (id: number) => Promise<{ id: number; title: string; body_md: string }>
+      standaloneNotesSave: (id: number | null, title: string, body: string) => Promise<number>
+      standaloneNotesRemove: (id: number) => Promise<boolean>
       relatedList: (id: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
       relatedSet: (a: number, b: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
       relatedRemove: (a: number, b: number) => Promise<Array<{ id: number; title: string; kind: 'manual' | 'auto' }>>
