@@ -81,7 +81,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, notif
 
   // 插件探测：GET /ping
   if (req.method === 'GET' && url.pathname === '/ping') {
-    const n = (db.prepare('SELECT COUNT(*) AS n FROM papers WHERE deleted_at IS NULL').get() as { n: number }).n
+    const n = (db.prepare('SELECT COUNT(*) AS n FROM active_papers').get() as { n: number }).n
     return json(res, 200, { ok: true, name: 'CSPAPER', version: app.getVersion(), papers: n })
   }
 
@@ -103,9 +103,9 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, notif
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 50)
     const rows = q
       ? db
-          .prepare('SELECT id, title, authors, year, venue, category FROM papers WHERE deleted_at IS NULL AND title LIKE ? OR authors LIKE ? OR venue LIKE ? ORDER BY opened_at DESC LIMIT ?')
+          .prepare('SELECT id, title, authors, year, venue, category FROM active_papers WHERE (title LIKE ? OR authors LIKE ? OR venue LIKE ?) ORDER BY opened_at DESC LIMIT ?')
           .all(...Array<string>(3).fill(`%${q}%`), limit)
-      : (db.prepare('SELECT id, title, authors, year, venue, category FROM papers WHERE deleted_at IS NULL ORDER BY opened_at DESC LIMIT ?').all(limit) as unknown[])
+      : (db.prepare('SELECT id, title, authors, year, venue, category FROM active_papers ORDER BY opened_at DESC LIMIT ?').all(limit) as unknown[])
     return json(res, 200, { ok: true, papers: rows })
   }
 
@@ -121,7 +121,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, notif
     if (style === 'bibtex') {
       const rows = ids
         .map((id) =>
-          db.prepare('SELECT id, title, authors, year, venue FROM papers WHERE deleted_at IS NULL AND id=?').get(id) as
+          db.prepare('SELECT id, title, authors, year, venue FROM active_papers WHERE id=?').get(id) as
             | { id: number; title: string; authors: string; year: number | null; venue: string }
             | undefined
         )

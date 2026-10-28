@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+const notifyCollectionsChanged=():void=>{window.dispatchEvent(new CustomEvent('cspaper:collections-changed'))}
 const api = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch: unknown) => ipcRenderer.invoke('settings:save', patch),
@@ -22,6 +23,8 @@ const api = {
   zoteroPickDir: () => ipcRenderer.invoke('zotero:pick-dir'),
   zoteroPreview: (dataDir?: string) => ipcRenderer.invoke('zotero:preview', dataDir),
   zoteroImport: (items: Array<{ key: string; category?: string }>) => ipcRenderer.invoke('zotero:import', items),
+  zoteroRepairPreview: (dataDir?: string) => ipcRenderer.invoke('zotero:repair-preview', dataDir),
+  zoteroRepairApply: (dataDir?: string, paperIds?: number[]) => ipcRenderer.invoke('zotero:repair-apply', dataDir, paperIds),
   onZoteroProgress: (cb: (p: { done: number; total: number; current: string }) => void) => {
     const h = (_e: unknown, p: { done: number; total: number; current: string }) => cb(p)
     ipcRenderer.on('zotero:progress', h)
@@ -67,6 +70,8 @@ const api = {
   compareDelete: (id: number) => ipcRenderer.invoke('compare:delete', id),
   compareSave: (id: number, data: unknown) => ipcRenderer.invoke('compare:save', id, data),
   compareGenerate: (paperId: number, dimensions: string[]) => ipcRenderer.invoke('compare:generate', paperId, dimensions),
+  comparisonCreate: (paperIds: number[], dimensions?: string[]) => ipcRenderer.invoke('comparison:create', paperIds, dimensions),
+  comparisonUpdate: (id: number, paperIds: number[], dimensions: string[], generateIds?: number[]) => ipcRenderer.invoke('comparison:update', id, paperIds, dimensions, generateIds),
   compareExport: (id: number, format: 'md' | 'csv') => ipcRenderer.invoke('compare:export', id, format),
   paperDetail: (id: number) => ipcRenderer.invoke('papers:detail', id),
   paperExtractGet: (id: number) => ipcRenderer.invoke('papers:extract-get', id),
@@ -81,9 +86,21 @@ const api = {
   papersPurge: (id: number) => ipcRenderer.invoke('papers:purge', id),
   papersTrashed: () => ipcRenderer.invoke('papers:trashed'),
   collectionsList: () => ipcRenderer.invoke('collections:list'),
-  collectionsCreate: (name: string, parentId?: number) => ipcRenderer.invoke('collections:create', name, parentId),
-  collectionsRemove: (id: number) => ipcRenderer.invoke('collections:remove', id),
-  collectionsTogglePaper: (paperId: number, collectionId: number, on: boolean) => ipcRenderer.invoke('collections:toggle-paper', paperId, collectionId, on),
+  collectionsCreate: async (name: string, parentId?: number) => {
+    const id=await ipcRenderer.invoke('collections:create', name, parentId) as number
+    notifyCollectionsChanged()
+    return id
+  },
+  collectionsRemove: async (id: number) => {
+    const ok=await ipcRenderer.invoke('collections:remove', id) as boolean
+    notifyCollectionsChanged()
+    return ok
+  },
+  collectionsTogglePaper: async (paperId: number, collectionId: number, on: boolean) => {
+    const ok=await ipcRenderer.invoke('collections:toggle-paper', paperId, collectionId, on) as boolean
+    notifyCollectionsChanged()
+    return ok
+  },
   collectionsPapers: (collectionId: number) => ipcRenderer.invoke('collections:papers', collectionId),
   collectionsForPaper: (paperId: number) => ipcRenderer.invoke('collections:for-paper', paperId),
   papersDuplicates: () => ipcRenderer.invoke('papers:duplicates'),
@@ -173,7 +190,7 @@ const api = {
   testLLM: (over?: { apiBase?: string; apiKey?: string; model?: string; provider?: string }) => ipcRenderer.invoke('llm:test', over),
   testEmbed: () => ipcRenderer.invoke('embed:test'),
 
-  // 流式对话：返回 stop 不需要（请求即发即忘，以 reqId 收尾）
+  // 兼容旧流式接口：返回停止句柄；新对话入口必须使用 window.api.chat
   stream: (args: Record<string, unknown>, handlers: { onDelta: (t: string) => void; onEnd: () => void; onSources?: (s: unknown[]) => void }) => {
     const reqId = Date.now() + Math.floor(Math.random() * 1e6)
     const deltaCh = `llm:delta:${reqId}`
@@ -194,6 +211,65 @@ const api = {
     ipcRenderer.on(endCh, onEnd)
     ipcRenderer.on(srcCh, onSources)
     ipcRenderer.send('llm:stream', { reqId, ...args })
+    return () => ipcRenderer.send('llm:cancel', reqId)
+  },
+
+  chat: {
+    workspace: () => ipcRenderer.invoke('chat:workspace'),
+    createConversation: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:conversations-create', input),
+    listConversations: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:conversations-list', input),
+    getConversation: (id: string) => ipcRenderer.invoke('chat:conversation-get', id),
+    renameConversation: (id: string, title: string) => ipcRenderer.invoke('chat:conversation-rename', id, title),
+    archiveConversation: (id: string, archived: boolean) => ipcRenderer.invoke('chat:conversation-archive', id, archived),
+    loadMessages: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:messages', input),
+    snapshot: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:snapshot', input),
+    submitTurn: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:submit', input),
+    cancelRun: (runId: string, reason?: string) => ipcRenderer.invoke('chat:cancel', { runId, reason }),
+    resumeRun: (runId: string) => ipcRenderer.invoke('chat:resume', { runId }),
+    approveTool: (toolCallId: string, approved: boolean) => ipcRenderer.invoke('chat:approve-tool', { toolCallId, approved }),
+    retryTurn: (runId: string, reuseContext = true) => ipcRenderer.invoke('chat:retry', { runId, reuseContext }),
+    editAndResubmit: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:edit-and-resubmit', input),
+    getRun: (runId: string) => ipcRenderer.invoke('chat:run', runId),
+    onEvent: (cb: (event: unknown) => void) => {
+      const handler = (_e: unknown, event: unknown) => cb(event)
+      ipcRenderer.on('chat:event', handler)
+      void ipcRenderer.invoke('chat:event-subscribe')
+      return () => {
+        ipcRenderer.removeListener('chat:event', handler)
+        void ipcRenderer.invoke('chat:event-unsubscribe')
+      }
+    },
+    subscribe: async (input: { conversationId: string; afterSeq?: number }, cb: (event: unknown) => void) => {
+      const seen = new Set<string>()
+      const buffered: any[] = []
+      let replaying = true
+      const deliver = (item: any) => {
+        const key = `${item.runId}:${item.seq}`
+        if (item.conversationId !== input.conversationId || seen.has(key)) return
+        seen.add(key); cb(item)
+      }
+      const handler = (_e: unknown, event: unknown) => {
+        const item = event as any
+        if(replaying)buffered.push(item)
+        else deliver(item)
+      }
+      ipcRenderer.on('chat:event', handler)
+      try {
+        await ipcRenderer.invoke('chat:event-subscribe')
+        const replay = await ipcRenderer.invoke('chat:events', input)
+        for(const event of replay ?? [])deliver(event)
+        replaying=false
+        buffered.sort((a,b)=>(a.cursor??0)-(b.cursor??0)).forEach(deliver)
+        return () => {
+          ipcRenderer.removeListener('chat:event', handler)
+          void ipcRenderer.invoke('chat:event-unsubscribe')
+        }
+      } catch(error) {
+        ipcRenderer.removeListener('chat:event', handler)
+        void ipcRenderer.invoke('chat:event-unsubscribe')
+        throw error
+      }
+    }
   },
 
   onIndexProgress: (cb: (p: unknown) => void) => {

@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-29T04:33:40+08:00",
+  "source": "SQLite backup copy of user library; original user database untouched",
+  "result": {
+    "migrations": 8,
+    "papers": 105,
+    "recordOnly": 91,
+    "pdf": 14,
+    "pdfsWithChunks": 14,
+    "pdfsRequeuedForIndex": 0,
+    "zoteroRepairableNow": 0
+  },
+  "behavior": "Generated CSPAPER title pages are classified structurally as records; real PDFs without chunks are requeued. Zotero repair is exact-key, backed up and idempotent; no unread Zotero PDF is currently available for the record-only rows."
+}

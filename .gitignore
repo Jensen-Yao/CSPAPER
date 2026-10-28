@@ -36,3 +36,10 @@ android-app/local.properties
 scripts/set-agnes.cjs
 scripts/fix-agnes.cjs
 docs/HANDOFF.md
+
+# 本地迁移验证临时副本（含用户库快照，绝不能提交）
+.migration-verify.tmp/
+
+# 历史本地审阅中间产物（当前发布证据使用 execution-review-2026-10-29）
+design-plans/audit-2026-10-28/
+design-plans/execution-review-2026-10-28/

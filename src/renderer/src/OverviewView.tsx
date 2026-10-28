@@ -55,6 +55,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
   const [files, setFiles] = useState<Record<number, string[]>>({})
   const [catFilter, setCatFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [batchCat, setBatchCat] = useState('')
   const [batchBusy, setBatchBusy] = useState(false)
@@ -197,9 +198,9 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
   const advActive = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category || adv.tag || adv.doi)
 
   const filtered = useMemo(() => {
-    const cf = catFilter, sf = statusFilter, tf = effTag
+    const cf = catFilter, sf = statusFilter, tf = effTag, sfk = sourceFilter
     const hasAdv = !!(adv.title || adv.authors || adv.yearFrom || adv.yearTo || adv.status || adv.category || adv.tag || adv.doi)
-    if (!cf && !sf && !tf && !hasAdv) return papers
+    if (!cf && !sf && !sfk && !tf && !hasAdv) return papers
     const yf = parseInt(adv.yearFrom, 10) || -Infinity
     const yt = parseInt(adv.yearTo, 10) || Infinity
     const kw = (v: string): boolean => v.toLowerCase().includes(adv.title.toLowerCase())
@@ -207,6 +208,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
     return papers.filter((p) => {
       if (cf && p.category !== cf) return false
       if (sf && p.status !== sf) return false
+      if (sfk && p.source_kind !== sfk) return false
       if (tf && !(p.tags ?? []).includes(tf)) return false
       if (hasAdv) {
         if (adv.title && !kw(p.title)) return false
@@ -219,7 +221,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
       }
       return true
     })
-  }, [papers, catFilter, statusFilter, effTag, adv])
+  }, [papers, catFilter, statusFilter, sourceFilter, effTag, adv])
 
   const cats = useMemo(() => [...new Set(papers.map((p) => p.category))], [papers])
 
@@ -367,6 +369,11 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                   {STATUS_META[k].label}
                 </option>
               ))}
+            </select>
+            <select className="ov-filter" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} title="按原文状态筛选">
+              <option value="">全部来源</option>
+              <option value="pdf">有 PDF 原文</option>
+              <option value="record">仅题录</option>
             </select>
             <select
               className="ov-filter"
@@ -517,6 +524,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
             {checked.size > 0 && (
               <>
                 <span className="ov-batch-label">已选 {checked.size} 篇</span>
+                <button className="btn ghost" onClick={()=>window.dispatchEvent(new CustomEvent('cspaper:workspace-action',{detail:{kind:'chat',paperIds:[...checked]}}))}>加入对话</button>
                 <select className="ov-filter" value={batchCat} onChange={(e) => setBatchCat(e.target.value)}>
                   <option value="">移动到分类…</option>
                   {cats.map((c) => (

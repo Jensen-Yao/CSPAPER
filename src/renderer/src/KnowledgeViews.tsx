@@ -72,6 +72,16 @@ interface FgEdge {
   w: number
 }
 
+interface CanvasViewport { scale:number;x:number;y:number }
+const DEFAULT_CANVAS_VIEW:CanvasViewport={scale:1,x:0,y:0}
+
+function canvasZoomAt(view:CanvasViewport,factor:number,mx:number,my:number):CanvasViewport {
+  const scale=Math.max(0.35,Math.min(4,view.scale*factor))
+  if(scale===view.scale)return view
+  const ratio=scale/view.scale
+  return {scale,x:mx-(mx-view.x)*ratio,y:my-(my-view.y)*ratio}
+}
+
 function ForceGraph({
   visible,
   nodes,
@@ -106,6 +116,9 @@ function ForceGraph({
   const springRef = useRef(springTarget)
   springRef.current = springTarget
   const [built, setBuilt] = useState(0)
+  const [viewport, setViewport] = useState(DEFAULT_CANVAS_VIEW)
+  const viewportRef = useRef(DEFAULT_CANVAS_VIEW)
+  const panRef = useRef<{pointerX:number;pointerY:number;x:number;y:number}|null>(null)
 
   useEffect(() => {
     selRef.current = selected
@@ -194,6 +207,8 @@ function ForceGraph({
     canvas.style.height = `${h}px`
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
+    ctx.translate(viewportRef.current.x,viewportRef.current.y)
+    ctx.scale(viewportRef.current.scale,viewportRef.current.scale)
     const nodesL = nodesRef.current
     const byId = new Map(nodesL.map((n) => [n.id, n]))
     const focus = hoverRef.current ?? selRef.current
@@ -281,6 +296,8 @@ function ForceGraph({
     nodesRef.current = inner
     edgesRef.current = edges
     ticksRef.current = 0
+    viewportRef.current=DEFAULT_CANVAS_VIEW
+    setViewport(DEFAULT_CANVAS_VIEW)
     for (let it = 0; it < 300; it++) stepSim(false)
     selRef.current = null
     selectCb.current(null)
@@ -297,6 +314,7 @@ function ForceGraph({
     }
     onResize()
     const t0 = Date.now()
+    ticksRef.current=0
     const step = (): void => {
       // 硬停：超过 6 秒或运动收敛后彻底停止 rAF（拖拽/重置时经 built 唤醒重挂），绝不常驻空转
       ticksRef.current++
@@ -314,8 +332,22 @@ function ForceGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, built])
 
+  useEffect(() => {
+    if(visible)drawCanvas()
+  },[visible,built,viewport])
+
   if (nodes.length === 0) return <div className="kv-empty">{visible ? emptyText : ''}</div>
 
+  const toWorld = (mx:number,my:number):{x:number;y:number} => ({x:(mx-viewportRef.current.x)/viewportRef.current.scale,y:(my-viewportRef.current.y)/viewportRef.current.scale})
+  const applyViewport = (next:CanvasViewport):void => {
+    viewportRef.current=next
+    setViewport(next)
+  }
+  const onWheel = (event:React.WheelEvent<HTMLCanvasElement>):void => {
+    event.preventDefault()
+    const rect=event.currentTarget.getBoundingClientRect()
+    applyViewport(canvasZoomAt(viewportRef.current,event.deltaY<0?1.12:1/1.12,event.clientX-rect.left,event.clientY-rect.top))
+  }
   const nodeAt = (mx: number, my: number): FgNode | null => {
     let hit: FgNode | null = null
     for (const n of nodesRef.current) {
@@ -329,40 +361,62 @@ function ForceGraph({
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
-    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    const hit = nodeAt(world.x,world.y)
     hoverRef.current = hit?.id ?? null
-    canvas.style.cursor = hit ? 'pointer' : 'default'
+    canvas.style.cursor = hit ? 'pointer' : panRef.current ? 'grabbing' : 'grab'
   }
   const onDrag = (ev: React.MouseEvent): void => {
+    if (panRef.current && canvasRef.current) {
+      applyViewport({...viewportRef.current,x:panRef.current.x+ev.clientX-panRef.current.pointerX,y:panRef.current.y+ev.clientY-panRef.current.pointerY})
+      return
+    }
     const hit = dragRef.current
     if (!hit || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
-    hit.x = Math.max(30, Math.min(dimsRef.current.w - 30, ev.clientX - rect.left))
-    hit.y = Math.max(24, Math.min(dimsRef.current.h - 24, ev.clientY - rect.top))
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    hit.x = Math.max(30, Math.min(dimsRef.current.w - 30, world.x))
+    hit.y = Math.max(24, Math.min(dimsRef.current.h - 24, world.y))
   }
   const onDown = (ev: React.MouseEvent): void => {
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
-    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    const hit = nodeAt(world.x,world.y)
     if (hit) {
       dragRef.current = hit
-      ticksRef.current = 0 // 唤醒休眠的力学循环
+      ticksRef.current = 0
+    } else {
+      panRef.current={pointerX:ev.clientX,pointerY:ev.clientY,x:viewportRef.current.x,y:viewportRef.current.y}
+      canvas.style.cursor='grabbing'
     }
   }
   const onUp = (ev: React.MouseEvent): void => {
     const dragged = dragRef.current
+    const panned=panRef.current
     dragRef.current = null
+    panRef.current = null
     const canvas = canvasRef.current
     if (!canvas) return
+    if(panned&&dragged==null)return
     const rect = canvas.getBoundingClientRect()
-    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    const hit = nodeAt(world.x,world.y)
     const id = hit && hit !== dragged ? hit.id : (hit ?? dragged)?.id ?? null
     selRef.current = id
     onSelect(id)
   }
 
-  return <canvas ref={canvasRef} onMouseMove={(e) => { onHover(e); onDrag(e) }} onMouseDown={onDown} onMouseUp={onUp} />
+  return <>
+    <canvas ref={canvasRef} onWheel={onWheel} onMouseMove={(e) => { onHover(e); onDrag(e) }} onMouseDown={onDown} onMouseUp={onUp} />
+    <div className="kv-zoom">
+      <button type="button" title="缩小" onClick={()=>applyViewport(canvasZoomAt(viewportRef.current,1/1.2,dimsRef.current.w/2,dimsRef.current.h/2))}>−</button>
+      <span className="kv-zoom-value">{Math.round(viewport.scale*100)}%</span>
+      <button type="button" title="放大" onClick={()=>applyViewport(canvasZoomAt(viewportRef.current,1.2,dimsRef.current.w/2,dimsRef.current.h/2))}>+</button>
+      <button type="button" title="复位缩放" onClick={()=>applyViewport(DEFAULT_CANVAS_VIEW)}>重置</button>
+    </div>
+  </>
 }
 
 // ---------- 视图 1：相似网络（自纵览 KnowledgeGraph 迁移，语义相似 kNN 图） ----------
@@ -407,6 +461,9 @@ function SimNetView({
   const hoverRef = useRef<number | null>(null)
   const selRef = useRef<number | null>(null)
   const ticksRef = useRef(0)
+  const [viewport, setViewport] = useState(DEFAULT_CANVAS_VIEW)
+  const viewportRef = useRef(DEFAULT_CANVAS_VIEW)
+  const panRef = useRef<{pointerX:number;pointerY:number;x:number;y:number}|null>(null)
   const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers])
   const catPapers = useMemo(() => (cat ? papers.filter((p) => p.category === cat) : papers), [papers, cat])
 
@@ -435,6 +492,8 @@ function SimNetView({
         edgesRef.current = g.edges
         dimsRef.current = { w, h }
         ticksRef.current = 0
+        viewportRef.current=DEFAULT_CANVAS_VIEW
+        setViewport(DEFAULT_CANVAS_VIEW)
         setReady(true)
         setSelected(null)
         selRef.current = null
@@ -458,6 +517,8 @@ function SimNetView({
       canvas.style.height = `${h}px`
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
+      ctx.translate(viewportRef.current.x,viewportRef.current.y)
+      ctx.scale(viewportRef.current.scale,viewportRef.current.scale)
       const nodes = nodesRef.current
       const byId = new Map(nodes.map((n) => [n.id, n]))
       const focus = hoverRef.current ?? selRef.current
@@ -576,8 +637,18 @@ function SimNetView({
       cancelAnimationFrame(rafRef.current)
       window.removeEventListener('resize', onResize)
     }
-  }, [visible, ready])
+  }, [visible, ready, viewport])
 
+  const toWorld = (mx:number,my:number):{x:number;y:number} => ({x:(mx-viewportRef.current.x)/viewportRef.current.scale,y:(my-viewportRef.current.y)/viewportRef.current.scale})
+  const applyViewport = (next:CanvasViewport):void => {
+    viewportRef.current=next
+    setViewport(next)
+  }
+  const onWheel = (event:React.WheelEvent<HTMLCanvasElement>):void => {
+    event.preventDefault()
+    const rect=event.currentTarget.getBoundingClientRect()
+    applyViewport(canvasZoomAt(viewportRef.current,event.deltaY<0?1.12:1/1.12,event.clientX-rect.left,event.clientY-rect.top))
+  }
   const nodeAt = (mx: number, my: number): GNode | null => {
     let hit: GNode | null = null
     for (const n of nodesRef.current) {
@@ -590,32 +661,50 @@ function SimNetView({
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
-    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    const hit = nodeAt(world.x,world.y)
     hoverRef.current = hit?.id ?? null
-    canvas.style.cursor = hit ? 'pointer' : 'default'
+    canvas.style.cursor = hit ? 'pointer' : panRef.current ? 'grabbing' : 'grab'
   }
   const onDrag = (ev: React.MouseEvent): void => {
+    if (panRef.current && canvasRef.current) {
+      applyViewport({...viewportRef.current,x:panRef.current.x+ev.clientX-panRef.current.pointerX,y:panRef.current.y+ev.clientY-panRef.current.pointerY})
+      return
+    }
     const hit = dragRef.current
     if (!hit || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
-    hit.x = Math.max(40, Math.min(dimsRef.current.w - 40, ev.clientX - rect.left))
-    hit.y = Math.max(30, Math.min(dimsRef.current.h - 30, ev.clientY - rect.top))
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    hit.x = Math.max(40, Math.min(dimsRef.current.w - 40, world.x))
+    hit.y = Math.max(30, Math.min(dimsRef.current.h - 30, world.y))
   }
   const onDown = (ev: React.MouseEvent): void => {
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
-    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    const hit = nodeAt(world.x,world.y)
     if (hit) {
       dragRef.current = hit
       ticksRef.current = 0
+    } else {
+      panRef.current={pointerX:ev.clientX,pointerY:ev.clientY,x:viewportRef.current.x,y:viewportRef.current.y}
+      canvas.style.cursor='grabbing'
     }
   }
   const onSelect = (ev: React.MouseEvent): void => {
     const canvas = canvasRef.current
     if (!canvas) return
+    if(panRef.current&&dragRef.current==null) {
+      panRef.current=null
+      canvas.style.cursor='grab'
+      return
+    }
+    dragRef.current=null
+    panRef.current=null
     const rect = canvas.getBoundingClientRect()
-    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top)
+    const world=toWorld(ev.clientX-rect.left,ev.clientY-rect.top)
+    const hit = nodeAt(world.x,world.y)
     if (hit) {
       selRef.current = hit.id
       setSelected(hit.id)
@@ -646,7 +735,7 @@ function SimNetView({
           <Icon.Refresh size={12} /> 重置布局
         </button>
         <span className="kv-hint">
-          {cat ? `仅「${catLabel(cat)}」内构图。` : ''}圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点。
+          {cat ? `仅「${catLabel(cat)}」内构图。` : ''}圆点 = 文献（颜色 = 分类，大小 = 关联数），连线粗细 = 内容相似度。点击查看详情，可拖拽节点；滚轮缩放，空白处拖拽平移。
         </span>
         <span className="kv-legend">
           {cats.map((c) => (
@@ -667,9 +756,18 @@ function SimNetView({
             }}
             onMouseDown={onDown}
             onMouseUp={onSelect}
+            onWheel={onWheel}
           />
         ) : (
           <div className="kv-empty">{visible ? (empty ? '暂无可构建相似网络的文献（需先建立语义索引）' : '正在计算相似网络…') : ''}</div>
+        )}
+        {ready && (
+          <div className="kv-zoom">
+            <button type="button" title="缩小" onClick={()=>applyViewport(canvasZoomAt(viewportRef.current,1/1.2,dimsRef.current.w/2,dimsRef.current.h/2))}>−</button>
+            <span className="kv-zoom-value">{Math.round(viewport.scale*100)}%</span>
+            <button type="button" title="放大" onClick={()=>applyViewport(canvasZoomAt(viewportRef.current,1.2,dimsRef.current.w/2,dimsRef.current.h/2))}>+</button>
+            <button type="button" title="复位缩放" onClick={()=>applyViewport(DEFAULT_CANVAS_VIEW)}>重置</button>
+          </div>
         )}
         {selPaper && (
           <div className="kv-panel">
@@ -997,11 +1095,16 @@ function TopicGalaxyView({
   const [selLabel, setSelLabel] = useState<string | null>(null)
   const boxRef = useRef<HTMLDivElement | null>(null)
   const [box, setBox] = useState({ w: 900, h: 560 })
+  const [viewport, setViewport] = useState(DEFAULT_CANVAS_VIEW)
+  const viewportRef = useRef(DEFAULT_CANVAS_VIEW)
+  const panRef = useRef<{pointerX:number;pointerY:number;x:number;y:number}|null>(null)
+  const applyViewport=(next:typeof viewport):void=>{viewportRef.current=next;setViewport(next)}
 
   useEffect(() => {
     if (!visible) return
     setTopics(null)
     setSelLabel(null)
+    applyViewport(DEFAULT_CANVAS_VIEW)
     let on = true
     window.api
       .graphTopics(cat || undefined)
@@ -1060,7 +1163,26 @@ function TopicGalaxyView({
       ) : placed.length === 0 ? (
         <div className="kv-empty">该分类暂无主题聚类</div>
       ) : (
-        <div className="kv-galaxy" ref={boxRef}>
+        <div
+          className="kv-galaxy"
+          ref={boxRef}
+          onWheel={(event)=>{
+            event.preventDefault()
+            const rect=event.currentTarget.getBoundingClientRect()
+            applyViewport(canvasZoomAt(viewportRef.current,event.deltaY<0?1.12:1/1.12,event.clientX-rect.left,event.clientY-rect.top))
+          }}
+          onMouseDown={(event)=>{
+            if(event.target!==event.currentTarget)return
+            panRef.current={pointerX:event.clientX,pointerY:event.clientY,x:viewportRef.current.x,y:viewportRef.current.y}
+          }}
+          onMouseMove={(event)=>{
+            if(!panRef.current)return
+            applyViewport({...viewportRef.current,x:panRef.current.x+event.clientX-panRef.current.pointerX,y:panRef.current.y+event.clientY-panRef.current.pointerY})
+          }}
+          onMouseUp={()=>{panRef.current=null}}
+          onMouseLeave={()=>{panRef.current=null}}
+        >
+          <div className="kv-galaxy-layer" style={{transform:`translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`}}>
           {placed.map((c) => (
             <div
               key={c.t.label}
@@ -1087,6 +1209,13 @@ function TopicGalaxyView({
               )}
             </div>
           ))}
+          </div>
+          <div className="kv-zoom">
+            <button type="button" title="缩小" onClick={()=>applyViewport(canvasZoomAt(viewportRef.current,1/1.2,box.w/2,box.h/2))}>−</button>
+            <span className="kv-zoom-value">{Math.round(viewport.scale*100)}%</span>
+            <button type="button" title="放大" onClick={()=>applyViewport(canvasZoomAt(viewportRef.current,1.2,box.w/2,box.h/2))}>+</button>
+            <button type="button" title="复位缩放" onClick={()=>applyViewport(DEFAULT_CANVAS_VIEW)}>重置</button>
+          </div>
         </div>
       )}
       {selTopic && (

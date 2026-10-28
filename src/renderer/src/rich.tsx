@@ -4,7 +4,7 @@ import type { SourceRef } from './types'
 
 // 引用跳转：ctx = 引用芯片所在回答里的上下文（前后文），read 模式整篇问答没有
 // snippet 时用它 + 问题做关键词定位
-export type Jump = (slug: string, page: number, snippet?: string, ctx?: string) => void
+export type Jump = (slug: string, page: number, snippet?: string, ctx?: string, source?: SourceRef) => void
 
 // ---------- 代码块（带语言标签与复制） ----------
 

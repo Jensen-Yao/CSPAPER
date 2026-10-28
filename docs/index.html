@@ -1,196 +1,67 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CSPAPER — 更适合中国人的 AI 文献管理工作台</title>
-<meta name="description" content="划词翻译、论文问答、全库对话、AI 对比表格、知识网络。开源、本地优先，Windows / macOS / Android。">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CSPAPER · 本地优先的中文 AI 文献工作台</title>
+<meta name="description" content="CSPAPER 是开源、本地优先的中文科研文献工作台：PDF 精读、可溯源问答、科研 Agent、多文献对比、Zotero 迁移与知识网络。">
+<meta property="og:title" content="CSPAPER · 本地优先的中文 AI 文献工作台">
+<meta property="og:description" content="PDF 精读、可溯源问答、科研 Agent、多文献对比、Zotero 迁移与知识网络。">
+<meta property="og:image" content="./icon.png">
 <link rel="icon" type="image/png" href="./icon.png">
 <style>
-  :root {
-    --bg: #0e0d11; --bg2: #16151a; --card: #1b1a20; --line: #2a2932;
-    --text: #efecef; --dim: #9b95a1;
-    --accent: #e0557c; --accent2: #1558c0; --gold: #e0b04c;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body { background: var(--bg); color: var(--text); font-family: "MiSans", "HarmonyOS Sans SC", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.7; }
-  a { color: inherit; text-decoration: none; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-
-  /* nav */
-  nav { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(14px); background: rgba(14,13,17,0.72); border-bottom: 1px solid var(--line); }
-  nav .inner { display: flex; align-items: center; gap: 22px; height: 62px; }
-  .logo { font-size: 18px; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 9px; }
-  .logo img { width: 24px; height: 24px; }
-  .logo b { color: var(--accent); }
-  nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 13.5px; }
-  nav .links a { color: var(--dim); transition: color .15s; }
-  nav .links a:hover { color: var(--text); }
-  .nav-cta { border: 1px solid var(--accent); color: var(--accent) !important; border-radius: 99px; padding: 6px 16px; font-weight: 600; }
-
-  /* hero */
-  .hero { position: relative; padding: 92px 0 46px; text-align: center; overflow: hidden; }
-  .hero::before { content: ''; position: absolute; inset: -40% -20% auto; height: 130%;
-    background: radial-gradient(600px 300px at 30% 20%, rgba(224,85,124,0.16), transparent 65%),
-                radial-gradient(700px 340px at 72% 30%, rgba(21,88,192,0.18), transparent 65%);
-    pointer-events: none; }
-  .hero .inner { position: relative; }
-  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; letter-spacing: 4px; color: var(--accent); font-weight: 700; margin-bottom: 20px; }
-  .kicker::before, .kicker::after { content: ''; width: 26px; height: 1px; background: var(--accent); opacity: .6; }
-  h1 { font-size: clamp(34px, 5.4vw, 56px); line-height: 1.25; font-weight: 800; letter-spacing: 1px; }
-  h1 .grad { background: linear-gradient(92deg, #e0557c 8%, #7b9dff 92%); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .sub { max-width: 640px; margin: 20px auto 34px; color: var(--dim); font-size: clamp(14.5px, 1.7vw, 16.5px); }
-  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 12px; padding: 13px 26px; font-size: 15px; font-weight: 700; cursor: pointer; transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s, background .18s; }
-  .btn:hover { transform: translateY(-2px); }
-  .btn.primary { background: linear-gradient(94deg, #c9134f, #5b4a3a); color: #fff; box-shadow: 0 10px 30px rgba(200, 20, 80, 0.35); }
-  .btn.ghost { border: 1px solid var(--line); background: var(--card); color: var(--text); }
-  .btn.ghost:hover { border-color: var(--accent); }
-  .plat { margin-top: 18px; color: var(--dim); font-size: 12.5px; letter-spacing: 1px; }
-  .hero-shot { margin-top: 54px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 40px 90px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset; }
-  .hero-shot img { width: 100%; display: block; }
-
-  /* sections */
-  section { padding: 86px 0; }
-  .sec-head { text-align: center; margin-bottom: 48px; }
-  .sec-head .k { color: var(--accent); font-size: 12.5px; letter-spacing: 4px; font-weight: 700; }
-  .sec-head h2 { font-size: clamp(24px, 3.4vw, 34px); margin-top: 10px; }
-  .sec-head p { color: var(--dim); max-width: 620px; margin: 12px auto 0; font-size: 14.5px; }
-
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px 22px 20px; transition: transform .2s cubic-bezier(.2,.7,.3,1), border-color .2s, box-shadow .2s; }
-  .card:hover { transform: translateY(-4px); border-color: #4a3f4a; box-shadow: 0 18px 44px rgba(0,0,0,.4); }
-  .card .ic { font-size: 26px; }
-  .card h3 { font-size: 15.5px; margin: 12px 0 8px; }
-  .card p { font-size: 13px; color: var(--dim); }
-  .card .tag { display: inline-block; margin-top: 14px; font-size: 11px; color: var(--accent); background: rgba(224,85,124,.1); border-radius: 99px; padding: 3px 11px; font-weight: 600; }
-
-  /* screenshots */
-  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
-  .shot { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
-  .shot img { width: 100%; display: block; }
-  .shot .cap { padding: 13px 16px; font-size: 13px; color: var(--dim); display: flex; gap: 8px; align-items: baseline; }
-  .shot .cap b { color: var(--text); }
-
-  /* download */
-  .dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 34px; }
-  .dl-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; text-align: center; transition: border-color .2s, transform .2s; }
-  .dl-card:hover { border-color: var(--accent); transform: translateY(-3px); }
-  .dl-card .os { font-size: 30px; }
-  .dl-card h3 { font-size: 15.5px; margin: 10px 0 4px; }
-  .dl-card p { font-size: 12.5px; color: var(--dim); margin-bottom: 14px; }
-
-  footer { border-top: 1px solid var(--line); padding: 34px 0 46px; text-align: center; color: var(--dim); font-size: 12.5px; }
-  footer .links { display: flex; gap: 22px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
-  footer a:hover { color: var(--text); }
-  .star { color: var(--gold); }
+:root{--ink:#141118;--paper:#f7f2ea;--paper2:#fffdf8;--line:#ded2c2;--text:#251f20;--muted:#6f6160;--red:#9e3b2f;--red2:#c75d4d;--blue:#1558c0;--gold:#a87528;--shadow:0 24px 70px rgba(58,38,24,.14);--radius:18px;font-family:"Inter","HarmonyOS Sans SC","MiSans","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--paper);color:var(--text);line-height:1.72;overflow-x:hidden}a{color:inherit;text-decoration:none}img{max-width:100%;display:block}.shell{width:min(1180px,calc(100% - 40px));margin:auto}.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border:1px solid transparent;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s}.primary{background:linear-gradient(135deg,#8d3125,#c75d4d);color:#fff;box-shadow:0 12px 30px rgba(158,59,47,.24)}.primary:hover{transform:translateY(-2px)}.ghost{border-color:var(--line);background:rgba(255,255,255,.62);color:var(--text)}.ghost:hover{border-color:var(--red);color:var(--red)}
+nav{position:sticky;top:0;z-index:20;background:rgba(247,242,234,.86);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}.nav{display:flex;align-items:center;gap:18px;height:68px}.brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:.2px}.brand img{width:34px;height:34px}.nav .links{margin-left:auto;display:flex;gap:20px;font-size:14px;color:var(--muted)}.nav .links a:hover{color:var(--red)}@media(max-width:760px){.nav .links{display:none}}
+.hero{position:relative;padding:78px 0 54px}.hero-grid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:48px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fffaf1;color:var(--red);font-size:12px;font-weight:750}.hero h1{margin:20px 0 12px;font-family:Georgia,"Times New Roman","Songti SC",serif;font-size:clamp(36px,5.5vw,61px);line-height:1.08}.hero h1 em{font-style:normal;color:var(--red)}.lede{color:var(--muted);font-size:17px;max-width:610px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px;color:var(--muted);font-size:12px}.meta span{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:#fffaf1}
+.hero-shot{position:relative}.hero-shot img{border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}.float{position:absolute;padding:12px 14px;border:1px solid var(--line);background:rgba(255,253,248,.94);border-radius:14px;box-shadow:var(--shadow);font-size:12px}.float.a{left:-24px;bottom:34px}.float.b{right:-16px;top:30px}.float b{display:block;font-size:16px;color:var(--red)}@media(max-width:900px){.hero-grid{grid-template-columns:1fr}.float{display:none}}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}.stat{background:#fffaf0;padding:22px;text-align:center}.stat b{display:block;font-size:28px;color:var(--red)}.stat span{font-size:12px;color:var(--muted)}@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+section{padding:76px 0}.section-head{max-width:690px;margin-bottom:34px}.section-head .k{color:var(--red);font-size:12px;font-weight:800;letter-spacing:2.4px}.section-head h2{font-family:Georgia,"Songti SC",serif;font-size:clamp(27px,4vw,40px);margin:8px 0 10px}.section-head p{color:var(--muted)}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.feature{background:var(--paper2);border:1px solid var(--line);border-radius:16px;padding:24px;transition:.2s}.feature:hover{transform:translateY(-4px);border-color:#d5b6a6;box-shadow:var(--shadow)}.feature .ico{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#f5e6db;color:var(--red);font-size:20px;margin-bottom:15px}.feature h3{font-size:17px}.feature p{margin-top:8px;color:var(--muted);font-size:14px}.feature b{color:var(--red)}@media(max-width:900px){.features{grid-template-columns:1fr 1fr}}@media(max-width:620px){.features{grid-template-columns:1fr}}
+.workflow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;counter-reset:flow}.step{position:relative;background:#fffaf0;border:1px solid var(--line);border-radius:14px;padding:22px 16px;text-align:center;font-size:13px}.step:before{counter-increment:flow;content:counter(flow);display:block;width:30px;height:30px;line-height:30px;margin:0 auto 10px;border-radius:50%;background:var(--red);color:#fff;font-weight:800}.step b{display:block;margin-bottom:5px}@media(max-width:900px){.workflow{grid-template-columns:1fr}}
+.gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.shot{background:var(--paper2);border:1px solid var(--line);border-radius:16px;overflow:hidden}.shot img{aspect-ratio:16/10;object-fit:cover;border-bottom:1px solid var(--line)}.caption{padding:14px 16px}.caption b{display:block}.caption span{font-size:12px;color:var(--muted)}@media(max-width:760px){.gallery{grid-template-columns:1fr}}
+.dark{background:#151118;color:#f3eeea}.dark .section-head p{color:#a79fa7}.dark .section-head .k{color:#e48571}.evidence{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.proof{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);border-radius:14px;padding:20px}.proof b{display:block;font-size:22px}.proof b{color:#f4bbb8}.proof span{font-size:13px;color:#b9b1b8}.note{margin-top:22px;color:#a79fa7;font-size:12px}
+.downloads{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.download{background:var(--paper2);border:1px solid var(--line);border-radius:18px;padding:28px;text-align:center;transition:.2s}.download:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:#d5b6a6}.download .os{font-size:34px}.download h3{margin:12px 0 6px}.download p{font-size:13px;color:var(--muted)}@media(max-width:760px){.downloads{grid-template-columns:1fr}}
+footer{padding:46px 0;color:var(--muted);font-size:13px}.foot{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.foot a:hover{color:var(--red)}
 </style>
 </head>
 <body>
+<nav><div class="shell nav"><a class="brand" href="./"><img src="./icon.png" alt="CSPAPER">CSPAPER</a><div class="links"><a href="#features">功能</a><a href="#workflow">Agent</a><a href="#gallery">界面</a><a href="#evidence">验证</a><a href="./demo.html">演示</a><a href="https://github.com/Jensen-Yao/CSPAPER">GitHub</a></div></div></nav>
 
-<nav>
-  <div class="wrap inner">
-    <a class="logo" href="#"><img src="./icon.png" alt="">CS<b>PAPER</b></a>
-    <div class="links">
-      <a href="#features">功能</a>
-      <a href="#shots">界面</a>
-      <a href="#download">下载</a>
-      <a class="nav-cta" href="./demo.html">在线演示</a>
-    </div>
+<header class="hero"><div class="shell hero-grid">
+  <div>
+    <span class="eyebrow">v0.20 · 统一运行引擎</span>
+    <h1>把文献库变成<br><em>可审计的科研工作台</em></h1>
+    <p class="lede">CSPAPER 0.20 将 PDF 精读、划词翻译、全库 RAG、多文献对比和科研 Agent 接入同一套持久会话。每个结论都能回到论文页、精确选区、笔记或 Web 来源。</p>
+    <div class="actions"><a class="btn primary" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">下载安装包</a><a class="btn ghost" href="./demo.html">进入在线演示</a><a class="btn ghost" href="https://github.com/Jensen-Yao/CSPAPER">查看源码</a></div>
+    <div class="meta"><span>Windows / macOS / Android</span><span>本地 SQLite + Markdown + PDF</span><span>任意 OpenAI 兼容接口</span><span>Apache-2.0</span></div>
   </div>
-</nav>
+  <div class="hero-shot"><img src="./screenshots/home.png" alt="CSPAPER 文献库界面"><div class="float a"><b>题录 / 原文</b>明确标注证据边界</div><div class="float b"><b>可溯源引用</b>页码与高亮回跳</div></div>
+</div></header>
 
-<header class="hero">
-  <div class="wrap inner">
-    <div class="kicker">OPEN SOURCE · LOCAL FIRST</div>
-    <h1>让 AI 陪你读文献<br><span class="grad">更适合中国人的文献管理工作台</span></h1>
-    <p class="sub">划词翻译 · 论文问答 · 全库对话 · AI 对比表格 · 知识网络 · 移动端阅读。
-      开源免费，数据全部保存在本机，支持任意大模型——甚至不配 Key 也能用。</p>
-    <div class="cta">
-      <a class="btn primary" href="#download">⬇ 免费下载</a>
-      <a class="btn ghost" href="./demo.html">🌐 在线体验（30 秒）</a>
-      <a class="btn ghost" href="https://github.com/Jensen-Yao/CSPAPER">GitHub</a>
-    </div>
-    <div class="plat">WINDOWS · MACOS · ANDROID &nbsp;|&nbsp; 智谱 / DeepSeek / 通义 / Kimi / OpenAI / Ollama…</div>
-    <div class="hero-shot"><img src="./screenshots/home.png" alt="CSPAPER 文献卡片墙"></div>
-  </div>
-</header>
+<div class="shell"><div class="stats"><div class="stat"><b>63/63</b><span>真实 Electron UI 回归</span></div><div class="stat"><b>73/73</b><span>核心与迁移回归</span></div><div class="stat"><b>7</b><span>真实模型任务工具调用</span></div><div class="stat"><b>本地</b><span>数据与 API Key 优先</span></div></div></div>
 
-<section id="features">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="k">FEATURES</div>
-      <h2>一套完整的文献工作流</h2>
-      <p>从收藏、阅读、翻译，到问答、对比、写作插引文——围绕文献库的每一步都有 AI 帮忙。</p>
-    </div>
-    <div class="grid">
-      <div class="card"><div class="ic">🖼</div><h3>文献卡片墙</h3><p>按月分组的封面卡片视图，PDF 首页缩略图一览无余；一键生成 150 字 AI 小结，点卡片查看详情（信息 / 摘要 / 笔记 / 附件）。</p><span class="tag">v0.4</span></div>
-      <div class="card"><div class="ic">🌐</div><h3>划词翻译</h3><p>选中即译，大模型结合当前页做术语消歧（bond wire → 键合线）；不配 Key 也能走免费通道翻译。</p><span class="tag">开箱即用</span></div>
-      <div class="card"><div class="ic">📄</div><h3>全文翻译 · 逐段对照</h3><p>当前页按段落切成中英双语对照，逐段流式翻译，支持「跟随翻页」自动连译。</p><span class="tag">v0.4</span></div>
-      <div class="card"><div class="ic">💬</div><h3>论文问答 · 全库对话</h3><p>整篇精读提问或跨全库检索对话（本地向量 + BM25 混合），回答带页码引用角标，点击跳回原文高亮验证。</p><span class="tag">RAG</span></div>
-      <div class="card"><div class="ic">📊</div><h3>AI 对比表格</h3><p>多篇文献按维度横向对比：基础字段直接提取，分析维度由 AI 读原文提取要点，每条附页码出处；可自定义维度，导出 Markdown / CSV。</p><span class="tag">v0.4</span></div>
-      <div class="card"><div class="ic">🔎</div><h3>纵览 · 知识网络</h3><p>Zotero 式文献总表（排序 / 展开详情），知识网络图谱按分类与同作者关系自动连线，研究脉络一目了然。</p><span class="tag">v0.5</span></div>
-      <div class="card"><div class="ic">🧩</div><h3>浏览器插件</h3><p>Chrome / Edge 装上 Connector，arXiv、期刊页、PDF 链接右键一键保存，PDF 自动下载入库、题录自动识别。</p><span class="tag">extension/</span></div>
-      <div class="card"><div class="ic">📱</div><h3>Android 端</h3><p>桌面端一键导出 .cspack 数据包，手机 APK 打开即读；手机上的划词批注可合并回电脑。</p><span class="tag">android-app/</span></div>
-      <div class="card"><div class="ic">📝</div><h3>Word / WPS 插引文</h3><p>检索文献库，光标处插 [n] 引用，文末一键生成 GB/T 7714-2015 参考文献列表；支持 BibTeX 导出。</p><span class="tag">word-addon/</span></div>
-      <div class="card"><div class="ic">🇨🇳</div><h3>Zotero 迁移 · CNKI 题录</h3><p>Zotero 文献库一键迁移（Zotero 开着也能读）；知网批量导出的 RIS / EndNote 题录直接入库成可检索的题录页。</p><span class="tag">中文生态</span></div>
-    </div>
-  </div>
-</section>
+<section id="features"><div class="shell"><div class="section-head"><div class="k">CAPABILITIES</div><h2>从导入到产出一站完成</h2><p>CSPAPER 不只是 PDF 阅读器，而是把阅读、证据、写作与 Agent 产物连接在同一个本地数据模型里。</p></div>
+<div class="features">
+<article class="feature"><div class="ico">📖</div><h3>沉浸 PDF 阅读</h3><p>多标签、缩略图、目录、页内查找、续读记忆、高亮与批注；划词即可翻译、解释或加入统一对话。</p></article>
+<article class="feature"><div class="ico">💬</div><h3>可溯源问答</h3><p>本地向量 + BM25 混合检索，回答引用绑定 Source；点击角标回到 <b>第 N 页 + 精确文本</b>。</p></article>
+<article class="feature"><div class="ico">🧠</div><h3>题录 / 原文状态</h3><p>Zotero 无 PDF 条目明确显示“题录 · 无原文”。模型只能基于元数据回答，不会假装读过全文。</p></article>
+<article class="feature"><div class="ico">📊</div><h3>多文献对比</h3><p>三篇或多篇文献按研究问题、方法、数据、结果、局限自动对比，页码出处可回跳并导出 MD/CSV。</p></article>
+<article class="feature"><div class="ico">🕸</div><h3>知识网络</h3><p>相似网络、关键词共现、作者合作、主题星系与知识库；支持滚轮缩放和画布平移。</p></article>
+<article class="feature"><div class="ico">🔌</div><h3>Zotero 与中文生态</h3><p>本地 Zotero 迁移、标签/笔记/标注、OpenAlex、DOI/arXiv、知网与万方题录导入。</p></article>
+<article class="feature"><div class="ico">🔐</div><h3>权限与恢复</h3><p>Agent 写入前审批；文件操作带日志、摘要与备份，崩溃后进入 rollback / needs review 的明确状态。</p></article>
+<article class="feature"><div class="ico">🧩</div><h3>模型能力档案</h3><p>多服务商、同模型名精确绑定；思考等级跟随模型能力，支持 minimal / xhigh / max / 自定义档位。</p></article>
+<article class="feature"><div class="ico">📝</div><h3>写作与引文</h3><p>笔记模板、思维导图、GB/T 7714 与万种 CSL、Word/WPS 引文助手、BibTeX 导出。</p></article>
+</div></div></section>
 
-<section id="shots" style="background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="k">SCREENSHOTS</div>
-      <h2>界面速览</h2>
-      <p>深浅双主题、键盘优先、为长时间阅读设计的现代界面。</p>
-    </div>
-    <div class="shots">
-      <div class="shot"><img src="./screenshots/reader.png" alt="阅读"><div class="cap"><b>沉浸阅读</b><span>缩略图 / 目录导航 · 划词高亮 · 侧栏问答</span></div></div>
-      <div class="shot"><img src="./screenshots/fulltext.png" alt="全文翻译"><div class="cap"><b>全文翻译</b><span>逐段中英对照 · 跟随翻页 · 免 Key 可用</span></div></div>
-      <div class="shot"><img src="./screenshots/compare.png" alt="AI 对比表格"><div class="cap"><b>AI 对比表格</b><span>要点提取 · 页码出处 · 导出 MD/CSV</span></div></div>
-      <div class="shot"><img src="./screenshots/providers.png" alt="模型服务商"><div class="cap"><b>模型一键配置</b><span>18+ 服务商预设 · 粘贴 Key 即用</span></div></div>
-    </div>
-  </div>
-</section>
+<section id="workflow" style="background:#fffaf0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)"><div class="shell"><div class="section-head"><div class="k">RESEARCH AGENT</div><h2>会做事，也会留下证据</h2><p>Work 模式不只是聊天：模型先给出计划，用户确认后执行工具，所有运行事件、来源和产物持久保存。</p></div><div class="workflow"><div class="step"><b>研究目标</b>选定文献或集合</div><div class="step"><b>计划确认</b>可编辑 / 可拒绝</div><div class="step"><b>工具执行</b>读原文、写笔记、建对比</div><div class="step"><b>审批与修订</b>风险动作单独确认</div><div class="step"><b>产物入库</b>重启后继续追问</div></div></div></section>
 
-<section id="download">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="k">DOWNLOAD</div>
-      <h2>免费下载</h2>
-      <p>安装包由 GitHub Actions 自动构建；或克隆仓库自行构建（Electron + Vite）。</p>
-    </div>
-    <div class="dl">
-      <a class="dl-card" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">
-        <div class="os">🪟</div><h3>Windows</h3><p>Windows 10/11 · x64 安装包</p>
-        <span class="btn primary" style="padding: 9px 20px; font-size: 13px;">下载 exe</span>
-      </a>
-      <a class="dl-card" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">
-        <div class="os">🍎</div><h3>macOS</h3><p>Apple Silicon / Intel · dmg</p>
-        <span class="btn primary" style="padding: 9px 20px; font-size: 13px;">下载 dmg</span>
-      </a>
-      <a class="dl-card" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">
-        <div class="os">🤖</div><h3>Android</h3><p>Android 7.0+ · APK</p>
-        <span class="btn primary" style="padding: 9px 20px; font-size: 13px;">下载 APK</span>
-      </a>
-    </div>
-  </div>
-</section>
+<section id="gallery"><div class="shell"><div class="section-head"><div class="k">INTERFACE</div><h2>为长时间阅读设计的界面</h2><p>统一的品牌系统、可拖拽分栏、模型能力控制、深浅主题与窄窗布局。</p></div><div class="gallery"><figure class="shot"><img src="./screenshots/reader.png" alt="PDF 阅读"><figcaption class="caption"><b>阅读与侧栏问答</b><span>高亮 · 翻译 · 精确选区引用</span></figcaption></figure><figure class="shot"><img src="./screenshots/work.png" alt="Work Agent"><figcaption class="caption"><b>Work 科研 Agent</b><span>计划 · 工具 · 产物 · 会话</span></figcaption></figure><figure class="shot"><img src="./screenshots/graph.png" alt="知识网络"><figcaption class="caption"><b>知识网络</b><span>滚轮缩放 · 平移 · 五种视图</span></figcaption></figure><figure class="shot"><img src="./screenshots/providers.png" alt="模型配置"><figcaption class="caption"><b>模型能力档案</b><span>多服务商 · 自定义推理等级</span></figcaption></figure></div></div></section>
 
-<footer>
-  <div class="wrap">
-    <div class="links">
-      <a href="./demo.html">在线演示</a>
-      <a href="https://github.com/Jensen-Yao/CSPAPER">GitHub</a>
-      <a href="https://github.com/Jensen-Yao/CSPAPER/releases">Releases</a>
-      <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/ROADMAP.md">路线图</a>
-      <a href="https://github.com/Jensen-Yao/CSPAPER/issues">反馈问题</a>
-    </div>
-    <div>Apache-2.0 License · 数据本地优先，不做云服务 · <span class="star">⭐</span> 觉得有用请点个 Star</div>
-  </div>
-</footer>
+<section id="evidence" class="dark"><div class="shell"><div class="section-head"><div class="k">VERIFICATION</div><h2>发布前不是“看起来能用”</h2><p>本机完成源码、打包应用、安装器生命周期、强制崩溃恢复与真实模型链路验证。</p></div><div class="evidence"><div class="proof"><b>73/73</b><span>核心、迁移、运行时、工具与数据回归</span></div><div class="proof"><b>63/63</b><span>源码与打包应用 UI 均通过，无 renderer 异常</span></div><div class="proof"><b>NSIS</b><span>首装 · 启动 · 升级 · 卸载 · 残留检查</span></div><div class="proof"><b>真实模型</b><span>Agnes 严格 JSON 与三文献工具链</span></div><div class="proof"><b>10k</b><span>万篇列表 65.44ms，事件循环最大 65.99ms</span></div><div class="proof"><b>迁移备份</b><span>WAL 纳入备份，历史迁移 checksum 拒绝漂移</span></div></div><p class="note">证据目录：design-plans/execution-review-2026-10-29/。CI 与安装器发布由 GitHub Actions 自动执行。</p></div></section>
 
+<section id="download"><div class="shell"><div class="section-head"><div class="k">DOWNLOAD</div><h2>选择你的平台</h2><p>安装包由 GitHub Actions 构建并附加到 Release；也可以克隆仓库自行构建。</p></div><div class="downloads"><a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest"><div class="os">🪟</div><h3>Windows</h3><p>Windows 10/11 x64 NSIS</p><span class="btn primary" style="margin-top:16px">下载 exe</span></a><a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest"><div class="os">🍎</div><h3>macOS</h3><p>Apple Silicon / Intel DMG</p><span class="btn primary" style="margin-top:16px">下载 dmg</span></a><a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest"><div class="os">🤖</div><h3>Android</h3><p>Android 7.0+ 阅读端 APK</p><span class="btn primary" style="margin-top:16px">下载 APK</span></a></div></div></section>
+
+<footer><div class="shell foot"><div><b>CSPAPER</b> · Apache-2.0 · 本地优先，不做云服务</div><div><a href="./demo.html">在线演示</a> · <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/docs/ARCHITECTURE.md">架构</a> · <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/docs/IMPLEMENTATION_STATUS.md">状态</a> · <a href="https://github.com/Jensen-Yao/CSPAPER/releases">下载</a></div></div></footer>
 </body>
 </html>

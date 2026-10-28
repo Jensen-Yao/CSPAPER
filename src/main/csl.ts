@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import { app } from 'electron'
-import { BUILTIN_STYLES, formatBuiltin, isNumericStyle, type CiteItem } from './cite-formats'
+import { BUILTIN_STYLES, formatBuiltin, isNumericStyle, type CiteItem, splitAuthorNames } from './cite-formats'
 import { getDb } from './db'
 
 const CDN_ENGINE = 'https://cdn.jsdelivr.net/npm/citeproc@2.4.63/citeproc.js'
@@ -154,41 +154,14 @@ export function importStyleFile(src: string): { ok: boolean; id?: string; error?
 
 // ---------- 论文行 → CiteItem（优先 papers.csl 完整字段） ----------
 function rowToCiteItem(row: Record<string, unknown>): CiteItem {
-  if (typeof row.csl === 'string' && row.csl) {
-    try {
-      const c = JSON.parse(row.csl) as Record<string, unknown>
-      const authors = ((c.author ?? []) as Array<{ given?: string; family?: string; literal?: string }>)
-        .map((a) => a.literal ?? [a.given, a.family].filter(Boolean).join(' '))
-        .join(', ')
-      const year = ((c.issued ?? {}) as { 'date-parts'?: number[][] })['date-parts']?.[0]?.[0] ?? null
-      const ct = c['container-title']
-      return {
-        id: row.id as number,
-        type: String(c.type ?? ''),
-        title: String(c.title ?? row.title ?? ''),
-        authors,
-        year: typeof year === 'number' ? year : (row.year as number | null),
-        venue: Array.isArray(ct) ? String(ct[0] ?? '') : String(ct ?? row.venue ?? ''),
-        doi: typeof c.DOI === 'string' ? c.DOI : (row.doi as string | undefined),
-        url: typeof c.URL === 'string' ? c.URL : undefined,
-        volume: typeof c.volume === 'string' ? c.volume : undefined,
-        issue: typeof c.issue === 'string' ? c.issue : undefined,
-        pages: typeof c.page === 'string' ? c.page : undefined,
-        publisher: typeof c.publisher === 'string' ? c.publisher : undefined
-      }
-    } catch {
-      /* csl 列损坏按列拼装 */
-    }
-  }
-  return {
-    id: row.id as number,
-    type: String(row.item_type ?? ''),
-    title: String(row.title ?? ''),
-    authors: String(row.authors ?? ''),
-    year: (row.year as number | null) ?? null,
-    venue: String(row.venue ?? ''),
-    doi: typeof row.doi === 'string' ? row.doi : undefined
-  }
+  let c:Record<string,any>={}
+  try {c=JSON.parse(String(row.csl || '{}'))} catch { /* optional source metadata */ }
+  const field=(key:string,fallback:unknown):string=>row[key]!==null&&row[key]!==undefined?String(row[key]):String(fallback??'')
+  const originalAuthors=Array.isArray(c.author)?c.author.map((a:any)=>a.literal || [a.given,a.family].filter(Boolean).join(' ')).join(', '):''
+  return {id:row.id as number,type:field('item_type',c.type),title:field('title',c.title),authors:field('authors',originalAuthors),
+    year:row.year!==undefined?(row.year as number|null):(c.issued?.['date-parts']?.[0]?.[0]??null),
+    venue:field('venue',Array.isArray(c['container-title'])?c['container-title'][0]:c['container-title']),
+    doi:field('doi',c.DOI),url:c.URL,volume:field('volume',c.volume),issue:field('issue',c.issue),pages:field('pages',c.page),publisher:field('publisher',c.publisher)}
 }
 
 // ---------- 可选 CSL 引擎 ----------
@@ -249,7 +222,7 @@ async function cslEngineFormat(items: CiteItem[], styleId: string): Promise<stri
   const itemsById: Record<string, CiteItem & Record<string, unknown>> = {}
   for (const it of items) {
     const id = String(it.id ?? it.title)
-    itemsById[id] = { ...it, id, type: it.type || 'article-journal' }
+    itemsById[id] = { ...it,id,type:it.type || 'article-journal',author:splitAuthorNames(it.authors).map(literal=>({literal})),issued:it.year?{'date-parts':[[it.year]]}:undefined,'container-title':it.venue,DOI:it.doi,URL:it.url,page:it.pages } as unknown as CiteItem & Record<string,unknown>
   }
   const sys = {
     retrieveLocale: (lang: string): string | undefined => {
@@ -275,7 +248,7 @@ export async function formatCite(ids: number[], styleId: string): Promise<{ ok: 
   const db = getDb()
   const placeholders = ids.map(() => '?').join(',')
   const rows = db
-    .prepare(`SELECT id, title, authors, year, venue, doi, item_type, csl FROM papers WHERE id IN (${placeholders})`)
+    .prepare(`SELECT id,title,authors,year,venue,doi,item_type,csl,volume,issue,pages,publisher FROM active_papers WHERE id IN (${placeholders})`)
     .all(...ids) as Array<Record<string, unknown>>
   // 保持调用方传入的顺序
   const byId = new Map(rows.map((r) => [r.id as number, r]))

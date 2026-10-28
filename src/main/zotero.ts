@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import Database from 'better-sqlite3'
-import { getSettings, scanLibrary } from './db'
+import { getSettings, scanLibraryAsync } from './db'
 import { sanitizeCategoryName, findCategoryDir, nextCategoryDir } from './import'
 
 export interface ZoteroPaper {
@@ -236,7 +236,7 @@ const eqKey = (dirName: string, key: string): boolean => dirName.toLowerCase().e
 function noteMd(p: ZoteroPaper): string {
   const q = (s: string): string => s.replace(/"/g, "'")
   const tagLine = p.tags.length ? `tags: [${p.tags.map((t) => q(t)).join(', ')}]` : 'tags: [status/unread]'
-  let s = `---\ntitle: "${q(p.title)}"\nauthors: "${q(p.authors)}"\nyear: ${p.year ?? 'null'}\nvenue: "${q(p.venue)}"\nzotero: "${p.key}"\n${tagLine}\nstatus: unread\n---\n\n# ${p.title}\n\n- **作者:** ${p.authors || '（作者见原文）'}\n- **发表:** ${p.venue || `${p.year ?? ''}（待核实）`}\n- **来源:** Zotero 导入（key: ${p.key}）\n`
+  let s = `---\ntitle: "${q(p.title)}"\nauthors: "${q(p.authors)}"\nyear: ${p.year ?? 'null'}\nvenue: "${q(p.venue)}"\nabstract: "${q(p.abstract || '')}"\nzotero: "${p.key}"\nsource_kind: ${p.pdf ? 'pdf' : 'record'}\n${tagLine}\nstatus: unread\n---\n\n# ${p.title}\n\n- **作者:** ${p.authors || '（作者见原文）'}\n- **发表:** ${p.venue || `${p.year ?? ''}（待核实）`}\n- **来源:** Zotero 导入（key: ${p.key}）\n`
   if (p.abstract) s += `\n## 摘要\n\n${p.abstract}\n`
   if (p.tags.length) s += `\n## Zotero 标签\n\n${p.tags.map((t) => `- ${t}`).join('\n')}\n`
   for (const n of p.notes) s += `\n## Zotero 笔记\n\n${n}\n`
@@ -302,7 +302,7 @@ export async function importFromZotero(
     send('zotero:file', oc)
   }
   send('zotero:progress', { done: selected.length, total: selected.length, current: '' })
-  scanLibrary(s.libraryPath)
+  await scanLibraryAsync(s.libraryPath)
   return outcomes
 }
 

@@ -70,7 +70,7 @@ export async function updateCitations(ids: number[]): Promise<{ updated: number;
   const db = getDb()
   let updated = 0
   let errors = 0
-  const getRow = db.prepare('SELECT id, title, doi FROM papers WHERE id=?')
+  const getRow = db.prepare('SELECT id, title, doi FROM active_papers WHERE id=?')
   const setUpd = db.prepare('UPDATE papers SET cited_by=? WHERE id=?')
   for (let i = 0; i < ids.length; i++) {
     if (i > 0) await sleep(200)
@@ -229,7 +229,7 @@ export async function importVenuesCsv(): Promise<{ imported: number }> {
 export async function enrichMeta(limit = 50): Promise<{ updated: number; checked: number }> {
   const db = getDb()
   const rows = db
-    .prepare("SELECT id, doi FROM papers WHERE doi IS NOT NULL AND doi != '' AND (volume IS NULL OR volume = '') AND deleted_at IS NULL LIMIT ?")
+    .prepare("SELECT id, doi FROM active_papers WHERE doi IS NOT NULL AND doi != '' AND (volume IS NULL OR volume = '') AND deleted_at IS NULL LIMIT ?")
     .all(limit) as Array<{ id: number; doi: string }>
   const upd = db.prepare('UPDATE papers SET volume=?, issue=?, pages=?, publisher=?, venue=CASE WHEN venue IS NULL OR venue=? THEN ? ELSE venue END WHERE id=?')
   let updated = 0

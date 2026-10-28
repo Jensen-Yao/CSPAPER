@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-29T04:33:40+08:00",
+  "passed": 5,
+  "failed": 0,
+  "cases": [
+    "second instance exits and first remains single-window",
+    "renderer destruction closes provider stream",
+    "pre-replace crash rolls back",
+    "post-replace/DB-commit crash requires review",
+    "tray restore reshows window and second instance wakes first"
+  ]
+}

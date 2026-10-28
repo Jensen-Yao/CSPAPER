@@ -79,3 +79,9 @@
 html[data-theme='dark'] .kv-chip:hover { color: var(--accent2); }
 html[data-theme='dark'] .kv-kw-chip { color: var(--accent2); }
 html[data-theme='dark'] .kv-cluster { backdrop-filter: blur(1px); }
+
+/* Topic galaxy shares the graph wheel-zoom interaction model */
+.kv-galaxy { cursor: grab; touch-action: none; }
+.kv-galaxy:active { cursor: grabbing; }
+.kv-galaxy-layer { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+.kv-galaxy .kv-zoom { position: absolute; right: 12px; bottom: 12px; z-index: 8; }

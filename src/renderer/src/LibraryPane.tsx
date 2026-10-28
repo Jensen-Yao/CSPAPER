@@ -385,6 +385,7 @@ export default function LibraryPane({
     >
       <div className="t">{p.title}</div>
       <div className="m">
+        {p.source_kind==='record'&&<span className="source-badge record small" title="Zotero 题录条目：尚未导入 PDF 全文">题录</span>}
         <span
           className="status-dot"
           style={{ background: statusMeta(p.status).color }}
@@ -409,17 +410,6 @@ export default function LibraryPane({
   return (
     <div className="library" style={{ width }}>
       <div className="lib-func">
-        {/* 阅读 / 对话 两个内容模式（对比/纵览/统计/笔记/网页 已上顶栏快捷区） */}
-        <div className="mode-toggle">
-          <button className={mode === 'read' ? 'on' : ''} onClick={() => onModeChange('read')} title="论文阅读（PDF + 翻译 + 问答）">
-            <Icon.Book size={14} />
-            阅读
-          </button>
-          <button className={mode === 'chat' ? 'on' : ''} onClick={() => onModeChange('chat')} title="与全库文献对话（RAG）">
-            <Icon.Chat size={14} />
-            对话
-          </button>
-        </div>
         <div className="nav-row">
           {navBtn('back')}
           {navBtn('fwd')}
@@ -429,16 +419,12 @@ export default function LibraryPane({
         </div>
         <button className="add-btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
           <Icon.Plus size={13} />
-          添加文献
-        </button>
-        <button className="new-chat-btn" onClick={onNewChat} title="清空并开始新的全库对话">
-          <Icon.Chat size={13} />
-          新建对话
+          添加 PDF
         </button>
         <div className="search-wrap">
           <input className="searchbox" placeholder="搜索标题 / 正文 / 笔记…" value={q} onChange={(e) => onSetQ(e.target.value)} />
           <button className="kbd-hint" title="命令面板（搜索文献 / 执行命令）" onClick={onOpenPalette}>
-            {/Mac/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}
+            命令
           </button>
         </div>
         {/* 重建索引入口收敛到 文件菜单 / 命令面板 / 设置（侧栏不再常驻，减少堆叠） */}

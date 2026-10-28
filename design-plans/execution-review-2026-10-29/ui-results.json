@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-29T04:33:40+08:00",
+  "executable": "dist/win-unpacked/CSPAPER.exe",
+  "passed": 63,
+  "errors": [],
+  "cssGate": "PASS radius=17 font=14 important=5 half-px=0 transition-all=0",
+  "scope": "packaged Electron 0.20.0 + mock provider + isolated 13-item library (12 PDFs and 1 record-only item)",
+  "verified": [
+    "canonical brand image in title bar and Work",
+    "record-only badge/filter and Zotero repair entry",
+    "keyboard pane resizing",
+    "safe rail behavior before opening a PDF",
+    "all graph views including topic galaxy wheel zoom",
+    "model-specific reasoning levels and inline creation",
+    "collection context persistence and record-only evidence",
+    "version-change citation warning",
+    "explicit page-three selection and exact jump",
+    "reader/sidebar/task shared runtime",
+    "translation runs and cancellation",
+    "three-paper comparison and note appends",
+    "restart recovery and virtualized 600-message history",
+    "no renderer exceptions"
+  ]
+}

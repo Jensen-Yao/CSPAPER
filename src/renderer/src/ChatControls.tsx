@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { catLabel } from './LibraryPane'
 
-const THINK_LABEL: Record<string, string> = { default: '默认', off: '关闭', low: '低', medium: '中', high: '高' }
+const THINK_LABEL: Record<string, string> = { default: '默认', off: '关闭', none: '关闭', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最高' }
+const DEFAULT_THINK_ORDER = ['default', 'off', 'low', 'medium', 'high']
 const THINK_ORDER = ['default', 'off', 'low', 'medium', 'high']
 
 const Caret = (): JSX.Element => (
@@ -106,15 +107,27 @@ export function ModelPill({ models, model, onChange }: { models: string[]; model
   )
 }
 
-export function ThinkingPill({ level, onChange }: { level: string; onChange: (l: string) => void }): JSX.Element {
+export function ThinkingPill({
+  level,
+  onChange,
+  levels,
+  onAddLevel
+}: {
+  level: string
+  onChange: (l: string) => void
+  levels?: string[]
+  onAddLevel?: (level: string) => void | Promise<void>
+}): JSX.Element {
   const [open, setOpen] = useState(false)
-  const cur = THINK_LABEL[level] ?? '默认'
+  const configured=(levels?.length ? levels : DEFAULT_THINK_ORDER.slice(1)).filter(item=>item!=='default')
+  const order=['default',...configured,...(configured.includes(level)||level==='default'?[]:[level])]
+  const cur = THINK_LABEL[level] ?? (level || '默认')
   return (
     <Pill
       open={open}
       setOpen={setOpen}
       label={`思考·${cur}`}
-      title="思考等级（按服务商映射；不支持的服务商由模型决定）"
+      title="思考等级：来自当前模型能力，可在下拉中添加，也可到设置里完整编辑"
       icon={
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 3v2M5.6 5.6l1.4 1.4M3 12h2M5.6 18.4l1.4-1.4M12 21v-2M18.4 18.4L17 17M21 12h-2M18.4 5.6L17 7" />
@@ -122,7 +135,7 @@ export function ThinkingPill({ level, onChange }: { level: string; onChange: (l:
         </svg>
       }
     >
-      {THINK_ORDER.map((l) => (
+      {order.map((l) => (
         <button
           key={l}
           className={`pill-item ${l === level ? 'on' : ''}`}
@@ -131,10 +144,26 @@ export function ThinkingPill({ level, onChange }: { level: string; onChange: (l:
             setOpen(false)
           }}
         >
-          <span>思考·{THINK_LABEL[l]}</span>
+          <span>思考·{THINK_LABEL[l] ?? l}</span>
           {l === level && <ChipCheck />}
         </button>
       ))}
+      {onAddLevel && (
+        <form
+          className="pill-add-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const input=(event.currentTarget.elements.namedItem('level') as HTMLInputElement)
+            const value=input.value.trim()
+            if(!/^[a-zA-Z0-9_-]{1,24}$/.test(value)) return
+            void onAddLevel(value)
+            input.value=''
+          }}
+        >
+          <input name="level" placeholder="添加模型档位" aria-label="添加当前模型的思考等级" />
+          <button type="submit">添加</button>
+        </form>
+      )}
     </Pill>
   )
 }

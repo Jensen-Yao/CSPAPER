@@ -1,3 +1,5 @@
+import type { ChatApi } from '../../shared/chat-api'
+
 export interface Paper {
   id: number
   slug: string
@@ -10,12 +12,17 @@ export interface Paper {
   status: string
   n_pages: number
   indexed: number
+  source_kind: 'pdf' | 'record'
+  chunk_count?: number
   added_at: string
   opened_at?: string | null
   summary?: string
   // v0.6.0 扩展
   doi?: string | null
   item_type?: string | null
+  file_mtime?: number
+  file_size?: number
+  furthest_page?: number
   last_page?: number
   read_seconds?: number
   cited_by?: number | null
@@ -31,30 +38,12 @@ export const STATUS_META: Record<string, { label: string; icon: string; color: s
   read: { label: '已读', icon: '✅', color: '#7a9e7e' },
   paused: { label: '暂不读', icon: '⏸', color: '#a37f9e' }
 }
-export const STATUS_KEYS = ['todo', 'unread', 'reading', 'read', 'paused']
+import { READING_STATUSES } from '../../shared/paper'
+export const STATUS_KEYS: string[] = [...READING_STATUSES]
 
 // 多服务商配置（设置页可维护多套，对话界面切换模型时自动激活所属配置）
-export interface ModelCaps {
-  /** 推理等级档位（模型自带，如 gpt-5 的 low/high/max；空 = 该模型不支持等级切换） */
-  reasoningLevels: string[]
-  /** 上下文窗口（tokens，0/缺省未知） */
-  context?: number
-  /** 最大输出 tokens */
-  maxOutput?: number
-  /** 支持的输入类型 */
-  inputs?: Array<'text' | 'image' | 'video' | 'pdf'>
-  /** 能力标记 */
-  caps?: Array<'json' | 'websearch' | 'system'>
-}
-
-export interface ProviderProfile {
-  provider: string
-  apiBase: string
-  apiKey: string
-  models: string[]
-  /** 模型名 → 能力/推理等级（v0.16.2；缺省从 PROVIDER_PRESET_CAPS 推断） */
-  modelCaps?: Record<string, ModelCaps>
-}
+import type { ModelCaps, ProviderProfile } from '../../shared/settings-models'
+export type { ModelCaps, ProviderProfile } from '../../shared/settings-models'
 
 export interface Settings {
   libraryPath: string
@@ -62,7 +51,7 @@ export interface Settings {
   apiKey: string
   model: string
   models?: string[]
-  thinkingLevel?: 'default' | 'off' | 'low' | 'medium' | 'high'
+  thinkingLevel?: string
   provider: string
   embedProvider: 'local' | 'zhipu' | 'ollama'
   ollamaUrl: string
@@ -71,6 +60,8 @@ export interface Settings {
   theme: 'system' | 'light' | 'dark'
   setupDone?: boolean
   profiles?: ProviderProfile[]
+  modelBindingId?: string
+  agentModelBindingId?: string
   renameTemplate?: string
   closeToTray?: boolean
   disabledTranslators?: string[]
@@ -179,6 +170,36 @@ export interface ZoteroOutcome {
   error?: string
 }
 
+export type ZoteroRepairStatus = 'repairable' | 'no_zotero_key' | 'item_missing' | 'pdf_missing_or_absent' | 'already_pdf' | 'error'
+
+export interface ZoteroRepairCandidate {
+  paperId: number
+  slug: string
+  title: string
+  zoteroKey: string
+  status: ZoteroRepairStatus
+  sourcePath?: string
+  reason?: string
+  error?: string
+}
+
+export interface ZoteroRepairPreview {
+  dataDir: string
+  error?: string
+  total: number
+  counts: Record<ZoteroRepairStatus, number>
+  candidates: ZoteroRepairCandidate[]
+}
+
+export interface ZoteroRepairApplyResult {
+  dataDir: string
+  total: number
+  repaired: number
+  failed: number
+  skipped: number
+  outcomes: ZoteroRepairCandidate[]
+}
+
 // 题录文件（RIS/EndNote/CNKI 导出）解析出的条目
 export interface RecordEntry {
   title: string
@@ -254,6 +275,8 @@ export interface PaperDetail {
   added_at: string
   summary: string | null
   abstract: string
+  source_kind: 'pdf' | 'record'
+  chunk_count: number
   files: string[]
   notesCount: number
   myNotes: string
@@ -282,6 +305,9 @@ export interface SourceRef {
   page: number
   // 命中块原文（截断），引用跳转用它定位到页内真实段落
   snippet?: string
+  documentVersion?: string
+  currentVersion?: string
+  versionChanged?: boolean
 }
 
 export interface ChatMsg {
@@ -314,7 +340,7 @@ declare global {
       listCategories: () => Promise<string[]>
       setStatus: (id: number, status: string) => Promise<void>
       readPdf: (p: string) => Promise<ArrayBuffer>
-      indexStatus: () => Promise<{ papers: number; indexed: number; chunks: number; running: boolean }>
+      indexStatus: () => Promise<{ papers: number; indexed: number; chunks: number; recordOnly: number; fulltext: number; running: boolean }>
       rebuildIndex: () => Promise<boolean>
       startIndex: () => void
       pathForFile: (file: File) => string
@@ -325,6 +351,8 @@ declare global {
       zoteroPickDir: () => Promise<string | null>
       zoteroPreview: (dataDir?: string) => Promise<ZoteroPreviewResult>
       zoteroImport: (items: Array<{ key: string; category?: string }>) => Promise<ZoteroOutcome[]>
+      zoteroRepairPreview: (dataDir?: string) => Promise<ZoteroRepairPreview>
+      zoteroRepairApply: (dataDir?: string, paperIds?: number[]) => Promise<ZoteroRepairApplyResult>
       onZoteroProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       onZoteroFile: (cb: (o: ZoteroOutcome) => void) => () => void
       recordsPickParse: () => Promise<{ file: string; entries: RecordEntry[] } | null>
@@ -342,6 +370,8 @@ declare global {
       compareDelete: (id: number) => Promise<boolean>
       compareSave: (id: number, data: CompareData) => Promise<CompareData>
       compareGenerate: (paperId: number, dimensions: string[]) => Promise<Record<string, CompareCell[]>>
+      comparisonCreate: (paperIds: number[], dimensions?: string[]) => Promise<CompareTable>
+      comparisonUpdate: (id: number, paperIds: number[], dimensions: string[], generateIds?: number[]) => Promise<CompareTable>
       compareExport: (id: number, format: 'md' | 'csv') => Promise<void>
       paperDetail: (id: number) => Promise<PaperDetail | null>
       paperExtractGet: (id: number) => Promise<PaperExtract | null>
@@ -409,7 +439,8 @@ declare global {
       stream: (
         args: Record<string, unknown>,
         handlers: { onDelta: (t: string) => void; onEnd: () => void; onSources?: (s: SourceRef[]) => void }
-      ) => void
+      ) => () => void
+      chat: ChatApi
       onIndexProgress: (cb: (p: { done: number; total: number; phase: string; current?: string }) => void) => () => void
       onImportProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
       openExternal: (url: string) => void
@@ -458,7 +489,7 @@ declare global {
       papersSimilar: (id: number) => Promise<Array<{ id: number; title: string; snippet: string }>>
       agentPlan: (goal: string) => Promise<{ id: string; goal: string; status: string; plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>; events: unknown[]; answer: string }>
       agentUpdatePlan: (id: string, plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>) => Promise<unknown>
-      agentRun: (id: string) => Promise<{ ok: boolean }>
+      agentRun: (id: string) => Promise<{ ok: boolean; conversationId?: string; runId?: string }>
       agentCancel: (id: string) => Promise<boolean>
       agentTasks: () => Promise<Array<{ id: string; goal: string; status: string; createdAt: string; answer: string }>>
       agentTask: (id: string) => Promise<{

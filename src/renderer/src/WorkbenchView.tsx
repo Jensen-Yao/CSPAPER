@@ -2,12 +2,17 @@
 // 左栏（新建任务/搜索/自动化/技能/插件市场 + 相对时间历史 + 底部用户区），
 // 中央文档流（用户消息气泡 + 「已工作 X 分 X 秒」折叠条 + 可展开工具行 + 悬浮回底 + 右下操作排），
 // 底部合成器（＋模板 / 权限 / 模型 / 深度 / 发送·停止，执行中输入自动排队）。
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Paper } from './types'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { Paper, ProviderProfile } from './types'
+import type { Message, RunEvent } from '../../shared/chat'
 import * as Icon from './Icon'
+import BrandIcon from './BrandIcon'
 import { isCommandInput, filterSlash, parseSlash, SLASH_CMDS, TPL_ALIASES, DEEP_ALIAS, type SlashCmd } from './slash'
 import { presetCaps } from './model-caps-presets'
 import './wb.css'
+import ContextPicker from './features/chat/ContextPicker'
+import TaskChatWorkspace from './features/chat/TaskChatWorkspace'
+import { conversationStore } from './features/chat/conversation-store'
 
 interface PlanStep {
   tool: string
@@ -16,31 +21,37 @@ interface PlanStep {
 }
 interface AgentEvent {
   t: number
-  kind: 'plan' | 'step' | 'text' | 'artifact' | 'done' | 'error' | 'cancelled' | 'status'
+  kind: 'plan' | 'step' | 'text' | 'artifact' | 'done' | 'partial' | 'error' | 'cancelled' | 'status' | 'approval'
   tool?: string
   text?: string
   ok?: boolean
   ms?: number
   sid?: number
   stream?: boolean
-  artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string }
+  artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug: string }
+  toolCallId?: string
+  args?: Record<string, unknown>
+  impact?: string
 }
 interface TaskSummary {
   id: string
   goal: string
-  status: 'awaiting-confirm' | 'running' | 'done' | 'error' | 'cancelled'
+  status: 'awaiting-confirm' | 'running' | 'done' | 'partial' | 'error' | 'cancelled'
   createdAt: string
   answer: string
 }
 interface TaskFull extends TaskSummary {
   plan: PlanStep[]
   events: AgentEvent[]
+  conversationId?: string
+  runId?: string
 }
 
 interface Props {
   visible: boolean
   papers: Paper[]
   models: string[]
+  profiles: ProviderProfile[]
   onOpenPaper: (p: Paper) => void
   onOpenCompare: () => void
   onOpenNotes: () => void
@@ -59,6 +70,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   'awaiting-confirm': { label: '待确认计划', cls: 'pending' },
   running: { label: '执行中', cls: 'running' },
   done: { label: '已完成', cls: 'done' },
+  partial: { label: '部分完成', cls: 'pending' },
   error: { label: '出错', cls: 'error' },
   cancelled: { label: '已中止', cls: 'error' }
 }
@@ -134,11 +146,16 @@ function workedMsOf(task: TaskFull, now: number): number {
   return ms
 }
 
-export default function WorkbenchView({ visible, papers, models, onOpenPaper, onOpenCompare, onOpenNotes, onOpenSettings }: Props): JSX.Element | null {
+export default function WorkbenchView({ visible, papers, models, profiles, onOpenPaper, onOpenCompare, onOpenNotes, onOpenSettings }: Props): JSX.Element | null {
   const [nav, setNav] = useState<'tasks' | 'skills' | 'auto' | 'mcp'>('tasks')
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [selId, setSelId] = useState<string | null>(null)
   const [task, setTask] = useState<TaskFull | null>(null)
+  const chatStore=conversationStore(),chatState=useSyncExternalStore(chatStore.subscribe,chatStore.getSnapshot)
+  const chatConversations=useMemo(()=>chatState.conversations.filter(conversation=>conversation.mode==='act'),[chatState.conversations])
+  const [chatQueue, setChatQueue] = useState<string[]>([])
+  const [selectedPaperIds,setSelectedPaperIds]=useState<number[]>([])
+  const chatQueueRef = useRef<string[]>([])
   const [goal, setGoal] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -148,7 +165,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   const [queue, setQueue] = useState<string[]>([])
   const queueRef = useRef<string[]>([])
   const [perm, setPerm] = useState<'auto' | 'confirm'>(() => (localStorage.getItem('wb.perm') === 'confirm' ? 'confirm' : 'auto'))
-  const [thinking, setThinking] = useState<'default' | 'low' | 'medium' | 'high'>('default')
+  const [thinking, setThinking] = useState<string>('default')
   const [levels, setLevels] = useState<string[]>([])
   const [agentModel, setAgentModel] = useState<string>('')
   const [pop, setPop] = useState<'' | 'tpl' | 'model' | 'effort' | 'perm'>('')
@@ -178,6 +195,37 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   const refreshTasks = (): void => {
     void window.api.agentTasks().then((ts) => setTasks(ts as unknown as TaskSummary[])).catch(() => {})
   }
+  const refreshChatConversations=():void=>{
+    void chatStore.refreshConversations().catch(()=>{})
+  }
+  const messageText=(message:Message):string=>message.parts.filter(part=>part.type==='text').map(part=>part.type==='text'?part.text:'').join('')
+  const mapRunStatus=(status:string):TaskSummary['status']=>status==='completed'?'done':status==='failed'||status==='interrupted'?'error':status==='queued'||status==='preparing'||status==='generating'||status==='executing_tools'||status==='awaiting_approval'?(status==='awaiting_approval'?'awaiting-confirm':'running'):status as TaskSummary['status']
+  const applyChatTask=(conversationId:string):void=>{
+    const view=chatStore.getSnapshot().views[conversationId],conversation=view?.conversation
+    if(!conversation)return
+    const loaded={items:view.messages}
+    const assistant=loaded.items.filter((message:Message)=>message.runId).at(-1) as Message|undefined
+    const runId=assistant?.runId
+    const bundle=runId?view.runs[runId]:null
+    const events:(AgentEvent&{t:number})[]=(bundle?.events??[] as RunEvent[]).map((event:RunEvent)=>({
+      t:new Date(event.createdAt).getTime(),
+      kind:event.type==='plan.created'?'plan':event.type==='approval.required'?'approval':event.type.startsWith('tool.')?'step':event.type==='message.delta'?'text':event.type==='error'?'error':event.type==='run.completed'?'done':'status',
+      toolCallId:event.type==='approval.required'?(event.payload as any)?.toolCallId:undefined,
+      args:event.type==='approval.required'?(event.payload as any)?.args:undefined,
+      impact:event.type==='approval.required'?(event.payload as any)?.impact:undefined,
+      tool:(event.payload as any)?.legacy?.tool??(event.type.startsWith('tool.')?(event.payload as any)?.tool??event.type.split('.')[1]:undefined),
+      text:(event.payload as any)?.legacy?.text??(event.type==='message.delta'?(event.payload as any)?.delta:(event.payload as any)?.summary),
+      ok:event.type!=='tool.failed',
+      sid:event.seq,
+      artifact:(event.payload as any)?.legacy?.artifact
+    }))
+    const answer=assistant?messageText(assistant):''
+    const planEvent=(bundle?.events??[] as RunEvent[]).find((event:RunEvent)=>event.type==='plan.created')
+    const plan=(planEvent?.payload as any)?.steps??[]
+    setSelId(conversation.id);setTask({id:conversation.id,goal:loaded.items.find(item=>item.role==='user')?messageText(loaded.items.find(item=>item.role==='user')!):conversation.title,status:mapRunStatus(bundle?.run?.status??'running'),createdAt:conversation.createdAt,answer,plan,events,conversationId:conversation.id,runId:runId??undefined})
+    setEditPlan(null)
+  }
+  const loadChatTask=async(conversationId:string):Promise<void>=>{await chatStore.selectConversation(conversationId);applyChatTask(conversationId)}
   type ApiEvent = Parameters<Parameters<typeof window.api.onAgentEvent>[0]>[0]['event']
   const loadTask = (id: string, ev?: ApiEvent): void => {
     // 流式增量：同 sid 的 text 事件直接原地改本地状态（不重新拉全量，保证流式手感）
@@ -205,11 +253,17 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
 
   // 初始化：读设置里的 agent 模型 / 深度
   useEffect(() => {
+    if(!visible)return
+    refreshChatConversations()
+  },[visible])
+  useEffect(()=>{if(visible&&selId&&chatState.views[selId])applyChatTask(selId)},[visible,selId,chatState.views[selId??'']])
+
+  useEffect(() => {
     if (!visible) return
     void window.api
       .getSettings()
       .then((s) => {
-        const st = s as { agentModel?: string; agentMaxSteps?: number; agentGoal?: string; thinkingLevel?: 'default' | 'off' | 'low' | 'medium' | 'high'; model?: string; profiles?: Array<{ models: string[]; modelCaps?: Record<string, { reasoningLevels: string[] }> }> }
+        const st = s as { agentModel?: string; agentMaxSteps?: number; agentGoal?: string; thinkingLevel?: string; model?: string; profiles?: Array<{ models: string[]; modelCaps?: Record<string, { reasoningLevels: string[] }> }> }
         if (st.agentModel) setAgentModel(st.agentModel)
         if (st.thinkingLevel && st.thinkingLevel !== 'off') setThinking(st.thinkingLevel)
         // 所选模型自带的推理等级档（如 gpt-5: low/high/max）——有则 pill 直接展示这些词
@@ -271,26 +325,18 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   }, [visible])
 
   const launch = (g: string): void => {
-    void (async () => {
-      setBusy(true)
-      setErr('')
+    void (async()=>{
+      setBusy(true);setErr('')
       try {
-        const t = await window.api.agentPlan(g)
-        const auto = perm === 'auto'
-        setSelId(t.id)
-        setTask({ ...(t as unknown as TaskFull), plan: t.plan })
-        setEditPlan(auto ? null : t.plan)
-        setNav('tasks')
-        if (auto) {
-          await window.api.agentRun(t.id)
-          loadTask(t.id)
-        }
-        refreshTasks()
-      } catch (e) {
-        setErr(String(e).slice(0, 160))
-      } finally {
-        setBusy(false)
-      }
+        const activeProfile=profiles.find(profile=>profile.models.includes(agentModel||models[0]||''))
+        const workspace=await window.api.chat.workspace()
+        const conversation=(task?.conversationId?await window.api.chat.getConversation(task.conversationId):null)??await window.api.chat.createConversation({title:g.slice(0,120),mode:'act',entry:'work'})
+        const model=agentModel||models[0]||''
+        const submitted=await chatStore.send({conversationId:conversation.id,clientMessageId:'work-'+crypto.randomUUID(),parentMessageId:conversation.activeLeafMessageId,text:g,context:selectedPaperIds.map(paperId=>({kind:'paper' as const,workspaceId:workspace.workspaceId,paperId})),mode:'act',promptKind:'ask',permission:perm==='auto'?'auto':'confirm',modelBindingId:`${activeProfile?.id??'profile-1'}:${model}`,reasoning:thinking==='low'||thinking==='medium'||thinking==='high'?thinking:'default'})
+        setNav('tasks');await loadChatTask(conversation.id);refreshChatConversations()
+        if(!submitted?.run?.id)setErr('统一任务启动失败')
+      } catch(error){setErr(String(error).slice(0,160))}
+      finally{setBusy(false)}
     })()
   }
   launchRef.current = launch
@@ -394,9 +440,8 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
     }
     setGoal('')
     setPop('')
-    if (task?.status === 'running') {
-      queueRef.current = [...queueRef.current, g]
-      setQueue(queueRef.current)
+    if(task?.status==='running'&&!task.conversationId){
+      queueRef.current=[...queueRef.current,g];setQueue(queueRef.current)
       return
     }
     launch(g)
@@ -406,14 +451,16 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
     setBusy(true)
     try {
       await window.api.agentUpdatePlan(selId, editPlan)
-      await window.api.agentRun(selId)
-      loadTask(selId)
+      const started=await window.api.agentRun(selId)
+      if(started.conversationId)await loadChatTask(started.conversationId)
+      else loadTask(selId)
     } finally {
       setBusy(false)
     }
   }
   const cancelTask = async (): Promise<void> => {
     if (!selId) return
+    if(task?.runId){await window.api.chat.cancelRun(task.runId);await loadChatTask(selId);return}
     await window.api.agentCancel(selId)
     loadTask(selId)
   }
@@ -494,7 +541,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
       {/* ---------- 左栏（ZCode 式） ---------- */}
       <div className="wb-side">
         <div className="wb-brand">
-          <span className="wb-brand-mark seal">文</span>
+          <BrandIcon className="brand-icon-sm wb-brand-mark" />
           <span className="wb-brand-name">CSPAPER</span>
         </div>
         <nav className="wb-nav">
@@ -541,6 +588,18 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
         )}
         <div className="wb-side-sep" />
         <div className="wb-history">
+          {nav==='tasks'&&chatConversations.length>0&&(
+            <div>
+              <div className="wb-group">统一会话</div>
+              {chatConversations.map(conversation=>(
+                <button key={conversation.id} className={`wb-hist ${selId===conversation.id?'on':''}`} title={conversation.title} onClick={()=>void loadChatTask(conversation.id)}>
+                  <span className="wb-hist-dot running" />
+                  <span className="wb-hist-goal ellipsis">{conversation.title||'科研任务'}</span>
+                  <span className="wb-hist-time">{relTime(conversation.createdAt)}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {nav === 'tasks' &&
             grouped.map(([g, list]) => (
               <div key={g}>
@@ -623,7 +682,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 </div>
               )
             })()}
-            <div
+            {task.conversationId ? <TaskChatWorkspace conversationId={task.conversationId}/> : <div
               className="wb-scroll"
               ref={scrollRef}
               onScroll={(e) => {
@@ -691,6 +750,18 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 {task.events
                   .filter((e) => e.kind !== 'plan')
                   .map((ev, i) => {
+                    if (ev.kind === 'approval') {
+                      return (
+                        <div key={i} className="wb-card" style={{margin:'10px 0',padding:'12px'}}>
+                          <div className="wb-card-title">需要确认：{TOOL_LABEL[ev.tool ?? ''] ?? ev.tool ?? '工具'}</div>
+                          <div className="wb-card-body">{ev.impact || ev.text || '该工具会修改平台数据。'}</div>
+                          <div style={{display:'flex',gap:8,marginTop:8}}>
+                            <button className="wb-run" onClick={()=>{if(ev.toolCallId)void window.api.chat.approveTool(ev.toolCallId,true)}}>批准执行</button>
+                            <button className="wb-mini danger" onClick={()=>{if(ev.toolCallId)void window.api.chat.approveTool(ev.toolCallId,false)}}>拒绝</button>
+                          </div>
+                        </div>
+                      )
+                    }
                     if (ev.kind === 'status') {
                       // 过程状态只在执行中显示转圈；任务结束后收起（ZCode 式只留结果不留过程噪音）
                       if (task.status !== 'running') return null
@@ -759,7 +830,8 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 )}
               </div>
             </div>
-            {!atBottom && (
+            }
+            {!task.conversationId && !atBottom && (
               <button className="wb-jump" title="回到底部" onClick={scrollBottom}>
                 {<Icon.ArrowD />}
               </button>
@@ -803,7 +875,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
         <div className={`wb-composer ${nav !== 'tasks' ? 'ws-hidden' : ''}`}>
           {queue.length > 0 && (
             <div className="wb-queue">
-              {queue.map((g, i) => (
+              {[...chatQueue, ...queue].map((g, i) => (
                 <div key={i} className="wb-queue-item" title={g}>
                   <i className="wb-spin-inline" />
                   <span className="ellipsis">排队：{g}</span>
@@ -811,8 +883,8 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                     className="wb-icon-btn"
                     title="移除"
                     onClick={() => {
-                      queueRef.current = queueRef.current.filter((_, j) => j !== i)
-                      setQueue(queueRef.current)
+                      if(i<chatQueueRef.current.length){chatQueueRef.current=chatQueueRef.current.filter((_,j)=>j!==i);setChatQueue(chatQueueRef.current)}
+                      else{const oldIndex=i-chatQueueRef.current.length;queueRef.current=queueRef.current.filter((_,j)=>j!==oldIndex);setQueue(queueRef.current)}
                     }}
                   >
                     ✕
@@ -858,6 +930,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                 if (e.target.value.startsWith('/')) setSlashSel(0)
               }}
               onKeyDown={(e) => {
+                if(e.nativeEvent.isComposing)return
                 const menu = isCommandInput(goal) && !goal.includes(' ') ? filterSlash(goal) : null
                 if (menu && menu.length > 0) {
                   if (e.key === 'ArrowDown') {
@@ -895,6 +968,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
               }}
             />
             <div className="wb-compose-bar">
+              <ContextPicker papers={papers} selected={selectedPaperIds} onChange={setSelectedPaperIds}/>
               <div className="wb-pop-wrap">
                 <button className={`wb-pill ${pop === 'tpl' ? 'on' : ''}`} title="任务模板" onClick={() => setPop(pop === 'tpl' ? '' : 'tpl')}>
                   {<Icon.Plus />}
@@ -1019,28 +1093,25 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
                         <span>交由模型自行决定</span>
                       </button>
                       {(levels.length > 0
-                        ? levels.map((lv, li) => ({ key: lv, label: lv, frac: levels.length === 1 ? 0.75 : li / (levels.length - 1), native: true }))
-                        : THINKINGS.filter((t) => t.value !== 'default').map((t) => ({ key: t.value, label: t.label, frac: t.value === 'low' ? 0.25 : t.value === 'medium' ? 0.5 : 0.75, native: false }))
-                      ).map((opt) => {
-                        const mapped = opt.native ? (opt.frac <= 0.34 ? 'low' : opt.frac <= 0.67 ? 'medium' : 'high') : (opt.key as 'low' | 'medium' | 'high')
-                        return (
+                        ? levels.map((lv) => ({ key: lv, label: lv, native: true }))
+                        : THINKINGS.filter((t) => t.value !== 'default').map((t) => ({ key: t.value, label: t.label, native: false }))
+                      ).map((opt) => (
                           <button
                             key={opt.key}
                             className="wb-pop-item"
                             onClick={() => {
-                              setThinking(mapped)
-                              void window.api.saveSettings({ thinkingLevel: mapped })
+                              setThinking(opt.key)
+                              void window.api.saveSettings({ thinkingLevel: opt.key })
                               setPop('')
                             }}
                           >
                             <b>
-                              {thinking === mapped ? '✓ ' : ''}
+                              {thinking === opt.key ? '✓ ' : ''}
                               {opt.label}
                             </b>
                             <span>{opt.native ? '模型自带推理档位' : '思考强度 ' + opt.label}</span>
                           </button>
-                        )
-                      })}
+                        ))}
                     </div>
                   </>
                 )}

@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import * as dbmod from '../db'
 import { buildIndex, isIndexRunning, indexNeedsRebuild } from '../ingest'
 import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroImportItem } from '../zotero'
+import { previewZoteroRepairs, repairZoteroPdfs } from '../zotero-repair'
 import { parseRecords, importRecords, type RecordEntry } from '../records'
 import { exportMobilePack, mergeMobileNotes } from '../mobilepack'
 import { bridgeStatus } from '../bridge'
@@ -25,6 +26,12 @@ export function registerEcoIpc(ctx: IpcCtx): void {
   })
   ipcMain.handle('zotero:preview', (_e, dataDir?: string) => previewZoteroForUi(dataDir))
   ipcMain.handle('zotero:import', (_e, items: ZoteroImportItem[]) => importFromZotero(items, send))
+  ipcMain.handle('zotero:repair-preview', (_e, dataDir?: string) => previewZoteroRepairs(dataDir))
+  ipcMain.handle('zotero:repair-apply', async (_e, dataDir?: string, paperIds?: number[]) => {
+    const result=await repairZoteroPdfs(dataDir,paperIds?.map(Number).filter(Number.isInteger))
+    if(result.repaired>0&&indexNeedsRebuild()&&!isIndexRunning())void buildIndex(send).catch(error=>send('index:error',String(error)))
+    return result
+  })
 
   // 题录文件导入：RIS / EndNote(.enw) / CNKI 自定义格式 → 生成题录页入库（可后续替换为原文 PDF）
   ipcMain.handle('records:pick-parse', async () => {

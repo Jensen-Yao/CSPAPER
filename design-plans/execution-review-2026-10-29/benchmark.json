@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-29T04:33:40+08:00",
+  "library": {
+    "n": 10000,
+    "scanMs": 4808.0,
+    "listMs": 65.4427,
+    "scanMaxTickGapMs": 58.0584,
+    "maxTickGapMs": 65.9918,
+    "budgetMs": 100,
+    "responsive": true
+  },
+  "chat": {
+    "rounds": 300,
+    "deltasPerRound": 20,
+    "writeMs": 3342.0,
+    "readMs": 4.5996,
+    "messages": 200,
+    "events": 21
+  },
+  "check": "npm run check passed: typecheck, 73/73 core tests, build, lifecycle matrix, 63/63 UI tests and both benchmarks"
+}

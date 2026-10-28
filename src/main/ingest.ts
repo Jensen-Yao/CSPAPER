@@ -2,9 +2,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getDb, getSettings } from './db'
 import { embed } from './embed'
-import { extractInWorker } from './extract-pool'
+import { extractInWorker, type ExtractOptions } from './extract-pool'
 
 let running = false
+
+export function clearActiveLibraryIndex(db=getDb()):void {
+  db.exec(`
+    DELETE FROM chunks_fts WHERE paper_id IN (SELECT id FROM active_papers);
+    DELETE FROM chunks WHERE paper_id IN (SELECT id FROM active_papers);
+    DELETE FROM papers_fts WHERE rowid IN (SELECT id FROM active_papers);
+    UPDATE papers SET indexed=0,pvec=NULL WHERE id IN (SELECT id FROM active_papers);
+  `)
+}
 
 export function isIndexRunning(): boolean {
   return running
@@ -16,14 +25,14 @@ const CHUNK_VERSION = 2
 // 库是否需要（重新）索引：有待索引论文、分块算法版本落后，或整篇级向量/标题索引缺失
 export function indexNeedsRebuild(): boolean {
   const db = getDb()
-  const pending = db.prepare('SELECT COUNT(*) AS n FROM papers WHERE indexed=0').get() as { n: number }
+  const pending = db.prepare('SELECT COUNT(*) AS n FROM active_papers WHERE indexed=0').get() as { n: number }
   if (pending.n > 0) return true
   const v = db.prepare("SELECT value FROM meta WHERE key='chunk_v'").get() as { value: string } | undefined
   if (!v || v.value !== String(CHUNK_VERSION)) return true
-  const noPvec = db.prepare('SELECT COUNT(*) AS n FROM papers WHERE pvec IS NULL').get() as { n: number }
+  const noPvec = db.prepare('SELECT COUNT(*) AS n FROM active_papers WHERE pvec IS NULL').get() as { n: number }
   if (noPvec.n > 0) return true
   const noFts = db
-    .prepare('SELECT COUNT(*) AS n FROM papers p LEFT JOIN papers_fts f ON f.rowid=p.id WHERE p.indexed=1 AND f.rowid IS NULL')
+    .prepare('SELECT COUNT(*) AS n FROM active_papers p LEFT JOIN papers_fts f ON f.rowid=p.id WHERE p.indexed=1 AND f.rowid IS NULL')
     .get() as { n: number }
   return noFts.n > 0
 }
@@ -63,17 +72,21 @@ function chunkText(text: string): string[] {
 }
 
 // 抽取优先走工作线程（W0a，不阻塞主进程事件循环）；worker 不可用时回退主线程直接抽取
-export async function extractPages(pdfPath: string, maxPages = Infinity): Promise<string[]> {
+export async function extractPages(pdfPath: string, maxPages = Infinity, options: ExtractOptions = {}): Promise<string[]> {
   const capped = Number.isFinite(maxPages) ? maxPages : 0
   try {
-    return await extractInWorker(pdfPath, capped)
+    options.signal?.throwIfAborted()
+    return await extractInWorker(pdfPath, capped,options)
   } catch (err) {
+    const name=(err as Error)?.name
+    if(name==='AbortError'||name==='TimeoutError')throw err
     console.warn(`[extract] worker 抽取失败，回退主线程：${path.basename(pdfPath)} (${String(err).slice(0, 120)})`)
-    return extractDirect(pdfPath, maxPages)
+    options.signal?.throwIfAborted()
+    return extractDirect(pdfPath, maxPages, options)
   }
 }
 
-async function extractDirect(pdfPath: string, maxPages = Infinity): Promise<string[]> {
+async function extractDirect(pdfPath: string, maxPages = Infinity, options: ExtractOptions = {}): Promise<string[]> {
   const { app } = await import('electron')
   const assetRoot = app.isPackaged ? path.join(process.resourcesPath, 'app.asar') : app.getAppPath()
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
@@ -87,6 +100,7 @@ async function extractDirect(pdfPath: string, maxPages = Infinity): Promise<stri
   }).promise
   const pages: string[] = []
   for (let p = 1; p <= doc.numPages && p <= maxPages; p++) {
+    options.signal?.throwIfAborted()
     const page = await doc.getPage(p)
     const tc = await page.getTextContent()
     // 按 y 坐标分行拼接，保留近似版面
@@ -117,7 +131,7 @@ async function extractDirect(pdfPath: string, maxPages = Infinity): Promise<stri
 // 带缓存的整文抽取（问答整篇模式用；按 mtime 失效，LRU 上限防大库内存无界增长）
 const PAGE_CACHE_MAX = 200
 const pageCache = new Map<string, { mtime: number; pages: string[] }>()
-export async function extractPagesCached(pdfPath: string): Promise<string[]> {
+export async function extractPagesCached(pdfPath: string, options: ExtractOptions = {}): Promise<string[]> {
   let mtime = 0
   try {
     mtime = fs.statSync(pdfPath).mtimeMs
@@ -126,12 +140,13 @@ export async function extractPagesCached(pdfPath: string): Promise<string[]> {
   }
   const hit = pageCache.get(pdfPath)
   if (hit && hit.mtime === mtime) {
+    options.signal?.throwIfAborted()
     // LRU touch：重插到队尾
     pageCache.delete(pdfPath)
     pageCache.set(pdfPath, hit)
     return hit.pages
   }
-  const pages = await extractPages(pdfPath)
+  const pages = await extractPages(pdfPath,Infinity,options)
   pageCache.set(pdfPath, { mtime, pages })
   while (pageCache.size > PAGE_CACHE_MAX) {
     const oldest = pageCache.keys().next().value
@@ -151,12 +166,12 @@ export async function buildIndex(send: (ev: string, payload: unknown) => void): 
     const prevV = db.prepare("SELECT value FROM meta WHERE key='chunk_v'").get() as { value: string } | undefined
     if ((prevDim && parseInt(prevDim.value) !== dim) || prevV?.value !== String(CHUNK_VERSION)) {
       // 嵌入维度变化或分块算法升级：旧块不可比，清空全库重建（含整篇级向量/标题索引）
-      db.exec('DELETE FROM chunks; DELETE FROM chunks_fts; DELETE FROM papers_fts; UPDATE papers SET indexed=0, pvec=NULL')
+      clearActiveLibraryIndex(db)
     }
     db.prepare("INSERT INTO meta(key,value) VALUES('embed_dim',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(dim))
     db.prepare("INSERT INTO meta(key,value) VALUES('chunk_v',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(CHUNK_VERSION))
 
-    const todo = db.prepare('SELECT id, path, slug, title, authors, venue FROM papers WHERE indexed=0 AND deleted_at IS NULL ORDER BY id').all() as Array<{
+    const todo = db.prepare('SELECT id, path, slug, title, authors, venue FROM active_papers WHERE indexed=0 AND deleted_at IS NULL ORDER BY id').all() as Array<{
       id: number
       path: string
       slug: string
@@ -224,7 +239,7 @@ export async function buildIndex(send: (ev: string, payload: unknown) => void): 
     const left = db
       .prepare(
         `SELECT id, path, slug, title, authors, venue FROM papers p
-         WHERE (pvec IS NULL OR p.id NOT IN (SELECT rowid FROM papers_fts)) AND p.deleted_at IS NULL ORDER BY id`
+         WHERE (pvec IS NULL OR p.id NOT IN (SELECT rowid FROM papers_fts)) AND p.deleted_at IS NULL AND p.id IN (SELECT id FROM active_papers) ORDER BY id`
       )
       .all() as Array<{ id: number; path: string; slug: string; title: string; authors: string; venue: string }>
     for (let t = 0; t < left.length; t++) {
@@ -270,11 +285,12 @@ export interface RetrievedChunk {
 // 整篇级（每篇最优块余弦 + 标题/作者 BM25）保证"这篇论文相关"就一定出现在来源里——
 // 否则一篇强相关论文可能因为没有单块挤进前列而永远检索不到
 const hybridCache: { rows: Array<{ id: number; paper_id: number; page: number; vec: Buffer }> | null; maxId: number } = { rows: null, maxId: -1 }
-export async function hybridSearch(query: string, scopePaperId?: number, topK = 12, category?: string): Promise<RetrievedChunk[]> {
+export async function hybridSearch(query: string, scopePaperId?: number, topK = 12, category?: string, signal?: AbortSignal): Promise<RetrievedChunk[]> {
+  signal?.throwIfAborted()
   const db = getDb()
-  let papers = db.prepare('SELECT id, slug, title FROM papers WHERE deleted_at IS NULL').all() as Array<{ id: number; slug: string; title: string }>
+  let papers = db.prepare('SELECT id, slug, title FROM active_papers').all() as Array<{ id: number; slug: string; title: string }>
   if (category) {
-    const allowed = new Set(db.prepare('SELECT id FROM papers WHERE category=? AND deleted_at IS NULL').all(category).map((r: any) => r.id))
+    const allowed = new Set(db.prepare('SELECT id FROM active_papers WHERE category=? AND deleted_at IS NULL').all(category).map((r: any) => r.id))
     papers = papers.filter((p) => allowed.has(p.id))
   }
   const paperById = new Map(papers.map((p) => [p.id, p]))
@@ -284,17 +300,18 @@ export async function hybridSearch(query: string, scopePaperId?: number, topK = 
 
   // 向量召回
   const { vectors } = await embed([query], true)
+  signal?.throwIfAborted()
   const qv = vectors[0]
   // 进程内向量缓存：每次检索全量拉 vec BLOB + 同步点积会阻塞主进程数百 ms；
   // 缓存按 (最大 chunk id, 维度) 失效——新块写入（id 递增）或换 embed 供应商（维度变）自动重载
   const maxId = (db.prepare('SELECT MAX(id) m FROM chunks').get() as { m: number | null }).m ?? 0
   const catScope: Record<number, true> = {}
   if (category) {
-    for (const r of db.prepare('SELECT id FROM papers WHERE category=? AND deleted_at IS NULL').all(category) as Array<{ id: number }>) catScope[r.id] = true
+    for (const r of db.prepare('SELECT id FROM active_papers WHERE category=? AND deleted_at IS NULL').all(category) as Array<{ id: number }>) catScope[r.id] = true
   }
   if (!hybridCache.rows || hybridCache.maxId !== maxId || (hybridCache.rows[0] && hybridCache.rows[0].vec.byteLength / 4 !== qv.length)) {
     hybridCache.rows = db
-      .prepare(`SELECT c.id, c.paper_id, c.page, c.vec FROM chunks`)
+      .prepare(`SELECT c.id, c.paper_id, c.page, c.vec FROM chunks c`)
       .all() as Array<{ id: number; paper_id: number; page: number; vec: Buffer }>
     hybridCache.maxId = maxId
   }
@@ -407,7 +424,7 @@ ${n.text}`
     /* 短查询/无命中忽略 */
   }
   const pvecs = new Map<number, Float32Array>()
-  for (const r of db.prepare('SELECT id, pvec FROM papers WHERE deleted_at IS NULL').all() as Array<{ id: number; pvec: Buffer | null }>) {
+  for (const r of db.prepare('SELECT id, pvec FROM active_papers').all() as Array<{ id: number; pvec: Buffer | null }>) {
     if (r.pvec && r.pvec.byteLength > 0 && paperById.has(r.id)) {
       pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
     }
@@ -424,6 +441,7 @@ ${n.text}`
     })
     .sort((a, b) => b.s - a.s)
   for (const c of cand) {
+    signal?.throwIfAborted()
     if (out.length >= topK + 4) break
     if (c.b) {
       const src = pick(c.b.chunkId, c.s)

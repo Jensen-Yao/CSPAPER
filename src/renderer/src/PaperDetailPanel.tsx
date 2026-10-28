@@ -1,7 +1,9 @@
+import { persistNote, readNoteDraft, rememberNoteDraft } from './lib/note-storage'
 import { useEffect, useRef, useState } from 'react'
 import { STATUS_KEYS, STATUS_META, type Paper, type PaperDetail, type StyleInfo, type TagRow } from './types'
 import { NOTE_TEMPLATES } from './note-templates'
 import NotesMarkmapButton from './NotesMarkmapButton'
+import { dispatchWorkspaceAction } from './workspace-actions'
 import { catLabel } from './LibraryPane'
 import * as Icon from './Icon'
 import { useDialog } from './Dialog'
@@ -28,12 +30,19 @@ interface PaperTag {
 export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized, onChanged, embedded }: Props): JSX.Element {
   const dlg = useDialog()
   const [detail, setDetail] = useState<PaperDetail | null>(null)
+  const sourceKind=detail?.source_kind ?? paper.source_kind
+  const isRecord=sourceKind==='record'
+  const missingIndex=!isRecord&&(detail?.chunk_count??paper.chunk_count??0)===0
   // ---- 我的笔记（防抖自动保存） ----
   const [myNote, setMyNote] = useState('')
   const [noteBusy, setNoteBusy] = useState(false)
   const [noteState, setNoteState] = useState<'idle' | 'pending' | 'saved' | 'failed'>('idle')
   const [savedAt, setSavedAt] = useState('')
   const [tplId, setTplId] = useState('')
+  const pendingNote=useRef<{id:number;text:string}|null>(null)
+  const loadedNoteId=useRef<number|null>(null)
+  const currentPaperId=useRef(paper.id)
+  currentPaperId.current=paper.id
   const savedRef = useRef('') // 最近一次已落库的内容（防抖期间跳过未变更文本）
   // ---- 标签编辑 ----
   const [tags, setTags] = useState<PaperTag[]>([])
@@ -134,6 +143,8 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   const [ext, setExt] = useState<import('./types').PaperExtract | null>(null)
   const [extBusy, setExtBusy] = useState(false)
   const [extErr, setExtErr] = useState('')
+  const [repairBusy, setRepairBusy] = useState(false)
+  const [repairMsg, setRepairMsg] = useState('')
   useEffect(() => {
     if (!paper?.id) return
     setExt(null)
@@ -143,8 +154,24 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
       .then((e) => setExt(e))
       .catch(() => setExt(null))
   }, [paper?.id])
+  const repairFromZotero = async (): Promise<void> => {
+    if (!paper?.id || repairBusy) return
+    setRepairBusy(true);setRepairMsg('')
+    try {
+      const result=await window.api.zoteroRepairApply(undefined,[paper.id])
+      const outcome=result.outcomes[0]
+      if(outcome?.error) setRepairMsg(`修复失败：${outcome.error}`)
+      else if(outcome?.status==='repairable') setRepairMsg('已用 Zotero 原文替换题录页，正在重建索引。')
+      else setRepairMsg(outcome?.reason??'Zotero 中没有可读取的 PDF 原文。')
+      onChanged?.()
+    } catch(error) {
+      setRepairMsg(String(error).replace(/^Error: /,'').slice(0,180))
+    } finally {
+      setRepairBusy(false)
+    }
+  }
   const runExtract = async (): Promise<void> => {
-    if (!paper?.id) return
+    if (!paper?.id || isRecord) return
     setExtBusy(true)
     setExtErr('')
     try {
@@ -170,6 +197,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   const [sumErr, setSumErr] = useState('')
 
   useEffect(() => {
+    loadedNoteId.current=null
     setDetail(null)
     setSummary(paper.summary ?? '')
     setSumErr('')
@@ -189,8 +217,11 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
       .then((d) => {
         if (!cancelled && d) {
           setDetail(d)
-          setMyNote(d.myNotes ?? '')
-          savedRef.current = d.myNotes ?? ''
+          loadedNoteId.current=paper.id
+          const recovered=readNoteDraft(paper.id)
+          setMyNote(recovered ?? d.myNotes ?? '')
+          savedRef.current=d.myNotes ?? ''
+          if(recovered!==null && recovered!==savedRef.current) pendingNote.current={id:paper.id,text:recovered}
         }
       })
       .catch(() => {})
@@ -210,44 +241,49 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     setStatus(paper.status)
   }, [paper.status])
 
-  // 我的笔记：800ms 防抖自动保存
-  useEffect(() => {
-    if (myNote === savedRef.current) return
+  const editNote=(value:string|((old:string)=>string)):void=>{
+    const next=typeof value==='function'?value(myNote):value
+    pendingNote.current={id:paper.id,text:next}
+    rememberNoteDraft(paper.id,next)
+    setMyNote(next)
     setNoteState('pending')
-    const t = window.setTimeout(() => {
-      void saveMine()
-    }, 800)
-    return () => window.clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myNote, paper.id])
-
-  const saveMine = async (): Promise<void> => {
+  }
+  const saveMine=async():Promise<void>=>{
+    const pending=pendingNote.current
+    if(!pending) return
     setNoteBusy(true)
     try {
-      const ok = await window.api.myNotesSave(paper.id, myNote)
-      if (ok !== false) {
-        savedRef.current = myNote
-        const n = new Date()
-        setSavedAt(`${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`)
-        setNoteState('saved')
-        window.dispatchEvent(new CustomEvent('cspaper:notes-changed'))
-      } else {
-        // 返回 false（md 缺失等）：不再卡「保存中」，可点击重试
-        setNoteState('failed')
+      await persistNote(pending.id,pending.text)
+      if(pendingNote.current===pending) pendingNote.current=null
+      if(currentPaperId.current===pending.id) {
+        savedRef.current=pending.text
+        setSavedAt(new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}))
+        setNoteState(pendingNote.current?'pending':'saved')
       }
-    } catch {
-      setNoteState('failed')
-    } finally {
-      setNoteBusy(false)
-    }
+    } catch(error) {
+      if(currentPaperId.current===pending.id) setNoteState('failed')
+      dlg.toast('笔记保存失败，草稿已保留：'+String(error).replace(/^Error: /,''),'error')
+    } finally {setNoteBusy(false)}
   }
+  useEffect(()=>{
+    if(loadedNoteId.current!==paper.id || myNote===savedRef.current) return
+    const timer=window.setTimeout(()=>{void saveMine()},800)
+    return ()=>window.clearTimeout(timer)
+  },[myNote,paper.id])
+  useEffect(()=>()=>{
+    const pending=pendingNote.current
+    if(pending) {
+      pendingNote.current=null
+      void persistNote(pending.id,pending.text).catch(()=>dlg.toast('笔记未保存，重新打开文献可恢复草稿','error'))
+    }
+  },[paper.id])
 
   // 模板：追加到笔记末尾（笔记为空则直接填入）；选完即复位，便于重复插入同一模板
   const applyTemplate = (tid: string): void => {
     if (!tid) return
     const tpl = NOTE_TEMPLATES.find((t) => t.id === tid)
     if (!tpl) return
-    setMyNote((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${tpl.content}` : tpl.content))
+    editNote((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${tpl.content}` : tpl.content))
   }
 
   // ---- 标签 ----
@@ -361,6 +397,10 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   }
 
   const genSummary = async (): Promise<void> => {
+    if (isRecord) {
+      setSumErr('该条目只有 Zotero 题录，没有 PDF 全文；补充 paper.pdf 后才能生成 AI 小结。')
+      return
+    }
     setSumBusy(true)
     setSumErr('')
     try {
@@ -427,6 +467,9 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         <div className="pd-title" title={paper.title}>
           {paper.title}
         </div>
+        <button className="pd-fold-all" title="把这篇文献加入新的统一对话" onClick={()=>dispatchWorkspaceAction({kind:'chat',paperIds:[paper.id],fresh:true})}>
+          问这篇
+        </button>
         <button className="pd-fold-all" title={allOpen ? '收起全部分区' : '展开全部分区'} onClick={toggleAllSecs}>
           {allOpen ? '⌃ 收起' : '⌄ 展开'}
         </button>
@@ -548,6 +591,16 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                   )}
                   {field('分类', catLabel(detail.category))}
                 </div>
+                {field(
+                  '原文状态',
+                  <div className="pd-source-status">
+                    <span className={`source-badge ${isRecord?'record':''}`}>{isRecord?'题录 · 无 PDF 全文':missingIndex?'PDF · 索引缺失':'PDF · 已入库'}</span>
+                    <button className="cmp-mini" disabled={repairBusy} onClick={()=>void repairFromZotero()}>{repairBusy?'Zotero 修复中…':'从 Zotero 修复原文'}</button>
+                    {paper.doi&&<button className="cmp-mini" onClick={()=>window.api.openExternal('https://doi.org/'+paper.doi)}>按 DOI 找原文</button>}
+                    {!isRecord&&missingIndex&&<button className="cmp-mini" onClick={()=>void window.api.rebuildIndex()}>重建索引</button>}
+                    {repairMsg&&<span className="pd-dim">{repairMsg}</span>}
+                  </div>
+                )}
                 {detail.authors && (
                   field(
                     '作者',
@@ -579,8 +632,13 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               'AI 洞察',
               summary ? (
                 <div className="pd-summary">{summary}</div>
+              ) : isRecord ? (
+                <div className="pd-source-alert">
+                  该条目来自 Zotero 题录，未导入 PDF 全文。AI 小结、全文问答和结构化精读会等待原文补充后再执行。
+                </div>
               ) : (
                 <div>
+                  {missingIndex&&<div className="pd-source-alert">PDF 已存在但正文索引缺失；问答会先使用首页兜底，建议重建索引。</div>}
                   <button className="sum-gen" disabled={sumBusy} onClick={() => void genSummary()}>
                     {sumBusy ? '分析中…' : '生成 AI 小结'}
                   </button>
@@ -620,8 +678,11 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                     ))}
                   <div className="pd-deep-meta">抽取于 {ext.extracted_at} · <button className="pd-deep-redo" disabled={extBusy} onClick={() => void runExtract()}>{extBusy ? '重新精读中…' : '重新精读'}</button></div>
                 </div>
+              ) : isRecord ? (
+                <div className="pd-source-alert">深度精读需要 PDF 全文。请先补充原文并替换该条目的 paper.pdf。</div>
               ) : (
                 <div>
+                  {missingIndex&&<div className="pd-source-alert">正文索引缺失不影响直接精读，但会影响后续引用定位；建议同时重建索引。</div>}
                   <button className="sum-gen" disabled={extBusy} onClick={() => void runExtract()}>
                     {extBusy ? '深度精读中（读全文，约需 1-2 分钟）…' : '深度精读全文（研究问题 / 方法 / 数据 / 指标 / 结果 / 局限）'}
                   </button>
@@ -782,7 +843,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                   className="pd-note-ta"
                   value={myNote}
                   placeholder="记录研究问题、方法、启发……"
-                  onChange={(e) => setMyNote(e.target.value)}
+                  onChange={(e) => editNote(e.target.value)}
                 />
                 <div className="pd-note-meta">
                   <span className={`pd-note-state ${noteState === 'saved' && !noteBusy ? 'ok' : ''}`}>

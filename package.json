@@ -1,6 +1,6 @@
 {
   "name": "cspaper",
-  "version": "0.19.3",
+  "version": "0.20.0",
   "description": "CSPAPER — PDF 文献阅读 + 划词翻译 + LLM 问答 + 全库 RAG",
   "main": "out/main/index.js",
   "productName": "CSPAPER",
@@ -15,7 +15,17 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
-    "dist:mac": "electron-vite build && electron-builder --mac"
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "test:core": "node scripts/test-core.mjs",
+    "test:ui": "node scripts/test-ui.mjs",
+    "check": "npm run typecheck && npm run test:core && npm run build && npm run test:lifecycle && npm run test:ui && npm run bench",
+    "test:chat": "node scripts/test-core.mjs",
+    "bench:library": "node scripts/bench-library.mjs",
+    "bench:chat": "node scripts/bench-chat.mjs",
+    "bench": "npm run bench:library && npm run bench:chat",
+    "test:lifecycle": "node scripts/test-single-instance.mjs && node scripts/test-window-cleanup.mjs && node scripts/test-operation-crash.mjs && node scripts/test-tray-restore.mjs",
+    "test:installer": "node scripts/test-installer.mjs"
   },
   "build": {
     "appId": "com.jensenyao.cspaper",
@@ -45,7 +55,7 @@
       }
     ],
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -85,12 +95,17 @@
     "@ai-sdk/openai-compatible": "^3.0.53",
     "@huggingface/transformers": "^3.5.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tanstack/react-virtual": "^3.14.23",
     "ai": "^7.0.107",
     "better-sqlite3": "^11.9.0",
     "cheerio": "^1.2.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -1,146 +1,181 @@
 <div align="center">
 
-# 📚 CSPAPER
+# <picture><source media="(prefers-color-scheme: dark)" srcset="docs/icon.png"><img src="docs/icon.png" width="96" alt="CSPAPER logo"></picture>
 
-### 更适合中国人的 AI 文献管理工作台
+# CSPAPER
 
-**划词翻译 · 论文问答 · 全库对话 · AI 对比表格 · 知识网络 —— 数据全部留在本机**
+### 面向中文科研场景的本地 AI 文献工作台
 
-[![Release](https://img.shields.io/github/v/release/Jensen-Yao/CSPAPER?style=flat-square&color=a6093d)](https://github.com/Jensen-Yao/CSPAPER/releases)
-[![Platform](https://img.shields.io/badge/平台-Windows%20%7C%20macOS%20%7C%20Android-2b2b2b?style=flat-square)](https://github.com/Jensen-Yao/CSPAPER/releases)
-[![License](https://img.shields.io/badge/License-Apache%202.0-a6093d?style=flat-square)](./LICENSE)
-[![Built with ZCode](https://img.shields.io/badge/构建于-ZCode-1558c0?style=flat-square)](#-技术栈)
+**PDF 精读 · 可溯源问答 · 科研 Agent · 多文献对比 · Zotero 迁移 · 知识网络**
 
-[![home](docs/screenshots/home.png)](docs/screenshots/home.png)
+[![Release](https://img.shields.io/github/v/release/Jensen-Yao/CSPAPER?style=flat-square&label=Release&color=a6093d)](https://github.com/Jensen-Yao/CSPAPER/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/Jensen-Yao/CSPAPER/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Jensen-Yao/CSPAPER/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/Jensen-Yao/CSPAPER?style=flat-square&color=1558c0)](LICENSE)
+[![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Android-本地优先-2b2b2b?style=flat-square)](https://jensen-yao.github.io/CSPAPER/)
 
-**🌐 [在线体验](https://jensen-yao.github.io/CSPAPER/demo.html)** ·
-**⬇️ [下载安装包](https://github.com/Jensen-Yao/CSPAPER/releases)** ·
-**🗺 [路线图](./ROADMAP.md)**
+[![CSPAPER 0.20](docs/screenshots/home.png)](https://jensen-yao.github.io/CSPAPER/)
+
+**[🌐 官网 / GitHub Pages](https://jensen-yao.github.io/CSPAPER/)** ·
+**[🎮 在线演示](https://jensen-yao.github.io/CSPAPER/demo.html)** ·
+**[⬇️ 下载安装包](https://github.com/Jensen-Yao/CSPAPER/releases/latest)** ·
+**[📋 实施状态](./docs/IMPLEMENTATION_STATUS.md)**
 
 </div>
 
 ---
 
-## ⚡ Work × 📚 Paper 双主模式（v0.9）
+## 0.20：从“功能堆叠”到可审计的科研工作台
 
-像 Codex 的 Work / Chat 一样，CSPAPER 现在有两个一级界面：
+这一版把最核心的科研链路打通为**一个持久化运行引擎**：阅读侧栏、全屏对话、Work Agent、自动化任务和翻译都进入同一套会话、工具、审批、恢复与来源体系。模型回答不再只是聊天文本，而是能落到具体论文、页码、选区、笔记、Web 来源和对比产物。
 
-- **⚡ Work 科研工作台**：给一个研究目标，AI 代理自动执行——检索文献 → 精读 → 写笔记 → 生成综述/对比表 → 产物自动入库。执行计划可确认可编辑，全程工具调用实时可见，基于开源 harness [Vercel AI SDK](https://github.com/vercel/ai)（MIT）构建，支持任意 OpenAI 兼容模型
-- **📚 Paper 文献库**：全面对标 Zotero 的主文献库——阅读（划词翻译/高亮/批注/页内查找）、全库 RAG 对话、AI 对比表格、知识网络（相似网络/关键词共现/作者合作/主题星系/知识库）、统计仪表盘（六形态可视化+五套配色）、彩色标签、五态阅读流、笔记中心、内置学术搜索引擎（聚合检索+八大站点直达）、CSL 万种引文、Zotero 云端同步（Web API 增量同步：条目/分类/标签/笔记/PDF 标注/附件）
+| 关键能力 | 现在的行为 |
+|---|---|
+| **可溯源对话** | 回答引用绑定到持久 Source；点击角标跳回论文页并高亮精确文本。代码、公式与已有链接不会被误判成引用。 |
+| **题录 / 原文状态** | Zotero 无 PDF 条目明确显示“题录 · 无原文”，不会伪装成全文；显式提问时使用元数据 Source，禁止推断全文结论。 |
+| **科研 Agent** | Work 支持计划确认、工具审批、失败修订、重试分支、产物入库与崩溃后恢复。 |
+| **多文献对比** | 三篇文献可精确绑定 ID 生成对比表，并把局限追加到对应笔记，重启后可继续追问。 |
+| **模型能力档案** | 思考等级跟随当前模型的 `reasoningLevels`，支持 `none / minimal / xhigh / max` 与自定义档位，不再固定四档。 |
+| **知识网络** | 相似网络、关键词共现、作者合作图支持鼠标滚轮缩放、空白拖拽平移与一键复位。 |
+| **工程可靠性** | 迁移 checksum、WAL 备份、操作日志、单实例、窗口销毁清理、强制崩溃恢复、NSIS 安装/升级/卸载矩阵纳入回归。 |
 
-## 为什么做 CSPAPER
+## 它能做什么
 
-Zotero 很强，但对中文科研人不够顺手：划词翻译要装插件、全文翻译要付费、对比阅读没有、AI 问答要绕远路。
-**CSPAPER 把这些一步到位**：开源、本地优先、任意大模型 Key（甚至免 Key）即可上手。
+### 📖 阅读与写作
 
-## ✨ 它能做什么
+- **PDF 阅读**：多标签、缩略图、目录、页内查找、阅读进度、续读记忆、触控板缩放。
+- **划词工具**：高亮、批注、术语翻译、解释、把精确选区加入统一对话。
+- **全文翻译**：当前页逐段中英对照，支持跟随翻页；未配置 Key 时仍可使用免费通道。
+- **笔记中心**：论文笔记、划词标注、独立笔记、模板、Markdown 导出、思维导图。
+- **引文生态**：内置 12 种常用 CSL，可扩展官方万种样式；Word / WPS 引文助手与 BibTeX 导出。
 
-| | 功能 | 说明 |
+### 🔎 检索与综合
+
+- **论文问答**：当前 PDF / 题录 / 选区 / 笔记 / Web 来源均可成为显式上下文。
+- **全库 RAG**：本地向量 + BM25 混合检索，段落级引用可回跳原文。
+- **AI 对比表**：自定义维度、页码出处、Markdown / CSV 导出、AI 填全表。
+- **知识网络**：相似网络、关键词共现、作者合作、主题星系、知识库五视图。
+- **统计仪表盘**：阅读时长、时间线、分类、标题词云与多套学术配色。
+
+### ⚡ Work 科研 Agent
+
+给一个研究目标，CSPAPER 可以检索文献、读取指定页、生成对比表、追加笔记、整理综述、执行平台写入。所有高风险动作都有明确权限边界；工具调用、计划修订和执行结果持久化，可审计、可恢复。
+
+```text
+目标 → 模型计划 → 用户确认/修改 → 工具执行 → 来源与产物 → 会话/笔记/对比表
+```
+
+### 🧬 Zotero 与中文生态
+
+- 本地 Zotero SQLite 迁移：条目、分类、标签、笔记、PDF、标注与元数据。
+- 题录/原文状态显式区分；`从 Zotero 修复原文`按条目 key 精确匹配 storage 附件，替换前自动备份且操作幂等。
+- 无 PDF 条目保留为题录并明确标注，拿到原文后替换 `paper.pdf` 即可升级为全文。
+- 内置 arXiv、DOI、IEEE、ScienceDirect、Springer、Wiley、PubMed、知网、万方等 13 个站点脚本。
+- OpenAlex 被引更新、DOI / arXiv / 链接在线添加、浏览器插件一键保存。
+
+## 界面速览
+
+| 阅读与侧栏问答 | Work 科研 Agent |
+|---|---|
+| ![Reader](docs/screenshots/reader.png) | ![Work](docs/screenshots/work.png) |
+
+| 模型与服务商 | 知识网络 | 对比表 |
 |---|---|---|
-| 🖼 | **文献卡片墙** | 按月分组的封面卡片视图，PDF 首页缩略图 + 一键 AI 小结；点卡片看详情（信息 / AI 洞察 / 摘要 / 笔记 / 附件） |
-| 📖 | **沉浸阅读** | 缩略图 / 目录双导航、多标签阅读、触控板缩放、划词高亮持久化、**Ctrl+F 页内查找**、**续读记忆**（重开跳回上次页码） |
-| 🌐 | **划词翻译** | 选中即译，配置大模型后带术语消歧与术语对照；**不配 Key 走免费通道也能译** |
-| 📄 | **全文翻译** | 当前页逐段中英对照，支持「跟随翻页」自动连译 |
-| 💬 | **论文问答 / 全库对话** | 整篇或跨库 RAG，回答带页码引用角标，点击跳回原文高亮验证 |
-| 📊 | **AI 对比表格** | 多篇文献按维度横向对比：基础字段直接提取，分析维度 AI 提取要点（附页码出处），可自定义维度，导出 Markdown / CSV |
-| 🔍 | **纵览** | Zotero 式文献总表（标签 / 五态状态 / 进度条 / 被引列，批量更新被引）+ **知识网络**图谱 + **统计仪表盘**（阅读时长 Top / 月度时间线 / 分类分布 / 标题词云） |
-| 🏷 | **标签系统** | 彩色标签 + 计数 + 一键筛选；阅读状态五态（稍后读/待读/在读/已读/暂不读），**Alt+1~5** 快捷切换 |
-| 📝 | **笔记中心** | 全库「我的笔记」+ 划词标注聚合视图，内置文献阅读卡等笔记模板，自动保存，一键导出 Markdown / **思维导图 HTML** |
-| 🔬 | **参考文献抓取** | 自动解析当前论文的参考文献列表，单条查看 AI 摘要（DOI 优先）、一键入库并记录「引自」来源 |
-| 🌍 | **Translators 抓取脚本** | 对标 Zotero Translators：内置 arXiv / DOI / IEEE / ScienceDirect / Springer·Nature / Wiley / PubMed / 知网 / 万方 / 百度学术等 13 个站点脚本，**社区脚本放进数据目录即生效**（[脚本贡献指南](./docs/translators.md)）；「在线添加」支持 DOI / arXiv ID / 链接 / 关键词多源检索，自动抓合法 OA PDF |
-| 📑 | **CSL 万种引文样式** | 内置 12 种常用样式（GB/T 7714 两种 / APA / MLA / Chicago / IEEE / Vancouver / Nature / Science / Cell / Harvard / Elsevier）；设置里可从官方 CSL 样式库（10000+）按需下载、导入 .csl；引文助手网页与 Word 加载项全链路可用 |
-| 📈 | **影响因子 / 被引** | OpenAlex 免 Key 更新被引次数列；期刊 IF / 分区支持 CSV 导入显示 |
-| 🧩 | **浏览器插件** | arXiv / 期刊页 / PDF 链接右键一键保存，PDF 自动下载入库；**优先走 Translators 脚本抓取**，题录更准 |
-| 📱 | **Android 端** | 桌面端导出 `.cspack` 数据包，手机离线阅读；批注可合并回电脑 |
-| 📝 | **Word / WPS 引文** | 检索文献库插入 `[n]` 引用，样式下拉自由切换（同 CSL 样式目录），一键生成参考文献（支持 BibTeX） |
-| 🇨🇳 | **中文生态** | Zotero 库一键迁移（含标签/摘要/子笔记）、CNKI 题录导入、中文标题与分类全流程支持、深色模式、关闭最小化到托盘、导入重命名模板 |
+| ![Models](docs/screenshots/providers.png) | ![Graph](docs/screenshots/graph.png) | ![Compare](docs/screenshots/compare.png) |
 
-## 🆚 Zotero 插件生态对标
+## 下载与安装
 
-社区文章盘点的 20 个 Zotero 常用插件能力，CSPAPER v0.6 逐项内建（开箱即用，无需装插件）：
-
-| Zotero 插件 | 作用 | CSPAPER 对应 |
-|---|---|---|
-| Zotero Style / Tag / actions-tags | 彩色标签分栏、自定义列 | 内建标签系统（彩色标签+筛选）+ 表格标签/进度/被引列 |
-| Reading List | 阅读状态管理 + 快捷键 | 五态阅读状态 + **Alt+1~5** 快捷键 |
-| Chartero | 阅读统计可视化 | 统计仪表盘（时长 Top / 时间线 / 分类环图 / 词云） |
-| Zotcard + Better Notes | 卡片笔记模板 / 笔记增强·思维导图 | 笔记中心 + 4 种笔记模板 + 我的笔记自动保存 + 思维导图 HTML 导出 |
-| zotero-reference | 自动抓参考文献、一键入库 | 阅读侧栏「文献」tab：抓取 → AI 摘要 → 一键入库（记录「引自」） |
-| 茉莉花 Jasminum | 知网元数据 / 中文文献 | CNKI 题录导入 + 知网/万方/百度学术抓取脚本（尽力而为）+ 中文全流程 |
-| zotero IF / 小绿蛙 | 影响因子与分区 | OpenAlex 免 Key 被引列 + 期刊 IF/分区 CSV 导入 |
-| Scite Plugin | 被引佐证次数 | 「更新被引」批量拉取 OpenAlex cited_by_count |
-| Sci-Hub Plugin | DOI 下载 PDF | 合法替代：在线添加自动抓 OA PDF（arXiv / Crossref / OpenAlex OA 链接） |
-| Scholaread | 全平台对照翻译 | 全文逐段中英对照 + Android `.cspack` 离线阅读 |
-| Zotero Connector | 浏览器一键抓取 | 内建浏览器插件，且**优先走 Translators 脚本**抓得更准 |
-| PDF Preview | 条目预览 | 卡片墙封面 + 详情面板 + 表格展开附件 |
-| Night for Zotero | 深色模式 | 内建浅色 / 深色 / 跟随系统 |
-| Keep Zotero | 后台常驻 | 「关闭时最小化到托盘」设置 + 托盘常驻 |
-| ZotFile | 附件重命名规则 | 导入重命名模板 `{author}_{year}_{title}` |
-| Del Item with Attachment | 精细删除 | 删除三选：移入废纸篓 / 仅移出库保留文件 / 取消 |
-| CSL 引文样式（万种） | 排版引用 | 内置 12 种样式 + 官方 CSL 库 10000+ 按需下载 + .csl 导入 |
-| Zotero Translators（架构） | 抓取脚本可扩展 | 同构架构：声明式脚本目录，社区脚本热加载（[贡献指南](./docs/translators.md)） |
-| Notero | Notion 同步 | 规划中（见 ROADMAP） |
-
-## 🖼 界面速览
-
-| 阅读 + 划词 | 全文翻译·逐段对照 |
+| 系统 | 安装包 |
 |---|---|
-| ![reader](docs/screenshots/reader.png) | ![fulltext](docs/screenshots/fulltext.png) |
+| Windows 10/11 x64 | `CSPAPER Setup <version>.exe` |
+| macOS Apple Silicon / Intel | `CSPAPER-<version>-arm64.dmg` / `-x64.dmg` |
+| Android 7.0+ | `CSPAPER-Mobile-<version>.apk` |
 
-| AI 对比表格（要点附页码出处） | 知识网络 |
+从 [Releases](https://github.com/Jensen-Yao/CSPAPER/releases/latest) 下载。Windows 首次运行如遇 SmartScreen，选择“仍要运行”；macOS 首次打开可右键应用 →“打开”。
+
+```bash
+git clone https://github.com/Jensen-Yao/CSPAPER.git
+cd CSPAPER
+npm ci
+npm run rebuild
+npm run dev
+```
+
+## 模型配置
+
+CSPAPER 支持任意 OpenAI 兼容接口，并内置智谱、DeepSeek、通义、Kimi、OpenAI、Gemini、OpenRouter、Ollama、LM Studio 等 18+ 预设。每个服务商独立保存 Key、Base URL、模型列表与能力档案；同一模型名可跨服务商精确绑定。思考等级来自每个模型的能力配置，可直接在对话中新增。
+
+默认无需上传数据：嵌入可使用本地 e5-small，也可切换智谱或 Ollama。
+
+## 数据与隐私
+
+- 文献、PDF、SQLite、向量索引、高亮、笔记、会话和工具记录保存在本机。
+- 浏览器插件、Word 引文助手与桌面端只通过 `127.0.0.1` 本地桥接通信。
+- API Key 存放在本机用户数据目录；本仓库不收集、不上传、不内置任何 Key。
+- 文件写入使用操作日志与备份恢复策略，崩溃后进入明确状态而不是静默重放。
+
+## 架构与验证
+
+```text
+Renderer App / Work / Reader Sidebar
+        ↓ typed preload contract
+Chat IPC → Runtime → Provider / Tools / Retrieval
+        ↓               ↓
+SQLite conversations    Sources / Artifacts
+Markdown + CSL + PDF    Operation Journal
+```
+
+当前本机发布验收：
+
+| 检查 | 结果 |
 |---|---|
-| ![compare](docs/screenshots/compare.png) | ![graph](docs/screenshots/graph.png) |
+| Typecheck | ✅ 通过 |
+| Core regression | ✅ 73 / 73 |
+| UI regression | ✅ 63 / 63，无 renderer 异常 |
+| Packaged app UI | ✅ 63 / 63 |
+| Lifecycle / crash | ✅ 单实例、窗口清理、操作崩溃、托盘恢复 |
+| Installer 0.20.0 | ✅ 首装、启动、升级、卸载、残留检查；安装包 SHA-256 `D4B01B048ADBFF001BB0C3F99EC8476F06BC214AAAD6B032611A36D2F6B39AAA` |
+| Real model | ✅ Agnes 两个模型严格 JSON；三文献任务 7 个工具、3 篇笔记、1 张对比表 |
+| 10k library | ✅ list 65.44ms，最大事件循环间隔 65.99ms（低于 100ms 预算） |
+| CSS gate | ✅ 圆角 17 档、字号 14 档、important 5 |
 
-| 卡片详情栏 | 服务商一键配置 |
-|---|---|
-| ![detail](docs/screenshots/detail.png) | ![providers](docs/screenshots/providers.png) |
+更多证据见 [`design-plans/execution-review-2026-10-29/`](./design-plans/execution-review-2026-10-29/)。架构、协议、迁移和当前边界见：
 
-## 🚀 快速开始
+- [ARCHITECTURE.md](./docs/ARCHITECTURE.md)
+- [CHAT_PROTOCOL.md](./docs/CHAT_PROTOCOL.md)
+- [MIGRATIONS.md](./docs/MIGRATIONS.md)
+- [PLAN_ACCEPTANCE.md](./docs/PLAN_ACCEPTANCE.md)
+- [IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md)
 
-1. **下载安装**（见下方）并启动，跟着三步向导走完
-2. **选文献库文件夹**（已有 Zotero？向导里点「从 Zotero 一键迁移」）
-3. **配一个模型**：设置 → 「从服务商库添加」→ 智谱 / DeepSeek / 通义 / Kimi / OpenAI / Ollama… 粘贴 Key 即用（跳过也能用阅读和翻译）
-4. **导入文献**：拖入 PDF / 文件夹，AI 自动识别标题并归类；有 Key 时自动生成 AI 小结
-5. 开始阅读：划词翻译、追问、全文对照、对比表格、知识网络……
+## 路线图
 
-## 📦 下载
+- Zotero 附件补齐后的真实数据批量修复演练与结果报告。
+- 更多真实服务商矩阵。
+- CNKI 深度适配、iOS、WebDAV 同步、开放插件系统。
+- 真实长会话逐帧性能与无障碍全覆盖。
 
-| 平台 | 文件 |
-|---|---|
-| Windows 10/11 x64 | `CSPAPER Setup <版本>.exe` |
-| macOS（Apple Silicon / Intel） | `CSPAPER-<版本>-arm64.dmg` / `-x64.dmg` |
-| Android 7.0+ | `CSPAPER-Mobile-*.apk` |
+详见 [ROADMAP.md](./ROADMAP.md)。
 
-> 未做代码签名：Windows 首次运行 SmartScreen 选「仍要运行」；macOS 首次打开右键 App →「打开」，或 `xattr -cr /Applications/CSPAPER.app`。
->
-> 配套工具：[`extension/`](./extension) 浏览器插件（开发者模式加载）· [`word-addon/`](./word-addon) Word 加载项 · [`android-app/`](./android-app) Android 工程。
+## 参与贡献
 
-## 🧰 技术栈
+欢迎 Issue / PR。提交前请运行：
 
-| 层 | 技术 |
-|---|---|
-| 桌面 | Electron + electron-vite + React 18 + TypeScript（无 UI 库，手写设计系统） |
-| PDF | pdf.js（CJK cmap 完整支持，缩略图 / 目录 / 文本层） |
-| 存储 | better-sqlite3（FTS5 trigram 全文检索，单文件本地库） |
-| 检索 | 段落级向量 + BM25 混合；文献级标题/首页向量补全 |
-| 嵌入 | transformers.js 本地 e5-small / 智谱 / Ollama |
-| 大模型 | 任意 OpenAI 兼容接口，多服务商配置档案，一键预设 18+ 家 |
-| 生态 | 本地桥接服务（127.0.0.1:24517）连接浏览器插件 / Word 加载项 / 引文助手 |
+```bash
+npm run check
+```
 
-## 🔐 隐私与数据
+涉及安装器或原生模块时，另跑：
 
-- 文献库、索引、高亮、对话记录**全部保存在本地**（SQLite + 文件），不上传任何服务器
-- 嵌入模型默认本机推理；配合 Ollama 可完全离线
-- 插件生态走本地通信（`127.0.0.1:24517`），数据不出本机
+```bash
+npm run dist:win
+npm run test:installer
+```
 
-## 🗺 路线图
+## License
 
-详见 [ROADMAP.md](./ROADMAP.md)：CNKI 深度适配、iOS 端与云同步（WebDAV）、开放插件系统等。
+Apache-2.0 License. PDF rendering by Mozilla pdf.js; AI runtime uses Vercel AI SDK; academic metadata uses Crossref / OpenAlex / arXiv public APIs.
 
 <div align="center">
 
-**如果 CSPAPER 对你的科研有用，欢迎点一个 ⭐ Star**
-
-[![Star](https://img.shields.io/github/stars/Jensen-Yao/CSPAPER?style=social)](https://github.com/Jensen-Yao/CSPAPER)
+**如果 CSPAPER 让你的文献阅读更高效，欢迎 Star ⭐ 支持继续打磨。**
 
 </div>

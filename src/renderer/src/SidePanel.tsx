@@ -1,8 +1,17 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { renderRich, type Jump } from './rich'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import type { Jump } from './rich'
+import MessageList from './features/chat/MessageList'
+import ChatWorkspace from './features/chat/ChatWorkspace'
+import Composer from './features/chat/Composer'
+import './features/chat/chat.css'
 import { ModelPill, ThinkingPill } from './ChatControls'
 import PaperDetailPanel from './PaperDetailPanel'
-import type { ChatMsg, Paper, SourceRef } from './types'
+import type { Paper, ProviderProfile, SourceRef } from './types'
+import type { Message } from '../../shared/chat'
+import type { ModelBindingSnapshot } from '../../shared/models'
+import type { ContextRef } from '../../shared/context'
+import { useConversation } from './features/chat/useConversation'
+import { useTranslationRun } from './features/chat/useTranslationRun'
 
 export interface SideControl {
   translate: (text: string, context: string) => void
@@ -19,10 +28,13 @@ interface Props {
   pageNum: number
   onJump: Jump
   models: string[]
+  profiles: ProviderProfile[]
   model: string
   thinking: string
+  thinkingLevels?: string[]
   onChangeModel: (m: string) => void
   onChangeThinking: (l: string) => void
+  onAddThinkingLevel?: (level: string) => void | Promise<void>
   width: number
   // 对话字号（问答/翻译/对话共用）
   fs: number
@@ -67,7 +79,7 @@ function splitBlocks(text: string): string[] {
 }
 
 const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
-  { paper, pageContext, pageNum, onJump, models, model, thinking, onChangeModel, onChangeThinking, width, fs, onFs, onDeleteHighlight, onPapersChanged, collapsed, onTabChange },
+  { paper, pageContext, pageNum, onJump, models, profiles, model, thinking, thinkingLevels, onChangeModel, onChangeThinking, onAddThinkingLevel, width, fs, onFs, onDeleteHighlight, onPapersChanged, collapsed, onTabChange },
   ref
 ): JSX.Element {
   const [tab, setTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info'>('chat')
@@ -84,15 +96,14 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const [refs, setRefs] = useState<RefEntry[] | null>(null)
   const [refsBusy, setRefsBusy] = useState(false)
   const [refAbs, setRefAbs] = useState<Record<number, string>>({})
-  const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
-  const [busy, setBusy] = useState(false)
   const [scope, setScope] = useState<'paper' | 'lib'>('paper')
   const [current, setCurrent] = useState<Translation | null>(null)
   const [copied, setCopied] = useState(false)
   const [ctxOn, setCtxOn] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const ctxRef = useRef('')
+  const pendingSelection = useRef<{text:string;page:number;version:string}|null>(null)
   const curRef = useRef<Translation | null>(null)
   // 全文翻译（逐段双语）
   const [bil, setBil] = useState<BilBlock[]>([])
@@ -119,6 +130,16 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   const pnRef = useRef(0)
   pnRef.current = pageNum
 
+  const activeBilIndex=useRef(-1)
+  const fullTranslationConversation=useRef<string|null>(null)
+  const untilTerminal=async(runId:string)=>{
+    for(let i=0;i<600;i++){
+      const details=await window.api.chat.getRun(runId)
+      if(['completed','partial','failed','cancelled','interrupted'].includes(details.run?.status??''))return details
+      await new Promise(resolve=>setTimeout(resolve,25))
+    }
+    throw new Error('翻译超时')
+  }
   const translatePageFull = (text: string, pageNo: number): void => {
     const blocks = splitBlocks(text)
     if (blocks.length === 0) {
@@ -126,6 +147,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
       return
     }
     setBilPage(pageNo)
+    fullTranslationConversation.current=null
     bilPageDone.current.add(pageNo)
     setBil(blocks.map((b) => ({ src: b, out: '' })))
     bilCancel.current = false
@@ -134,19 +156,30 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
       for (let i = 0; i < blocks.length; i++) {
         if (bilCancel.current) break
         const idx = i
-        await new Promise<void>((resolve) => {
-          window.api.stream(
-            { mode: 'translate', text: blocks[idx], context: '' },
-            {
-              onDelta: (d) =>
-                setBil((bs) => bs.map((b, j) => (j === idx ? { ...b, out: b.out + d } : b))),
-              onEnd: () => resolve()
-            }
-          )
-        })
+        activeBilIndex.current=idx
+        try {
+          const submitted=await translation.start({
+            text:blocks[idx],
+            paperId:paper?.id,
+            page:pageNo,
+            documentVersion:`${paper?.file_mtime??0}:${paper?.path??'none'}:${pageNo}`,
+            conversationId:fullTranslationConversation.current??undefined
+          })
+          fullTranslationConversation.current=submitted.run.conversationId
+          const terminal=await untilTerminal(submitted.run.id)
+          if(terminal.run?.status==='cancelled')bilCancel.current=true
+          const loaded=await window.api.chat.loadMessages({conversationId:submitted.run.conversationId,limit:20})
+          const assistant=loaded.items.find(message=>message.id===submitted.assistantMessage.id)
+          const output=assistant?.parts.filter(part=>part.type==='text').map(part=>part.type==='text'?part.text:'').join('')??''
+          setBil(bs=>bs.map((b,j)=>j===idx?{...b,out:output}:b))
+        } catch(error) {
+          if(!bilCancel.current)throw error
+          break
+        }
       }
+      activeBilIndex.current=-1
       setBilRunning(false)
-    })()
+    })().catch(error=>{activeBilIndex.current=-1;setBilRunning(false);console.error(error)})
   }
 
   const scrollBottom = () => setTimeout(() => scrollRef.current?.scrollTo({ top: 1e9, behavior: 'smooth' }), 50)
@@ -162,40 +195,18 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
       setCurrent(item) // 只保留当前一条，新的选择直接覆盖
       curRef.current = item
       setCtxOn(true) // 自动加入问答上下文
-      setBusy(true)
-      window.api.stream(
-        { mode: 'translate', text, context: ctxRef.current.slice(0, 1800) },
-        {
-          onDelta: (d) => {
-            if (curRef.current === item) {
-              item.out += d
-              setCurrent({ ...item })
-            }
-          },
-          onEnd: () => setBusy(false)
-        }
-      )
+      void translation.start({
+        text,
+        paperId:paper?.id,
+        page:pageNum,
+        documentVersion:`${paper?.file_mtime??0}:${paper?.path??'none'}:${pageNum}`,
+      }).catch(error=>console.error(error))
     },
     explain(text: string, context: string) {
       ctxRef.current = context || pageContext
+      pendingSelection.current={text,page:pageNum,version:String(paper?.file_mtime??0)}
       setTab('chat')
-      setMsgs((ms) => [...ms, { role: 'user', content: `解释一下这段话：\n「${text.slice(0, 500)}」` }])
-      setBusy(true)
-      scrollBottom()
-      window.api.stream(
-        { mode: 'explain', text, context: ctxRef.current.slice(0, 1800) },
-        {
-          onDelta: (d) =>
-            setMsgs((ms) => {
-              const next = [...ms]
-              const last = next[next.length - 1]
-              if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: last.content + d }
-              else next.push({ role: 'assistant', content: d })
-              return next
-            }),
-          onEnd: () => setBusy(false)
-        }
-      )
+      void chat.send(`解释一下这段话：\n「${text.slice(0, 500)}」`).catch(()=>{})
       scrollBottom()
     },
     quote(text: string) {
@@ -226,6 +237,18 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
   }
 
   const ctxTranslation = ctxOn && current?.out ? current : null
+  const activeProfile=profiles.find(profile=>profile.models.includes(model))
+  const modelBinding=useMemo<ModelBindingSnapshot>(()=>({bindingId:`${activeProfile?.id??'profile-1'}:${model}`,profileId:activeProfile?.id??'profile-1',provider:activeProfile?.provider??'active',model:model||'default',capabilities:['text','streaming'],reasoning:thinking||'default',reasoningLevels:thinkingLevels}),[activeProfile?.id,activeProfile?.provider,model,thinking,thinkingLevels])
+  const translation=useTranslationRun(modelBinding.bindingId,modelBinding.reasoning)
+  const chat=useConversation(modelBinding.bindingId,modelBinding.reasoning,(workspaceId:string)=>{
+    const refs:ContextRef[]=[]
+    if(pendingSelection.current&&paper)refs.push({kind:'selection',workspaceId,paperId:paper.id,page:pendingSelection.current.page,text:pendingSelection.current.text.slice(0,4000),documentVersion:pendingSelection.current.version,origin:'pdf' as const})
+    else if(scope==='paper'&&paper)refs.push({kind:'paper',workspaceId,paperId:paper.id})
+    return refs
+  })
+  useEffect(()=>{setCurrent(current=>current?{...current,out:translation.output}:current)},[translation.output])
+  useEffect(()=>{if(activeBilIndex.current>=0)setBil(bs=>bs.map((b,j)=>j===activeBilIndex.current?{...b,out:translation.output}:b))},[translation.output])
+  const busy=!!chat.run&&!['cancelled','failed','partial','completed','interrupted'].includes(chat.run.status)
 
   // 全文翻译：跟随翻页时自动翻译新页
   useEffect(() => {
@@ -236,54 +259,37 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
 
   // 引用跳转带上「该轮的问题 + 芯片所在回答的局部上下文」：
   // 整篇问答模式没有 snippet，靠它们做关键词定位到页内段落
+  const messageText=(message:Message):string=>message.parts.filter(part=>part.type==='text').map(part=>part.type==='text'?part.text:'').join('')
   const jumpFor = (i: number): Jump => {
-    const q = msgs[i - 1]?.role === 'user' ? msgs[i - 1].content : ''
-    return (slug, page, snippet, ctx) => onJump(slug, page, snippet, [q, ctx].filter(Boolean).join('\n'))
+    const q = chat.messages[i - 1]?.role === 'user' ? messageText(chat.messages[i - 1]) : ''
+    return (slug, page, snippet, ctx, source) => onJump(slug, page, snippet, [q, ctx].filter(Boolean).join('\n'), source)
   }
+  const sourceRefs=useMemo<SourceRef[]>(()=>chat.sources.map((source,index)=>{
+    let slug=''
+    try{if(typeof source.locator.uri==='string')slug=decodeURIComponent(new URL(source.locator.uri).pathname.replace(/^\//,''))}catch{}
+    const citedPaper=paper?.slug===slug?paper:null
+    const currentVersion=citedPaper?`${citedPaper.file_mtime??0}:${citedPaper.file_size??0}`:undefined
+    const sourceStamp=source.documentVersion?.split(':')[0]
+    return {n:index+1,slug,title:source.title,page:source.locator.page??1,snippet:source.snippet,documentVersion:source.documentVersion,currentVersion,versionChanged:!!citedPaper&&!!source.documentVersion&&sourceStamp!==String(citedPaper.file_mtime??0)}
+  }),[chat.sources,paper])
 
   // 新对话：清空问答记录、翻译卡片与问答上下文
   const reset = (): void => {
-    setMsgs([])
+    void chat.newConversation()
     setCurrent(null)
     setCtxOn(false)
     ctxRef.current = ''
+    pendingSelection.current=null
     curRef.current = null
   }
 
   const send = () => {
     const q = input.trim()
     if (!q || busy) return
-    // 带最近两轮问答做多轮追问（在追加本轮消息之前取历史）
-    const history = msgs.slice(-4).map((m) => ({ role: m.role, content: m.content }))
     setInput('')
     setTab('chat')
-    setMsgs((ms) => [...ms, { role: 'user', content: q }, { role: 'assistant', content: '' }])
-    setBusy(true)
-    scrollBottom()
-    const ctxNote = ctxTranslation ? `\n\n（参考：我刚翻译了「${ctxTranslation.src.slice(0, 120)}」→「${ctxTranslation.out.slice(0, 300)}」）` : ''
-    window.api.stream(
-      { mode: 'rag', question: q + ctxNote, scopePaperId: scope === 'paper' && paper ? paper.id : undefined, paperTitle: paper?.title, history },
-      {
-        onDelta: (d) =>
-          setMsgs((ms) => {
-            const next = [...ms]
-            const last = next[next.length - 1]
-            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: last.content + d }
-            return next
-          }),
-        onSources: (srcs) =>
-          setMsgs((ms) => {
-            const next = [...ms]
-            const last = next[next.length - 1]
-            if (last?.role === 'assistant') next[next.length - 1] = { ...last, sources: srcs as SourceRef[] }
-            return next
-          }),
-        onEnd: () => {
-          setBusy(false)
-          scrollBottom()
-        }
-      }
-    )
+    pendingSelection.current=ctxTranslation?{text:ctxTranslation.src,page:pageNum,version:String(paper?.file_mtime??0)}:null
+    void chat.send(q).catch(()=>{})
     scrollBottom()
   }
 
@@ -466,6 +472,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
                 className="ctx-toggle"
                 onClick={() => {
                   bilCancel.current = true
+                  void translation.stop().catch(()=>{})
                 }}
               >
                 停止
@@ -499,13 +506,13 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
           </div>
         </div>
       ) : tab === 'chat' ? (
-        <>
-          <div className="chat-scroll" ref={scrollRef}>
-            {msgs.length === 0 && (
+        <ChatWorkspace layout="sidebar">
+            <MessageList messages={chat.messages} runs={chat.runs} jumpFor={jumpFor} running={busy} status={chat.run?.status} className="chat-scroll" conversationId={chat.conversation?.id} hasMore={chat.hasMore} loading={chat.loading} onLoadOlder={chat.loadOlder} empty={
               <div style={{ color: 'var(--text-dim)', fontSize: 12, lineHeight: 1.9, padding: '6px 4px' }}>
                 {paper ? (
                   <>
                     当前论文：<b style={{ color: 'var(--accent2)' }}>{paper.title}</b>
+                    {paper.source_kind==='record'&&<span className="source-badge record small" style={{marginLeft:6}}>题录</span>}
                     <br />
                     「当前论文」只在本文全文中检索；「全库」跨所有文献检索并给出来源页码。
                     <br />
@@ -515,19 +522,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
                   '全库模式：无需打开论文，直接跨所有文献检索问答，回答自带页码引用，点击可跳转。'
                 )}
               </div>
-            )}
-            {msgs.map((m, i) => (
-              <div key={i} className={`msg ${m.role}`}>
-                <div className="who">{m.role === 'user' ? '你' : 'AI'}</div>
-                <div className="bubble">{m.role === 'assistant' ? renderRich(m.content, m.sources, jumpFor(i)) : m.content}</div>
-              </div>
-            ))}
-            {busy && (
-              <div className="thinking">
-                <span className="b" /> <span className="b" /> <span className="b" /> 思考中…
-              </div>
-            )}
-          </div>
+            }/>
           <div className="chat-input-area">
             {ctxTranslation && (
               <div className="ctx-pill" title={`${ctxTranslation.src}\n→\n${ctxTranslation.out}`}>
@@ -557,30 +552,15 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
             </div>
             <div className="side-controls">
               <ModelPill models={models} model={model} onChange={onChangeModel} />
-              <ThinkingPill level={thinking} onChange={onChangeThinking} />
+              <ThinkingPill level={thinking} levels={thinkingLevels} onChange={onChangeThinking} onAddLevel={onAddThinkingLevel} />
               <span style={{ flex: 1 }} />
               <span className="index-badge ellipsis" style={{ maxWidth: 110 }}>
                 {paper ? paper.slug : '未打开论文'}
               </span>
             </div>
-            <div className="input-row">              <textarea
-                className="chat-input"
-                placeholder={paper ? '问点什么…（Enter 发送，Shift+Enter 换行）' : '与全库文献对话…（Enter 发送，Shift+Enter 换行）'}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    send()
-                  }
-                }}
-              />
-              <button className="send-btn" onClick={send} disabled={busy || !input.trim()}>
-                发送
-              </button>
-            </div>
+            <Composer value={input} onChange={setInput} onSend={send} onStop={()=>void chat.stop()} busy={busy} textareaClassName="chat-input" placeholder={paper?(paper.source_kind==='record'?'问这条题录…':'问这篇论文…'):'与全库文献对话…'} banner={paper?.source_kind==='record'?<div className="pd-source-alert" role="status">当前条目只有 Zotero 题录，没有 PDF 全文；回答将基于题名、作者、来源和摘要，不能推断正文结论。</div>:chat.error?<div className="chat-message-error" role="alert">{chat.error}</div>:null}/>
           </div>
-        </>
+        </ChatWorkspace>
       ) : (
         <div className="chat-scroll">
           {!current && (
@@ -588,6 +568,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
               在 PDF 里划词 → 点「翻译」。只显示当前一条原文与译文；新的划词会覆盖，问答历史不受影响。
             </div>
           )}
+          {translation.error && <div className="chat-message-error" role="alert">{translation.error}</div>}
           {current && (
             <div className="tr-card">
               <div className="tr-head">
@@ -606,7 +587,10 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
                 {current.src.slice(0, 400)}
                 {current.src.length > 400 ? '…' : ''}
               </div>
-              <div style={{ marginTop: 6 }}>
+              <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                {translation.busy && (
+                  <button className="ctx-toggle" onClick={()=>void translation.stop().catch(()=>{})}>停止</button>
+                )}
                 <button
                   className="ctx-toggle"
                   onClick={() => {

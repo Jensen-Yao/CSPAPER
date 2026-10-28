@@ -3,12 +3,12 @@ import { createRoot } from 'react-dom/client'
 // 基础样式表必须先于组件样式表加载，否则功能样式（wb/kv/st2/ws）会被全局表反向覆盖
 import './styles.css'
 import App from './App'
+import './workspace.css'
 import { DialogProvider } from './Dialog'
+import ErrorBoundary from './ErrorBoundary'
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <DialogProvider>
-      <App />
-    </DialogProvider>
+    <ErrorBoundary><DialogProvider><App /></DialogProvider></ErrorBoundary>
   </React.StrictMode>
 )

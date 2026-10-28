@@ -10,7 +10,23 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run rebuild
+      - run: npm run check
+      - run: npx electron-builder --win --publish never
+      - run: npm run test:installer
+
   release:
+    needs: verify
+
     strategy:
       fail-fast: false
       matrix:
@@ -45,6 +61,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   android:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
@@ -72,6 +89,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: android-app/app/build/outputs/apk/debug/app-debug.apk
-          name: CSPAPER v0.7.0
+          name: CSPAPER ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

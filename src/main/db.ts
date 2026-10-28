@@ -2,6 +2,13 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
 import { app } from 'electron'
+import { Worker } from 'node:worker_threads'
+import { READING_STATUSES } from '../shared/paper'
+import { collectLibrary, type LibraryInventory } from './library-inventory'
+import { applyLibraryInventory, applyLibraryInventoryAsync } from './library-store'
+import { backupBeforeLibraryMigration, runMigrations } from './migrations'
+import { recoverOperations } from './operations/journal'
+import { normalizePath, parseList, patchFrontmatter, readPaperMarkdown, writeFilesAtomically } from './paper-files'
 
 export interface Paper {
   id: number
@@ -15,12 +22,17 @@ export interface Paper {
   status: string
   n_pages: number
   indexed: number
+  source_kind: 'pdf' | 'record'
+  chunk_count?: number
   added_at: string
   opened_at?: string | null
   summary?: string | null
   doi?: string | null
   abstract?: string | null
   item_type?: string | null
+  file_mtime?: number
+  file_size?: number
+  furthest_page?: number
   last_page?: number
   read_seconds?: number
   cited_by?: number | null
@@ -33,21 +45,9 @@ export interface Paper {
 export type Theme = 'system' | 'light' | 'dark'
 
 // 多服务商配置（与渲染端 types.ts 的 ProviderProfile 保持一致）
-export interface ModelCaps {
-  reasoningLevels: string[]
-  context?: number
-  maxOutput?: number
-  inputs?: Array<'text' | 'image' | 'video' | 'pdf'>
-  caps?: Array<'json' | 'websearch' | 'system'>
-}
-
-export interface ProviderProfile {
-  provider: string
-  apiBase: string
-  apiKey: string
-  models: string[]
-  modelCaps?: Record<string, ModelCaps>
-}
+export type { ModelCaps, ProviderProfile } from '../shared/settings-models'
+import type { ProviderProfile } from '../shared/settings-models'
+import { normalizeModelSettings } from './model-config'
 
 export interface Settings {
   libraryPath: string
@@ -62,8 +62,10 @@ export interface Settings {
   theme: Theme
   setupDone: boolean
   models: string[]
-  thinkingLevel: 'default' | 'off' | 'low' | 'medium' | 'high'
+  thinkingLevel: string
   profiles?: ProviderProfile[]
+  modelBindingId?: string
+  agentModelBindingId?: string
   // 导入重命名模板（W9）：{author} {year} {title} 占位符
   renameTemplate?: string
   // 关闭窗口时最小化到托盘而非退出（W10）
@@ -121,6 +123,8 @@ export function initDb(): void {
   db = new Database(path.join(dir, 'cspaper.db'))
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
+  db.pragma('busy_timeout = 5000')
+  backupBeforeLibraryMigration(db,dir)
   db.exec(`
     CREATE TABLE IF NOT EXISTS papers(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +132,7 @@ export function initDb(): void {
       year INTEGER, venue TEXT DEFAULT '', category TEXT DEFAULT '',
       path TEXT UNIQUE, status TEXT DEFAULT 'unread',
       n_pages INTEGER DEFAULT 0, indexed INTEGER DEFAULT 0,
+      source_kind TEXT NOT NULL DEFAULT 'pdf',
       added_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS chunks(
@@ -258,10 +263,24 @@ export function initDb(): void {
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
     title, authors, venue, slug, tokenize='trigram'
   );`)
+  for (const column of ['library_root TEXT', 'source_stamp TEXT', 'missing_at TEXT', 'furthest_page INTEGER DEFAULT 0']) {
+    if (!cols.includes(column.split(' ')[0])) db.exec(`ALTER TABLE papers ADD COLUMN ${column}`)
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_papers_library ON papers(library_root,deleted_at,missing_at);
+    CREATE TABLE IF NOT EXISTS library_exclusions(path TEXT PRIMARY KEY,library_root TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS paper_related(paper_id INTEGER NOT NULL,related_id INTEGER NOT NULL,kind TEXT NOT NULL DEFAULT 'manual',created_at TEXT DEFAULT (datetime('now','localtime')),PRIMARY KEY(paper_id,related_id));
+    CREATE TABLE IF NOT EXISTS read_log(day TEXT,paper_id INTEGER,seconds INTEGER,PRIMARY KEY(day,paper_id));
+    CREATE TABLE IF NOT EXISTS paper_attachments(paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,path TEXT,name TEXT,UNIQUE(paper_id,path));
+    CREATE VIEW IF NOT EXISTS active_papers AS SELECT * FROM papers WHERE deleted_at IS NULL AND missing_at IS NULL
+      AND library_root=(SELECT value FROM meta WHERE key='active_library');
+  `)
   // 清理孤儿块（外键级联默认关闭，删除论文行后块会残留）
   db.exec('DELETE FROM chunks WHERE paper_id NOT IN (SELECT id FROM papers)')
   db.exec('DELETE FROM chunks_fts WHERE paper_id NOT IN (SELECT id FROM papers)')
   db.exec('DELETE FROM papers_fts WHERE rowid NOT IN (SELECT id FROM papers)')
+  runMigrations(db)
+  recoverOperations(db)
 
   const st = db.prepare("SELECT value FROM meta WHERE key='settings'")
   if (!st.get()) {
@@ -280,21 +299,35 @@ export function initDb(): void {
       db.prepare("UPDATE meta SET value=? WHERE key='settings'").run(JSON.stringify({ ...s, libraryPath: moved }))
     }
   }
+  const activeRoot = normalizePath(getSettings().libraryPath || defaultLibrary())
+  setMeta('active_library', activeRoot)
+  db.prepare("UPDATE papers SET library_root=? WHERE library_root IS NULL OR library_root=''").run(activeRoot)
 }
 
 export function getSettings(): Settings {
   const row = db.prepare("SELECT value FROM meta WHERE key='settings'").get() as { value: string }
-  return { ...DEFAULTS, ...JSON.parse(row.value) }
+  const parsed={ ...DEFAULTS, ...JSON.parse(row.value) } as Settings
+  const normalized=normalizeModelSettings(parsed)
+  if(JSON.stringify(parsed)!==JSON.stringify(normalized))db.prepare("UPDATE meta SET value=? WHERE key='settings'").run(JSON.stringify(normalized))
+  return normalized
 }
 
 export function saveSettings(patch: Partial<Settings>): Settings {
   const cur = getSettings()
-  const next = { ...cur, ...patch }
+  let next = { ...cur, ...patch }
+  if(patch.model!==undefined&&patch.model!==cur.model&&patch.modelBindingId===undefined)next.modelBindingId=undefined
+  if(patch.agentModel!==undefined&&patch.agentModel!==cur.agentModel&&patch.agentModelBindingId===undefined)next.agentModelBindingId=undefined
   // 防 Key 误清空：patch 显式传空串不能抹掉已配置的 Key（曾致用户的 agnes 配置丢失）
   // 想真正换 Key 必须传非空值；传 null 表示有意清除
   if (next.apiKey === '' && cur.apiKey) next.apiKey = cur.apiKey
   if (next.zoteroApiKey === '' && cur.zoteroApiKey) next.zoteroApiKey = cur.zoteroApiKey
+  if(patch.profiles===undefined&&['apiBase','apiKey','provider','models'].some(key=>Object.hasOwn(patch,key))) {
+    const profileId=cur.modelBindingId?.split(':')[0]
+    next.profiles=cur.profiles?.map(profile=>profile.id===profileId?{...profile,apiBase:patch.apiBase??profile.apiBase,apiKey:patch.apiKey===null?'':patch.apiKey?patch.apiKey:profile.apiKey,provider:patch.provider??profile.provider,models:patch.models??[...new Set([...profile.models,...(patch.model?[patch.model]:[])])]}:profile)
+  }
+  next=normalizeModelSettings(next)
   db.prepare("UPDATE meta SET value=? WHERE key='settings'").run(JSON.stringify(next))
+  if (next.libraryPath) setMeta('active_library', normalizePath(next.libraryPath))
   return next
 }
 
@@ -311,290 +344,83 @@ export function getDb(): Database.Database {
   return db
 }
 
-// ---------- 库扫描：papers/<分类>/<slug>/paper.pdf + <slug>.md ----------
-function parseNote(mdPath: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  try {
-    const raw = fs.readFileSync(mdPath, 'utf8')
-    const fm = raw.match(/^---\n([\s\S]*?)\n---/)
-    if (fm) {
-      const lines = fm[1].split('\n')
-      for (let i = 0; i < lines.length; i++) {
-        const m = lines[i].match(/^(\w[\w-]*):\s*(.*)$/)
-        if (m) {
-          let v = m[2].trim()
-          if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1)
-          else if (v.startsWith('[') && v.endsWith(']')) v = v.slice(1, -1).replace(/["']/g, '')
-          // 多行字符串（如 title: | 或换行引号）拼后续行
-          if (v === '|' || v === '>') {
-            const parts: string[] = []
-            while (i + 1 < lines.length && /^\s{2,}/.test(lines[i + 1])) parts.push(lines[++i].trim())
-            v = parts.join(' ')
-          }
-          out[m[1]] = v
-        }
-      }
+// Filesystem discovery is independent from SQLite reconciliation.
+export type { ScanResult } from './library-store'
+function scanStamps(root: string): Record<string, string> {
+  return Object.fromEntries((db.prepare('SELECT path,source_stamp FROM papers WHERE library_root=?').all(normalizePath(root)) as Array<{path:string;source_stamp:string}>).map(p=>[normalizePath(p.path),p.source_stamp || '']))
+}
+export function scanLibrary(libPath: string): import('./library-store').ScanResult {
+  return applyLibraryInventory(db, collectLibrary(libPath, scanStamps(libPath)))
+}
+export interface ScanLibraryOptions { signal?:AbortSignal; onProgress?:(found:number,current:string)=>void }
+const pendingScans=new Map<string,Promise<import('./library-store').ScanResult>>()
+export function scanLibraryAsync(libPath:string,options:ScanLibraryOptions={}):Promise<import('./library-store').ScanResult> {
+  const root=normalizePath(libPath),pending=pendingScans.get(root)
+  if(pending) return pending
+  options.signal?.throwIfAborted()
+  const workerStarted=Date.now()
+  const promise=new Promise<import('./library-store').ScanResult>((resolve,reject)=>{
+    const worker=new Worker(path.join(__dirname,'library-worker.js'),{workerData:{root:libPath,previous:scanStamps(libPath)}})
+    let aborted=false
+    const abort=():void=>{
+      aborted=true
+      reject(new DOMException('文献库扫描已取消','AbortError'))
+      void worker.terminate()
     }
-    const h1 = raw.match(/^# (.+)$/m)
-    if (h1 && !out.title) out.title = h1[1].trim()
-  } catch {
-    /* md 缺失就只用文件夹名 */
-  }
-  return out
+    options.signal?.addEventListener('abort',abort,{once:true})
+    worker.on('message',async(message:{progress?:boolean;found?:number;current?:string;ok?:boolean;inventory?:LibraryInventory;error?:string})=>{
+      if(message.progress){options.onProgress?.(message.found??0,message.current??'');return}
+      options.signal?.removeEventListener('abort',abort)
+      try {
+        options.signal?.throwIfAborted()
+        if(!message.ok)throw new Error(message.error)
+        if(message.inventory?.cancelled)throw new DOMException('文献库扫描已取消','AbortError')
+        const workerMs=Date.now()-workerStarted,applyStarted=Date.now()
+        const result=await applyLibraryInventoryAsync(db,message.inventory!)
+        resolve({...result,timing:{workerMs,applyMs:Date.now()-applyStarted}})
+      } catch(error){reject(error)}
+    })
+    worker.once('error',error=>{options.signal?.removeEventListener('abort',abort);if(aborted)return;reject(error instanceof Error?error:new Error(String(error)))})
+    worker.once('exit',code=>{
+      options.signal?.removeEventListener('abort',abort)
+      if(!aborted&&code!==0)reject(new Error('文献库扫描中断'))
+    })
+  })
+  pendingScans.set(root,promise)
+  promise.finally(()=>{pendingScans.delete(root)}).catch(()=>{})
+  return promise
 }
 
-export interface ScanResult {
-  added: number
-  updated: number
-  total: number
-}
-
-export function scanLibrary(libPath: string): ScanResult {
-  const res: ScanResult = { added: 0, updated: 0, total: 0 }
-  if (!fs.existsSync(libPath)) return res
-  const papersDir = path.join(libPath, 'papers')
-  const roots = fs.existsSync(papersDir) ? [papersDir] : [libPath]
-  const upsert = db.prepare(`
-    INSERT INTO papers(slug,title,authors,year,venue,category,path,doi)
-    VALUES(@slug,@title,@authors,@year,@venue,@category,@path,@doi)
-    ON CONFLICT(path) DO UPDATE SET
-      slug=excluded.slug, title=excluded.title, authors=excluded.authors,
-      year=excluded.year, venue=excluded.venue, category=excluded.category,
-      doi=COALESCE(NULLIF(excluded.doi,''), papers.doi)
-  `)
-  const exists = db.prepare('SELECT id FROM papers WHERE path=?')
-  const slugOwner = db.prepare('SELECT id, path FROM papers WHERE slug=?')
-  const alignPath = db.prepare('UPDATE papers SET path=? WHERE id=?')
-  const statUpd = db.prepare('UPDATE papers SET file_mtime=?, file_size=?, md_mtime=?, md_size=? WHERE id=?')
-  const catUpd = db.prepare('UPDATE papers SET category=? WHERE id=?')
-  // 增量门控索引：path（归一化）→ 已存行。文件与 md 的 mtime+size 都没变就跳过解析
-  const norm = (p: string): string => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
-  const existing = new Map<
-    string,
-    { id: number; category: string; file_mtime: number | null; file_size: number | null; md_mtime: number | null; md_size: number | null }
-  >()
-  for (const r of db.prepare('SELECT id, path, category, file_mtime, file_size, md_mtime, md_size FROM papers').all() as Array<{
-    id: number
-    path: string
-    category: string
-    file_mtime: number | null
-    file_size: number | null
-    md_mtime: number | null
-    md_size: number | null
-  }>) {
-    existing.set(norm(r.path), r)
-  }
-  // 同一文件判定：resolve 归一化分隔符；Windows 再忽略大小写（iCloud 同步可能改写盘符/大小写）
-  const samePath = (a: string, b: string): boolean =>
-    process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b)
-  // slug 全库唯一：同一 slug 出现在不同路径（重复导入/移动残留）时自动加后缀，避免整个扫描崩溃
-  const uniqueSlug = (slug: string, pdf: string): string => {
-    const row = slugOwner.get(slug) as { id: number; path: string } | undefined
-    if (!row) return slug
-    if (samePath(row.path, pdf)) {
-      // 指向同一文件但字符串不一致（分隔符/大小写差异）：先把行路径对齐成扫描值，
-      // 让 upsert 走 ON CONFLICT(path) 更新，而不是 INSERT 撞 slug 唯一约束
-      if (row.path !== pdf) alignPath.run(pdf, row.id)
-      return slug
-    }
-    for (let n = 2; ; n++) {
-      const cand = `${slug}-${n}`
-      const r2 = slugOwner.get(cand) as { id: number; path: string } | undefined
-      if (!r2) return cand
-      if (samePath(r2.path, pdf)) {
-        if (r2.path !== pdf) alignPath.run(pdf, r2.id)
-        return cand
-      }
-    }
-  }
-  // 门控前移：md 的全量同步读发生在 upsertOne 内部门控之前，每 60s 聚焦扫描都白读全库 md；
-  // 调用点先做四元组快检，未变直接跳过 parseNote
-  const unchanged = (pdf: string, mdPath: string): boolean => {
-    try {
-      const pstat = fs.statSync(pdf)
-      const prev = existing.get(norm(pdf))
-      if (!prev) return false
-      let mtMd = 0
-      let mdSize = 0
-      try {
-        const mstat = fs.statSync(mdPath)
-        mtMd = Math.round(mstat.mtimeMs)
-        mdSize = mstat.size
-      } catch { /* md 缺失视为 0 */ }
-      return prev.file_mtime === Math.round(pstat.mtimeMs) && prev.file_size === pstat.size && prev.md_mtime === mtMd && prev.md_size === mdSize
-    } catch {
-      return false
-    }
-  }
-  const upsertOne = (params: Record<string, unknown>, pdf: string, mdPath: string, prevCat: string | undefined, fmTags: string): void => {
-    try {
-      let pstat: fs.Stats | null = null
-      let mstat: fs.Stats | null = null
-      try {
-        pstat = fs.statSync(pdf)
-      } catch { /* pdf 已消失则照常走旧路径 */ }
-      try {
-        mstat = fs.statSync(mdPath)
-      } catch { /* md 缺失视为未变（md_mtime=0） */ }
-      const prev = existing.get(norm(pdf))
-      if (pstat && prev && prevCat !== undefined) {
-        const mt = Math.round(pstat.mtimeMs)
-        const mtMd = mstat ? Math.round(mstat.mtimeMs) : 0
-        // 文件与 md 都未变：跳过解析与 upsert（增量扫描的核心，千篇库省数百 ms）
-        if (prev.file_mtime === mt && prev.file_size === pstat.size && prev.md_mtime === mtMd && prev.md_size === (mstat?.size ?? 0)) {
-          if (prevCat !== params.category) catUpd.run(params.category, prev.id)
-          res.total++
-          return
-        }
-      }
-      // 先判存在再 upsert：新路径算「新增」，已有路径算「更新」（重扫描据此通知界面刷新）
-      const existed = !!exists.get(pdf)
-      const r = upsert.run(params)
-      const id = existed ? ((exists.get(pdf) as { id: number }).id) : Number(r.lastInsertRowid)
-      statUpd.run(pstat ? Math.round(pstat.mtimeMs) : 0, pstat?.size ?? 0, mstat ? Math.round(mstat.mtimeMs) : 0, mstat?.size ?? 0, id)
-      // csl 侧车（translator 导入留下的完整 CSL-JSON）：重扫时保持 DB 元数据同步
-      try {
-        const dir = path.dirname(pdf)
-        const sidecar = path.join(dir, `${path.basename(dir)}.csl.json`)
-        const raw = fs.readFileSync(sidecar, 'utf8')
-        if (raw.length <= 200_000) {
-          const csl = JSON.parse(raw) as { abstract?: unknown; type?: unknown }
-          db.prepare('UPDATE papers SET csl=?, abstract=COALESCE(NULLIF(?,""), abstract), item_type=? WHERE id=?').run(
-            raw,
-            typeof csl.abstract === 'string' ? csl.abstract.slice(0, 4000) : '',
-            String(csl.type ?? ''),
-            id
-          )
-        }
-      } catch {
-        /* 无侧车文件（绝大多数条目） */
-      }
-      // md frontmatter 的 tags 落库（Zotero 导入/手写的标签自动生效）
-      syncPaperTags(id, fmTags)
-      if (existed) res.updated++
-      else res.added++
-      res.total++
-    } catch (err) {
-      // 单条失败（如并发改写导致约束冲突）不拖垮整个扫描与后续清理
-      console.error(`[scan] ${String(params.slug)} 入库失败:`, err)
-    }
-  }
-  for (const root of roots) {
-    // 根目录平铺的 PDF 也收进库（category 用根目录名），适配"直接指向一摞论文"的用法
-    let since = 0
-    for (const f of fs.readdirSync(root)) {
-      void since // 批内处理；完整让步/worker 化见 ROADMAP（主线程同步 Atomics.wait 会抛）
-      if (!f.toLowerCase().endsWith('.pdf')) continue
-      const pdf = path.join(root, f)
-      if (!fs.statSync(pdf).isFile()) continue
-      const slug = f.slice(0, -4)
-      if (unchanged(pdf, path.join(root, `${slug}.md`))) { res.total++; continue }
-      const note = parseNote(path.join(root, `${slug}.md`))
-      const year = parseInt(note.year || slug.slice(0, 4), 10) || null
-      const dtitle = note.title || slug.replace(/^\d{4}-/, '').replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-      upsertOne(
-        {
-          slug: uniqueSlug(slug, pdf),
-          title: dtitle,
-          authors: note.authors || '',
-          year,
-          venue: note.venue || '',
-          category: path.basename(root) || 'inbox',
-          path: pdf,
-          doi: note.doi || ''
-        },
-        pdf,
-        path.join(root, `${slug}.md`),
-        existing.get(norm(pdf))?.category,
-        note.tags ?? ''
-      )
-    }
-    for (const cat of fs.readdirSync(root)) {
-      const catDir = path.join(root, cat)
-      if (!fs.statSync(catDir).isDirectory() || cat.startsWith('.')) continue
-      for (const slug of fs.readdirSync(catDir)) {
-        const d = path.join(catDir, slug)
-        if (!fs.statSync(d).isDirectory() || slug.startsWith('.')) continue
-        let pdf = path.join(d, 'paper.pdf')
-        if (!fs.existsSync(pdf)) {
-          const any = fs.readdirSync(d).find((f) => f.toLowerCase().endsWith('.pdf'))
-          if (!any) continue
-          pdf = path.join(d, any)
-        }
-        if (unchanged(pdf, path.join(d, `${slug}.md`))) { res.total++; continue }
-        const note = parseNote(path.join(d, `${slug}.md`))
-        const year = parseInt(note.year || slug.slice(0, 4), 10) || null
-        const dtitle = note.title || slug.replace(/^\d{4}-/, '').replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        upsertOne(
-          {
-            slug: uniqueSlug(slug, pdf),
-            title: dtitle,
-            authors: note.authors || '',
-            year,
-            venue: note.venue || '',
-            category: cat.replace(/^\d+-/, ''),
-            path: pdf,
-            doi: note.doi || ''
-          },
-          pdf,
-          path.join(d, `${slug}.md`),
-          existing.get(norm(pdf))?.category,
-          note.tags ?? ''
-        )
-      }
-    }
-  }
-  // 清掉磁盘上已不存在的论文行：目录改名/手动移动后，旧路径行不清理的话
-  // 列表会新旧并存“翻倍”，且新行 indexed=0 会触发整批重新嵌入。
-  // 按论文文件夹（slug 目录）判断存在性——iCloud/网盘占位文件只占文件本身，
-  // 目录结构始终物化，不会误删未同步条目
-  // stale 清理的防误删门控：文献库根目录不可访问（外接盘拔出 / 网盘掉线 / iCloud 根未同步）
-  // 时整轮跳过——否则一次掉线就会把全库行当"已删除"清光
-  let rootOk = true
-  try {
-    const st = fs.statSync(libPath)
-    rootOk = st.isDirectory()
-  } catch {
-    rootOk = false
-  }
-  if (rootOk) {
-    const stale = db.prepare('SELECT id, path FROM papers').all() as Array<{ id: number; path: string }>
-    const delRow = db.prepare('DELETE FROM papers WHERE id=?')
-    for (const row of stale) {
-      try {
-        if (!fs.existsSync(path.dirname(row.path))) delRow.run(row.id)
-      } catch {
-        /* 单行 stat 失败保守跳过 */
-      }
-    }
-  }
-  return res
-}
-
+type RawStatement = ReturnType<Database.Database['prepare']>
+let listPapersStatement: RawStatement | undefined
+let listPaperTagsStatement: RawStatement | undefined
+let listChunkCountsStatement: RawStatement | undefined
 export function listPapers(): Paper[] {
-  // 排除 pvec/csl 大字段（agent/渲染端只需要题录，全量 BLOB 每任务白读几十 MB）+ 过滤回收站
-  const rows = db.prepare("SELECT id, slug, title, authors, year, venue, category, path, status, n_pages, indexed, added_at, opened_at, summary, doi, abstract, item_type, last_page, read_seconds, cited_by, jcr, volume, issue, pages, publisher, language, deleted_at FROM papers WHERE deleted_at IS NULL ORDER BY category, year, slug").all() as unknown as Paper[]
-  // 标签聚合：一次查出全部映射，内存归并（比每行子查询快一个量级）
-  let byPaper = new Map<number, string[]>()
-  try {
-    const links = db
-      .prepare(
-        `SELECT pt.paper_id, t.name FROM paper_tags pt JOIN tags t ON t.id=pt.tag_id ORDER BY t.name`
-      )
-      .all() as Array<{ paper_id: number; name: string }>
-    byPaper = new Map()
-    for (const l of links) {
-      const arr = byPaper.get(l.paper_id) ?? []
-      arr.push(l.name)
-      byPaper.set(l.paper_id, arr)
-    }
-  } catch { /* tags 表尚未建好时忽略 */ }
-  for (const r of rows) r.tags = byPaper.get(r.id) ?? []
-  return rows
+  // The partial index supplies index order; raw rows avoid native property-bag construction for 29 columns.
+  const statement=listPapersStatement ??=db.prepare("SELECT id, slug, title, authors, year, venue, category, path, status, n_pages, indexed, source_kind, added_at, opened_at, summary, doi, abstract, item_type, file_mtime, furthest_page, last_page, read_seconds, cited_by, jcr, volume, issue, pages, publisher, language, deleted_at, file_size FROM active_papers ORDER BY category, year, slug").raw()
+  const rows=statement.all() as unknown[][]
+  const chunkCounts=listChunkCountsStatement ??=db.prepare('SELECT paper_id, COUNT(*) AS n FROM chunks GROUP BY paper_id').raw()
+  const chunkCountById=new Map<number,number>()
+  for(const [paperId,count] of chunkCounts.all() as unknown[][]) chunkCountById.set(Number(paperId),Number(count))
+  const tagsStatement=listPaperTagsStatement ??=db.prepare('SELECT pt.paper_id, t.name FROM paper_tags pt JOIN tags t ON t.id=pt.tag_id ORDER BY t.name').raw()
+  const byPaper=new Map<number,string[]>()
+  for(const [paperId,name] of tagsStatement.all() as unknown[][]) {
+    const paperIdNumber=Number(paperId),names=byPaper.get(paperIdNumber) ?? []
+    names.push(String(name));byPaper.set(paperIdNumber,names)
+  }
+  return rows.map(row=>({
+    id:Number(row[0]),slug:String(row[1]),title:String(row[2]),authors:String(row[3]),year:row[4]===null?null:Number(row[4]),venue:String(row[5]),category:String(row[6]),path:String(row[7]),status:String(row[8]),n_pages:Number(row[9]),indexed:Number(row[10]),source_kind:row[11]==='record'?'record':'pdf',chunk_count:chunkCountById.get(Number(row[0]))??0,added_at:String(row[12]),opened_at:row[13]===null?null:String(row[13]),summary:row[14]===null?null:String(row[14]),doi:row[15]===null?null:String(row[15]),abstract:row[16]===null?null:String(row[16]),item_type:row[17]===null?null:String(row[17]),file_mtime:row[18]===null?undefined:Number(row[18]),furthest_page:row[19]===null?undefined:Number(row[19]),last_page:row[20]===null?undefined:Number(row[20]),read_seconds:row[21]===null?undefined:Number(row[21]),cited_by:row[22]===null?null:Number(row[22]),jcr:row[23]===null?null:String(row[23]),volume:row[24]===null?undefined:String(row[24]),issue:row[25]===null?undefined:String(row[25]),pages:row[26]===null?undefined:String(row[26]),publisher:row[27]===null?undefined:String(row[27]),language:row[28]===null?undefined:String(row[28]),deleted_at:row[29]===null?null:String(row[29]),file_size:row[30]===null?undefined:Number(row[30]),tags:byPaper.get(Number(row[0])) ?? []
+  })) as Paper[]
 }
 
 export function setStatus(id: number, status: string): void {
-  db.prepare('UPDATE papers SET status=? WHERE id=?').run(status, id)
+  if (!(READING_STATUSES as readonly string[]).includes(status)) throw new Error('阅读状态无效')
+  const paper = db.prepare('SELECT path,slug,title FROM active_papers WHERE id=?').get(id) as {path:string;slug:string;title:string}|undefined
+  if(!paper) throw new Error('文献不存在')
+  const doc=readPaperMarkdown(paper.path,paper.slug)
+  writeFilesAtomically([{path:doc.path,content:patchFrontmatter(doc.raw || '# '+paper.title+'\n',{status})}],()=>{
+    db.prepare('UPDATE papers SET status=?,source_stamp=NULL WHERE id=?').run(status,id)
+  })
 }
 
 export function markOpened(id: number): void {
@@ -603,7 +429,7 @@ export function markOpened(id: number): void {
 
 // ---------- 阅读进度与时长（W2 / W7） ----------
 export function setLastPage(id: number, page: number): void {
-  db.prepare('UPDATE papers SET last_page=max(COALESCE(last_page,0),?) WHERE id=?').run(Math.max(1, Math.floor(page)), id)
+  db.prepare('UPDATE papers SET last_page=?,furthest_page=max(COALESCE(furthest_page,0),?) WHERE id=?').run(Math.max(1,Math.floor(page)),Math.max(1,Math.floor(page)),id)
 }
 
 export function addReadSeconds(id: number, seconds: number): void {
@@ -623,8 +449,8 @@ const TAG_COLORS = ['#c4a882', '#7a9e7e', '#b0654a', '#6b7fa3', '#a37f9e', '#8a8
 export function listTags(): TagRow[] {
   return db
     .prepare(
-      `SELECT t.id, t.name, t.color, COUNT(pt.paper_id) AS count
-       FROM tags t LEFT JOIN paper_tags pt ON pt.tag_id=t.id
+      `SELECT t.id, t.name, t.color, COUNT(p.id) AS count
+       FROM tags t LEFT JOIN paper_tags pt ON pt.tag_id=t.id LEFT JOIN active_papers p ON p.id=pt.paper_id
        GROUP BY t.id ORDER BY t.name`
     )
     .all() as TagRow[]
@@ -639,15 +465,34 @@ export function createTag(name: string, color?: string): TagRow {
   return { ...row, count: 0 }
 }
 
-export function renameTag(id: number, name: string): void {
-  const n = name.trim().slice(0, 40)
-  if (!n) throw new Error('标签名不能为空')
-  db.prepare('UPDATE tags SET name=? WHERE id=?').run(n, id)
+function tagMarkdownEdit(id: number, names: string[]): { path:string; content:string } {
+  const paper=db.prepare('SELECT path,slug,title FROM papers WHERE id=?').get(id) as {path:string;slug:string;title:string}|undefined
+  if(!paper) throw new Error('文献不存在')
+  const doc=readPaperMarkdown(paper.path,paper.slug)
+  return {path:doc.path,content:patchFrontmatter(doc.raw || '# '+paper.title+'\n',{tags:names})}
 }
-
+export function renameTag(id: number, name: string): void {
+  const n=name.trim().slice(0,40)
+  if(!n) throw new Error('标签名不能为空')
+  const old=db.prepare('SELECT name FROM tags WHERE id=?').get(id) as {name:string}|undefined
+  if(!old) throw new Error('标签不存在')
+  const conflict=db.prepare('SELECT id FROM tags WHERE name=? AND id<>?').get(n,id)
+  if(conflict) throw new Error('已有同名标签，请使用其他名称')
+  const ids=(db.prepare('SELECT paper_id FROM paper_tags WHERE tag_id=?').all(id) as Array<{paper_id:number}>).map(r=>r.paper_id)
+  const edits=ids.map(pid=>tagMarkdownEdit(pid,paperTags(pid).map(t=>t.id===id?n:t.name)))
+  writeFilesAtomically(edits,()=>db.transaction(()=>{
+    db.prepare('UPDATE tags SET name=? WHERE id=?').run(n,id)
+    for(const pid of ids) db.prepare('UPDATE papers SET source_stamp=NULL WHERE id=?').run(pid)
+  })())
+}
 export function deleteTag(id: number): void {
-  db.prepare('DELETE FROM paper_tags WHERE tag_id=?').run(id)
-  db.prepare('DELETE FROM tags WHERE id=?').run(id)
+  const ids=(db.prepare('SELECT paper_id FROM paper_tags WHERE tag_id=?').all(id) as Array<{paper_id:number}>).map(r=>r.paper_id)
+  const edits=ids.map(pid=>tagMarkdownEdit(pid,paperTags(pid).filter(t=>t.id!==id).map(t=>t.name)))
+  writeFilesAtomically(edits,()=>db.transaction(()=>{
+    db.prepare('DELETE FROM paper_tags WHERE tag_id=?').run(id)
+    db.prepare('DELETE FROM tags WHERE id=?').run(id)
+    for(const pid of ids) db.prepare('UPDATE papers SET source_stamp=NULL WHERE id=?').run(pid)
+  })())
 }
 
 export function setTagColor(id: number, color: string): void {
@@ -662,44 +507,26 @@ export function paperTags(paperId: number): Array<{ id: number; name: string; co
 }
 
 
-// v0.19：标签写回 md frontmatter。此前标签只进 DB，而扫描在 md 变化时用
-// frontmatter 的 tags 行全量覆盖 DB——用户写完笔记/改完元数据，标签就被清空。
-// 保持「md 是唯一事实源」：增删标签同步改写 tags 行。
-function syncTagsToMd(paperId: number): void {
-  try {
-    const row = db.prepare('SELECT path FROM papers WHERE id=?').get(paperId) as { path: string } | undefined
-    if (!row) return
-    const dir = path.dirname(row.path)
-    const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
-    if (!mdFile) return
-    const mdPath = path.join(dir, mdFile)
-    let raw = fs.readFileSync(mdPath, 'utf8')
-    const names = (db.prepare('SELECT t.name FROM tags t JOIN paper_tags pt ON pt.tag_id=t.id WHERE pt.paper_id=? ORDER BY t.name').all(paperId) as Array<{ name: string }>).map((r) => r.name)
-    const tagLine = names.length > 0 ? `tags: [${names.map((n) => n.replace(/"/g, "'")).join(', ')}]` : 'tags: []'
-    const tagsRe = new RegExp('^tags:[^\n]*', 'm')
-    if (tagsRe.test(raw)) raw = raw.replace(tagsRe, tagLine)
-    else raw = raw.replace(/^---\n/, '---\n' + tagLine + '\n')
-    fs.writeFileSync(mdPath, raw)
-  } catch { /* md 写回失败不阻断 DB 操作 */ }
-}
-
 export function addPaperTag(paperId: number, name: string, color?: string): TagRow {
-  const t = createTag(name, color)
-  db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id,tag_id) VALUES(?,?)').run(paperId, t.id)
-  syncTagsToMd(paperId) // md frontmatter 同步，防扫描回滚
-  const count = (db.prepare('SELECT COUNT(*) AS n FROM paper_tags WHERE tag_id=?').get(t.id) as { n: number }).n
-  return { ...t, count }
+  const names=[...new Set([...paperTags(paperId).map(t=>t.name),name.trim().slice(0,40)])]
+  let result!:TagRow
+  writeFilesAtomically([tagMarkdownEdit(paperId,names)],()=>db.transaction(()=>{
+    result=createTag(name,color)
+    db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id,tag_id) VALUES(?,?)').run(paperId,result.id)
+    db.prepare('UPDATE papers SET source_stamp=NULL WHERE id=?').run(paperId)
+  })())
+  return {...result,count:(db.prepare('SELECT COUNT(*) n FROM paper_tags WHERE tag_id=?').get(result.id) as {n:number}).n}
 }
-
 export function removePaperTag(paperId: number, tagId: number): void {
-  db.prepare('DELETE FROM paper_tags WHERE paper_id=? AND tag_id=?').run(paperId, tagId)
-  syncTagsToMd(paperId) // md frontmatter 同步，防扫描回滚
+  writeFilesAtomically([tagMarkdownEdit(paperId,paperTags(paperId).filter(t=>t.id!==tagId).map(t=>t.name))],()=>db.transaction(()=>{
+    db.prepare('DELETE FROM paper_tags WHERE paper_id=? AND tag_id=?').run(paperId,tagId)
+    db.prepare('UPDATE papers SET source_stamp=NULL WHERE id=?').run(paperId)
+  })())
 }
 
 // md frontmatter tags 落库：全量替换该论文的标签（扫描驱动，md 是唯一事实来源）
 export function syncPaperTags(paperId: number, raw: string): void {
-  const names = raw
-    .split(/[,，;；]/)
+  const names = parseList(raw)
     .map((s) => s.trim())
     .filter((s) => s && !s.startsWith('status/')) // status/xxx 是阅读状态标记，不进标签系统
   const cur = paperTags(paperId)
@@ -737,7 +564,7 @@ export function setExtraCats(cats: string[]): void {
 }
 
 export function listCategoryNames(): string[] {
-  const fromPapers = (db.prepare("SELECT DISTINCT category FROM papers WHERE category<>''").all() as Array<{ category: string }>).map(
+  const fromPapers = (db.prepare("SELECT DISTINCT category FROM active_papers WHERE category<>''").all() as Array<{ category: string }>).map(
     (r) => r.category
   )
   return [...new Set([...fromPapers, ...getExtraCats()])].sort((a, b) => a.localeCompare(b))

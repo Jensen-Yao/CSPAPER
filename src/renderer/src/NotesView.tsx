@@ -1,6 +1,8 @@
+import { persistNote, readNoteDraft, rememberNoteDraft } from './lib/note-storage'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Highlight, Paper } from './types'
 import { useDialog } from './Dialog'
+import { dispatchWorkspaceAction } from './workspace-actions'
 
 interface Props {
   papers: Paper[]
@@ -104,7 +106,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
   const [filter, setFilter] = useState<NoteFilter>('all')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
-  const [saveHint, setSaveHint] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveHint, setSaveHint] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 
   // 数据缓存 + 加载代次：papers 长度变化（导入/删除）即整体失效重拉
   const cacheRef = useRef<Map<number, PaperNotes>>(new Map())
@@ -174,13 +176,13 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
       if (saveTimer.current) clearTimeout(saveTimer.current)
       const p = pendingRef.current
       pendingRef.current = null
-      if (p) void window.api.myNotesSave(p.id, p.text).catch(() => {})
+      if (p) void persistNote(p.id,p.text).catch(()=>dlg.toast('笔记保存失败，草稿已保留','error'))
     }
   }, [])
 
   const doSave = async (id: number, text: string): Promise<void> => {
     try {
-      await window.api.myNotesSave(id, text)
+      await persistNote(id,text)
       const prev = cacheRef.current.get(id)
       cacheRef.current.set(id, { note: text, highlights: prev?.highlights ?? [] })
       setEntries((m) => ({ ...m, [id]: { note: text, highlights: m[id]?.highlights ?? [] } }))
@@ -188,12 +190,14 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
       window.setTimeout(() => setSaveHint((s) => (s === 'saved' ? 'idle' : s)), 1600)
       onRefresh() // 通知外部笔记有变化（刷新库侧统计等）
     } catch {
-      setSaveHint('idle')
+      setSaveHint('failed')
+      dlg.toast('笔记保存失败，草稿已保留，请重试','error')
     }
   }
 
   const scheduleSave = (id: number, text: string): void => {
     setDraft(text)
+    rememberNoteDraft(id,text)
     pendingRef.current = { id, text }
     setSaveHint('saving')
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -218,7 +222,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
   const startEdit = (r: Row): void => {
     flushSave()
     setEditingId(r.paper.id)
-    setDraft(r.note)
+    setDraft(readNoteDraft(r.paper.id) ?? r.note)
     setSaveHint('idle')
   }
 
@@ -315,6 +319,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b className="ellipsis" style={{ flex: 1, fontSize: 13 }}>{n.title}</b>
                 <span className="cat-count">{(n.updated_at || '').slice(5, 16)}</span>
+                <button className="cmp-mini" onClick={() => dispatchWorkspaceAction({kind:'chat',paperIds:[],notes:[{noteId:'standalone-'+n.id}],fresh:true,prompt:`请基于独立笔记《${n.title}》整理结论、风险和下一步行动。`})}>问这条笔记</button>
                 <button className="cmp-mini" onClick={() => {
                   if (snEdit === n.id) { void window.api.standaloneNotesSave(n.id, n.title, snBody).then(() => setSnotesVer((v) => v + 1)); setSnEdit(null) }
                   else { void window.api.standaloneNotesGet(n.id).then((d) => { setSnBody(d.body_md); setSnEdit(n.id) }) }
@@ -349,6 +354,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
             onCloseEdit={closeEdit}
             onDraft={(text) => scheduleSave(r.paper.id, text)}
             onOpenPaper={onOpenPaper}
+            onAsk={() => dispatchWorkspaceAction({kind:'chat',paperIds:[r.paper.id],notes:[{noteId:'paper-'+r.paper.id,paperId:r.paper.id}],fresh:true,prompt:`请基于《${r.paper.title}》的笔记和标注，梳理研究思路、局限和下一步问题。`})}
             onExportOne={() => {
               const md = paperSection(r).join('\n')
               downloadText(`${safeFileName(r.paper.title)}-笔记.md`, `${md.trim()}\n`, 'text/markdown')
@@ -376,15 +382,16 @@ interface CardProps {
   row: Row
   editing: boolean
   draft: string
-  saveHint: 'idle' | 'saving' | 'saved'
+  saveHint: 'idle' | 'saving' | 'saved' | 'failed'
   onEdit: () => void
   onCloseEdit: () => void
   onDraft: (text: string) => void
   onOpenPaper: (paperId: number, page?: number) => void
+  onAsk: () => void
   onExportOne: () => void
 }
 
-function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft, onOpenPaper, onExportOne }: CardProps): JSX.Element {
+function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft, onOpenPaper, onAsk, onExportOne }: CardProps): JSX.Element {
   const preview = useMemo(() => mdToPlain(row.note), [row.note])
   const clipped = preview.length > 300 ? `${preview.slice(0, 300)}…` : preview
   return (
@@ -395,7 +402,7 @@ function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft,
         </button>
         <div className="note-actions">
           {editing && saveHint !== 'idle' && (
-            <span className={`note-save ${saveHint}`}>{saveHint === 'saving' ? '保存中…' : '已保存'}</span>
+            <span className={`note-save ${saveHint}`}>{saveHint === 'saving' ? '保存中…' : saveHint==='failed'?'保存失败，草稿已保留':'已保存'}</span>
           )}
           {editing ? (
             <button className="cmp-mini" onClick={onCloseEdit} title="保存并收起编辑框（Esc 同效）">
@@ -406,6 +413,9 @@ function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft,
               编辑
             </button>
           )}
+          <button className="cmp-mini" onClick={onAsk} title="把这篇笔记和标注加入统一对话上下文">
+            问这篇笔记
+          </button>
           <button className="cmp-mini" onClick={onExportOne} title="导出此笔记为 Markdown 文件">
             导出此笔记
           </button>

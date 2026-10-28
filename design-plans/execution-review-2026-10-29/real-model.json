@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-29T04:33:40+08:00",
+  "provider": "agnes",
+  "structuredModelMatrix": {
+    "passed": true,
+    "models": [
+      "agnes-3.0-flash",
+      "agnes-2.5-flash"
+    ],
+    "bothReturnedStrictJson": true,
+    "totalLatencyMs": 1318
+  },
+  "threePaperTask": {
+    "passed": true,
+    "status": "completed",
+    "planCreated": true,
+    "completedTools": 7,
+    "comparisonArtifact": "created",
+    "notesWritten": 3,
+    "noteMarker": "FINAL-REAL-MODEL-NOTE",
+    "providerPlanWrapperSupported": true,
+    "actToolCitationsBound": true
+  },
+  "secretHandling": "API key read only from local settings into memory; never printed or persisted in evidence"
+}

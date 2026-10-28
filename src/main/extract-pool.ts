@@ -4,9 +4,15 @@ import { Worker } from 'node:worker_threads'
 import path from 'node:path'
 import { app } from 'electron'
 
+export interface ExtractOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
 interface PendingJob {
   resolve: (pages: string[]) => void
   reject: (e: Error) => void
+  cancel: (error?: Error) => void
 }
 
 let worker: Worker | null = null
@@ -32,7 +38,7 @@ function ensureWorker(): Worker | null {
       else job.reject(new Error(m.error ?? 'PDF 抽取失败'))
     })
     worker.on('error', (e) => {
-      // worker 崩溃（罕见）：本次任务报错，之后回退主线程抽取
+      // worker 崩溃（罕见）：本次任务报错，之后回退主线程直接抽取
       broken = true
       worker = null
       for (const [, job] of pending) job.reject(e instanceof Error ? e : new Error(String(e)))
@@ -49,14 +55,27 @@ function ensureWorker(): Worker | null {
   }
 }
 
-export function extractInWorker(pdfPath: string, maxPages: number): Promise<string[]> {
+export function extractInWorker(pdfPath: string, maxPages: number, options: ExtractOptions = {}): Promise<string[]> {
+  options.signal?.throwIfAborted()
   const w = ensureWorker()
   if (!w) return Promise.reject(new Error('worker unavailable'))
   const id = ++seq
   const run = chain.catch(() => undefined).then(
     () =>
       new Promise<string[]>((resolve, reject) => {
-        pending.set(id, { resolve, reject })
+        let timer: NodeJS.Timeout | undefined
+        const cleanup=():void=>{
+          if(timer)clearTimeout(timer)
+          options.signal?.removeEventListener('abort',abort)
+        }
+        const cancel=(error:Error=new Error('PDF 抽取已取消')):void=>{
+          pending.delete(id);cleanup();reject(error)
+        }
+        const abort=():void=>cancel(new DOMException('PDF 抽取已取消','AbortError'))
+        pending.set(id,{resolve:(pages)=>{cleanup();resolve(pages)},reject:(error)=>{cleanup();reject(error)},cancel})
+        if(options.signal?.aborted){abort();return}
+        options.signal?.addEventListener('abort',abort,{once:true})
+        if(options.timeoutMs&&Number.isFinite(options.timeoutMs)&&options.timeoutMs>0)timer=setTimeout(()=>cancel(new DOMException(`PDF 抽取超时（${options.timeoutMs}ms）`,'TimeoutError')),options.timeoutMs)
         w.postMessage({ id, pdfPath, maxPages })
       })
   )

@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { BrowserWindow } from 'electron'
-import { getSettings, scanLibrary } from './db'
+import { getSettings, scanLibraryAsync } from './db'
 import { sanitizeCategoryName, findCategoryDir, nextCategoryDir } from './import'
 import { parseRecords, type RecordEntry } from './record-parse'
 
@@ -156,6 +156,8 @@ export async function importRecords(
         `venue: "${q(rec.venue)}"`,
         ...(rec.doi ? [`doi: "${q(rec.doi)}"`] : []),
         'source: 题录导入',
+        'source_kind: record',
+        `abstract: "${q(rec.abstract || '')}",`,
         'tags: [status/unread, no-pdf]',
         'status: unread',
         '---',
@@ -181,6 +183,6 @@ export async function importRecords(
     send('records:file', oc)
   }
   send('records:progress', { done: entries.length, total: entries.length, current: '' })
-  scanLibrary(s.libraryPath)
+  await scanLibraryAsync(s.libraryPath)
   return outcomes
 }

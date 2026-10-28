@@ -23,10 +23,10 @@ export function exportMobilePack(destPath: string, send: (ev: string, payload: u
   const db = getDb()
   // 全量 PDF 读进内存会 OOM（数百篇 × 数 MB）：上限 300 篇并提示分批
   const papers = db
-    .prepare('SELECT slug, title, authors, year, venue, category, path, status, summary FROM papers WHERE deleted_at IS NULL ORDER BY category, slug LIMIT ?')
+    .prepare('SELECT slug, title, authors, year, venue, category, path, status, summary FROM active_papers ORDER BY category, slug LIMIT ?')
     .all(limit) as Array<{ slug: string; title: string; authors: string; year: number | null; venue: string; category: string; path: string; status: string; summary: string | null }>
   const highlights = db
-    .prepare(`SELECT h.page, h.text, h.rects, p.slug FROM highlights h JOIN papers p ON p.id = h.paper_id ORDER BY p.slug, h.page, h.id`)
+    .prepare(`SELECT h.page, h.text, h.rects, p.slug FROM highlights h JOIN active_papers p ON p.id = h.paper_id ORDER BY p.slug, h.page, h.id`)
     .all() as Array<{ slug: string; page: number; text: string; rects: string }>
 
   const entries: ZipEntry[] = []
@@ -73,7 +73,7 @@ export function mergeMobileNotes(jsonPath: string): MobileMergeResult {
     statuses?: Array<{ slug: string; status: string }>
     summaries?: Array<{ slug: string; summary: string }>
   }
-  const bySlug = db.prepare('SELECT id FROM papers WHERE deleted_at IS NULL AND slug=?')
+  const bySlug = db.prepare('SELECT id FROM active_papers WHERE slug=?')
   // DB 侧判重：同一份 .csnotes.json 合并两次不再翻倍（此前仅调用内 seen）
   const hasHl = db.prepare('SELECT 1 FROM highlights WHERE paper_id=? AND page=? AND text=? LIMIT 1')
   const insHl = db.prepare('INSERT INTO highlights(paper_id,page,rects,text) VALUES(?,?,?,?)')

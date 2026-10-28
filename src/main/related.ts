@@ -24,7 +24,7 @@ export function listRelated(paperId: number): RelatedRow[] {
   const rows = db
     .prepare(
       `SELECT r.related_id AS id, p.title AS title, r.kind AS kind
-       FROM paper_related r JOIN papers p ON p.id = r.related_id
+       FROM paper_related r JOIN active_papers p ON p.id = r.related_id
        WHERE r.paper_id = ? ORDER BY r.kind DESC, r.created_at DESC`
     )
     .all(paperId) as RelatedRow[]
@@ -48,16 +48,16 @@ export function removeRelated(a: number, b: number): void {
 export function refreshAutoRelated(paperId: number, topN = 5): number {
   ensureTable()
   const db = getDb()
-  const me = db.prepare('SELECT id, title, abstract, summary FROM papers WHERE id=? AND deleted_at IS NULL').get(paperId) as
+  const me = db.prepare('SELECT id, title, abstract, summary FROM active_papers WHERE id=?').get(paperId) as
     | { id: number; title: string; abstract: string | null; summary: string | null }
     | undefined
   if (!me) return 0
-  const others = db.prepare("SELECT id, pvec FROM papers WHERE pvec IS NOT NULL AND id != ? AND deleted_at IS NULL").all(paperId) as Array<{
+  const others = db.prepare("SELECT id, pvec FROM active_papers WHERE pvec IS NOT NULL AND id != ?").all(paperId) as Array<{
     id: number
     pvec: Buffer
   }>
   if (others.length === 0) return 0
-  const mine = db.prepare('SELECT pvec FROM papers WHERE id=?').get(paperId) as { pvec: Buffer } | undefined
+  const mine = db.prepare('SELECT pvec FROM active_papers WHERE id=?').get(paperId) as { pvec: Buffer } | undefined
   let qv: Float32Array | null = null
   if (mine?.pvec) qv = new Float32Array(mine.pvec.buffer, mine.pvec.byteOffset, mine.pvec.byteLength / 4)
   if (!qv) return 0

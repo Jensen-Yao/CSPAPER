@@ -3,6 +3,7 @@ import type { CompareData, CompareTable, Paper } from './types'
 import { BASE_FIELDS, AI_DIMENSION_PRESETS } from './dimensions'
 import * as Icon from './Icon'
 import { useDialog } from './Dialog'
+import { WORKSPACE_ACTION, type WorkspaceAction } from './workspace-actions'
 
 interface Props {
   papers: Paper[]
@@ -56,6 +57,15 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
   }, [])
 
   const active = tables.find((t) => t.id === activeId) ?? null
+  useEffect(()=>{
+    const handle=(event:Event)=>{
+      const action=(event as CustomEvent<WorkspaceAction>).detail
+      if(action.kind!=='artifact'||action.artifact.kind!=='comparison')return
+      void window.api.compareList().then(items=>{setTables(items);setActiveId(Number(action.artifact.entityId))}).catch(error=>setErr(String(error)))
+    }
+    window.addEventListener(WORKSPACE_ACTION,handle)
+    return ()=>window.removeEventListener(WORKSPACE_ACTION,handle)
+  },[])
   const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers])
   const fields = active?.data.fields ?? ['作者', '期刊名称']
 
@@ -133,17 +143,21 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
 
   const generateMissing = async (onlyIds?: number[]): Promise<void> => {
     if (!active || genAllBusy) return
-    setGenAllBusy(true)
     const ids = (onlyIds ?? active.data.paperIds).filter((id) => {
       const cells = active.data.cells[String(id)]
       return !cells || Object.keys(cells).length === 0
     })
-    for (let k = 0; k < ids.length; k++) {
-      setGenAllProg(`${k + 1}/${ids.length}`)
-      await generateOne(ids[k])
+    if (!ids.length) return
+    setGenAllBusy(true);setGenIds(new Set(ids));setErr('')
+    for (let k = 0; k < ids.length; k++) setGenAllProg(`${k + 1}/${ids.length}`)
+    try {
+      const updated=await window.api.comparisonUpdate(active.id,active.data.paperIds,active.data.dimensions,ids)
+      setTables(ts=>ts.map(item=>item.id===updated.id?updated:item))
+    } catch(error) {
+      setErr(String(error).replace(/^Error: /,''))
+    } finally {
+      setGenIds(new Set());setGenAllProg('');setGenAllBusy(false)
     }
-    setGenAllBusy(false)
-    setGenAllProg('')
   }
 
   const paperRow = (pid: number, idx: number): JSX.Element => {

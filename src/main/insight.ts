@@ -1,9 +1,12 @@
+import { notesFromMarkdown, readPaperMarkdown, replaceMarkdownNotes } from './paper-files'
+import { runFileOperation } from './operations/journal'
 // AI 洞察：文献卡片小结、多篇对比表格（可追溯引用）、深度搜索、对比表导出
 import fs from 'node:fs'
 import path from 'node:path'
 import { dialog, BrowserWindow } from 'electron'
-import { getDb, getSettings, scanLibrary } from './db'
+import { getDb, getSettings, scanLibraryAsync } from './db'
 import { chatStream } from './llm'
+import { comparisonPrompt, deepReadingPrompt, synthesisPrompt } from './chat/prompts'
 import { extractPagesCached } from './ingest'
 import { findCategoryDir, nextCategoryDir } from './import'
 
@@ -74,7 +77,7 @@ export async function generateCells(
   send?: (ev: string, p: unknown) => void
 ): Promise<Record<string, CompareCell[]>> {
   const db = getDb()
-  const paper = db.prepare('SELECT id, slug, title, path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as
+  const paper = db.prepare('SELECT id, slug, title, path FROM active_papers WHERE id=?').get(paperId) as
     | { id: number; slug: string; title: string; path: string }
     | undefined
   if (!paper) throw new Error('论文不存在')
@@ -92,17 +95,9 @@ export async function generateCells(
     .join('\n\n')
     .slice(0, 90000)
   send?.('compare:progress', { paperId, phase: 'thinking' })
-  const prompt =
-    `你是严谨的文献分析助手。下面是论文《${paper.title}》的正文（按页标记）。\n` +
-    `针对给定的每个分析维度，从论文中提取要点：\n` +
-    `1）每个维度 2-5 条要点，具体、可对比（含方法名/数值/结论），不要空话；\n` +
-    `2）每条要点标注出处页码（该页内容真实支持这条要点）；\n` +
-    `3）论文未覆盖的维度输出空数组；\n` +
-    `4）只输出 JSON，不要任何其他文字，格式：\n` +
-    `{"维度名":[{"t":"要点","p":页码数字},...]}\n` +
-    `维度列表：${JSON.stringify(dimensions)}`
+  const prompt=comparisonPrompt(paper.title,dimensions)
   let out = ''
-  for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: marked }])) out += d
+  for await (const d of chatStream([...prompt.slice(0,1),{role:'user',content:marked}])) out += d
   send?.('compare:progress', { paperId, phase: 'parsing' })
   let json: Record<string, unknown>
   try {
@@ -154,10 +149,11 @@ export function getExtract(paperId: number): PaperExtract | null {
  */
 export async function extractPaper(paperId: number): Promise<{ summary: string; extract: PaperExtract | null }> {
   const db = getDb()
-  const paper = db.prepare('SELECT id, title, path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as
-    | { id: number; title: string; path: string }
+  const paper = db.prepare('SELECT id, title, path, source_kind FROM active_papers WHERE id=?').get(paperId) as
+    | { id: number; title: string; path: string; source_kind: 'pdf' | 'record' }
     | undefined
   if (!paper) throw new Error('论文不存在')
+  if (paper.source_kind === 'record') throw new Error('该条目是 Zotero 题录占位，尚未导入 PDF 全文；请先补充并替换 paper.pdf，再执行深度精读')
   let pages: string[] = []
   try {
     pages = await extractPagesCached(paper.path)
@@ -167,16 +163,9 @@ export async function extractPaper(paperId: number): Promise<{ summary: string; 
   const full = pages.join('\n\n')
   const text = full.slice(0, 90000)
   if (!text.trim()) throw new Error('无法读取论文正文')
-  const prompt =
-    '你是资深科研文献分析师。深度阅读论文全文，输出严格 JSON（不要围栏、不要多余文字）：\n' +
-    '{"summary":"150字内卡片小结：一句话研究问题+一句方法+一到两句核心结论",' +
-    '"problem":"研究问题（1-2句）","method":"方法/技术路线（2-3句，含关键模型或算法名）",' +
-    '"dataset":"数据集/实验对象/案例（含规模）","metrics":"评价指标（如准确率/能耗/成本，含量级）",' +
-    '"results":"核心结果（2-3条，带关键数字）","limitations":"局限（1-2条，来自原文或合理推断）",' +
-    '"novelty":"创新点（1-2句，与已有工作的差异）","future":"可跟进的研究方向（1-2条）"}\n' +
-    '全部中文；论文中没有的字段写"未提及"。'
+  const prompt=deepReadingPrompt(paper.title,text)
   let out = ''
-  for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: `【标题】${paper.title}\n【全文】\n${text}` }])) {
+  for await (const d of chatStream(prompt)) {
     out += d
   }
   const cleaned = out.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
@@ -248,7 +237,7 @@ export function deepSearch(q: string): DeepHit[] {
               `SELECT p.id AS id, p.slug AS slug, p.title AS title,
                 snippet(chunks_fts, 0, '', '', '…', 16) AS snip,
                 chunks_fts.page AS page
-         FROM chunks_fts JOIN papers p ON p.id = chunks_fts.paper_id
+         FROM chunks_fts JOIN active_papers p ON p.id = chunks_fts.paper_id
          WHERE chunks_fts MATCH ?
          LIMIT 30`
             )
@@ -256,7 +245,7 @@ export function deepSearch(q: string): DeepHit[] {
         : (db
             .prepare(
               `SELECT p.id AS id, p.slug AS slug, p.title AS title, c.page AS page, c.text AS text
-         FROM chunks c JOIN papers p ON p.id = c.paper_id
+         FROM chunks c JOIN active_papers p ON p.id = c.paper_id
          WHERE c.text LIKE ?
          LIMIT 30`
             )
@@ -281,7 +270,7 @@ export function deepSearch(q: string): DeepHit[] {
     const rows = db
       .prepare(
         `SELECT p.id AS id, p.slug AS slug, p.title AS title, h.page AS page, h.text AS text
-         FROM highlights h JOIN papers p ON p.id = h.paper_id
+         FROM highlights h JOIN active_papers p ON p.id = h.paper_id
          WHERE h.text LIKE ?
          LIMIT 20`
       )
@@ -347,7 +336,7 @@ export async function exportCompare(
   }
   const paperRows: Array<Record<string, string>> = []
   for (const pid of data.paperIds) {
-    const p = db.prepare('SELECT id, slug, title, authors, year, venue, category FROM papers WHERE deleted_at IS NULL AND id=?').get(pid) as
+    const p = db.prepare('SELECT id, slug, title, authors, year, venue, category FROM active_papers WHERE id=?').get(pid) as
       | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string }
       | undefined
     if (!p) continue
@@ -387,6 +376,8 @@ export interface PaperDetail {
   added_at: string
   summary: string | null
   abstract: string
+  source_kind: 'pdf' | 'record'
+  chunk_count: number
   files: string[]
   notesCount: number
   myNotes: string
@@ -403,7 +394,7 @@ export async function synthesizePapers(
   const parts: string[] = []
   let done = 0
   for (const pid of ids) {
-    const row = db.prepare('SELECT id, title, authors, year, summary, path FROM papers WHERE deleted_at IS NULL AND id=?').get(pid) as
+    const row = db.prepare('SELECT id, title, authors, year, summary, path FROM active_papers WHERE id=?').get(pid) as
       | { id: number; title: string; authors: string; year: number | null; summary: string | null; path: string }
       | undefined
     if (!row) continue
@@ -435,13 +426,9 @@ export async function synthesizePapers(
     send('ai:progress', { done, total: ids.length })
   }
   if (parts.length < 2) throw new Error('至少需要 2 篇有正文的文献')
-  const prompt =
-    '你是学术研究助手。以下是多篇相关文献的结构化精读要点（研究问题/方法/数据/指标/结果/创新/局限）。' +
-    '请撰写一篇 1000-1500 字的中文综述，包括：' +
-    '1）共同的研究主题与脉络；2）各文献的方法与核心结论对比（分点，标注文献编号如 [1]，引用关键数字）；' +
-    '3）研究空白与未来方向。结构清晰，使用 markdown 小标题。只输出综述正文。'
+  const prompt=synthesisPrompt()
   let out = ''
-  for await (const d of chatStream([{ role: 'system', content: prompt }, { role: 'user', content: parts.join('\n\n') }])) out += d
+  for await (const d of chatStream([...prompt.slice(0,1),{role:'user',content:parts.join('\n\n')}])) out += d
   if (!out.trim()) throw new Error('AI 未返回内容')
 
   // 写入 md → AI 知识库分类
@@ -484,91 +471,35 @@ ${out}
   } catch (err) {
     console.error('[synthesis] 占位页生成失败:', String(err))
   }
-  scanLibrary(s2.libraryPath)
+  await scanLibraryAsync(s2.libraryPath)
   return { slug, title }
 }
 
-// ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
-// ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
-// v0.19：笔记区用 HTML 注释哨兵界定。此前以「下一个 ## 」当结束边界，用户笔记里
-// 出现任何二级标题（插模板/自己写「## 方法」）都会被截断，且保存时旧尾部重复堆回。
-const NOTES_HEAD = '## 我的笔记'
-const NOTES_OPEN = '<!-- cspaper:notes:start -->'
-const NOTES_CLOSE = '<!-- cspaper:notes:end -->'
-// md 内已知的固定章节（导入模板生成）：旧格式无哨兵时作为笔记区的结束边界
-const NOTES_KNOWN_SECTIONS = ['## 阅读状态', '## 速览', '## Zotero 标注', '## 参考文献']
-
-/** 读笔记：优先哨兵；旧格式回退到已知章节标题（绝不用任意 ##） */
+// Every note operation resolves the exact document and preserves sibling sections.
 export function getMyNotesText(paperId: number): string {
-  const db = getDb()
-  const row = db.prepare('SELECT path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as { path: string } | undefined
-  if (!row) return ''
-  try {
-    const dir = path.dirname(row.path)
-    const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
-    if (!mdFile) return ''
-    const raw = fs.readFileSync(path.join(dir, mdFile), 'utf8')
-    const hi = raw.indexOf(NOTES_HEAD)
-    if (hi < 0) return ''
-    const after = raw.slice(hi + NOTES_HEAD.length)
-    const oi = after.indexOf(NOTES_OPEN)
-    if (oi >= 0) {
-      const ci = after.indexOf(NOTES_CLOSE, oi)
-      return (ci >= 0 ? after.slice(oi + NOTES_OPEN.length, ci) : after.slice(oi + NOTES_OPEN.length)).trim()
-    }
-    // 旧格式：截到第一个已知章节；没有已知章节则整个尾部都是笔记
-    let ei = after.length
-    for (const sec of NOTES_KNOWN_SECTIONS) {
-      const k = after.indexOf('\n' + sec)
-      if (k >= 0 && k < ei) ei = k
-    }
-    return after.slice(0, ei).trim()
-  } catch {
-    return ''
-  }
+  const row=getDb().prepare('SELECT path,slug FROM papers WHERE id=? AND deleted_at IS NULL').get(paperId) as {path:string;slug:string}|undefined
+  if(!row) return ''
+  return notesFromMarkdown(readPaperMarkdown(row.path,row.slug).raw)
 }
+export function saveMyNotesText(paperId: number,text: string): boolean {
+  const row=getDb().prepare('SELECT id,path,slug,title,file_mtime FROM papers WHERE id=? AND deleted_at IS NULL').get(paperId) as {id:number;path:string;slug:string;title:string;file_mtime?:number}|undefined
+  if(!row) return false
+  const doc=readPaperMarkdown(row.path,row.slug)
+  const operation=runFileOperation(getDb(),{
+    id:`note-${row.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`,kind:'note.save',target:`paper:${row.id}`,expectedVersion:String(row.file_mtime??0),
+    edits:[{path:doc.path,content:replaceMarkdownNotes(doc.raw || '# '+row.title+'\n',text)}],commit:()=>{}
+  })
+  if(operation.state==='failed')throw new Error(operation.error??'笔记写入失败')
 
-/** 写笔记：整段用哨兵重写，笔记内任意 ## 不再影响边界 */
-export function saveMyNotesText(paperId: number, text: string): boolean {
-  const db = getDb()
-  const row = db.prepare('SELECT path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as { path: string } | undefined
-  if (!row) return false
-  const dir = path.dirname(row.path)
-  try {
-    const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
-    if (!mdFile) return false
-    const mdPath = path.join(dir, mdFile)
-    let raw = fs.readFileSync(mdPath, 'utf8')
-    const body = '\n' + NOTES_OPEN + '\n' + text.trim() + '\n' + NOTES_CLOSE + '\n'
-    const hi = raw.indexOf(NOTES_HEAD)
-    if (hi >= 0) {
-      const after = raw.slice(hi + NOTES_HEAD.length)
-      const oi = after.indexOf(NOTES_OPEN)
-      if (oi >= 0) {
-        // 新格式：整段哨兵区替换
-        const ci = after.indexOf(NOTES_CLOSE, oi)
-        const endRel = ci >= 0 ? ci + NOTES_CLOSE.length : after.length
-        raw = raw.slice(0, hi) + NOTES_HEAD + '\n' + body + after.slice(endRel)
-      } else {
-        // 旧格式一次性迁移为哨兵区
-        raw = raw.slice(0, hi) + NOTES_HEAD + '\n' + body
-      }
-    } else {
-      raw = raw.replace(/\s*$/, '') + '\n\n' + NOTES_HEAD + '\n' + body
-    }
-        fs.writeFileSync(mdPath, raw)
-    return true
-  } catch {
-    return false
-  }
+  return true
 }
 
 export async function paperDetail(id: number): Promise<PaperDetail | null> {
   const db = getDb()
   const row = db
-    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path, doi, volume, issue, pages, publisher, language FROM papers WHERE deleted_at IS NULL AND id=?')
+    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path, doi, volume, issue, pages, publisher, language, abstract, source_kind FROM active_papers WHERE id=?')
     .get(id) as
-    | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string; status: string; added_at: string; summary: string | null; path: string; doi: string | null; volume: string | null; issue: string | null; pages: string | null; publisher: string | null; language: string | null }
+    | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string; status: string; added_at: string; summary: string | null; path: string; doi: string | null; volume: string | null; issue: string | null; pages: string | null; publisher: string | null; language: string | null; abstract: string | null; source_kind: 'pdf' | 'record' }
     | undefined
   if (!row) return null
   const dir = path.dirname(row.path)
@@ -583,12 +514,13 @@ export async function paperDetail(id: number): Promise<PaperDetail | null> {
     const pages = await extractPagesCached(row.path)
     const first = (pages[0] ?? '').replace(/\s+/g, ' ').trim()
     const m = first.match(/(摘\s*要|Abstract)[:：]?\s*(.{80,700})/i)
-    abstract = m ? m[2].trim() : first.slice(0, 400)
+    abstract = m ? m[2].trim() : row.abstract || first.slice(0, 400)
   } catch {
-    abstract = ''
+    abstract = row.abstract || ''
   }
   const notesCount = (db.prepare('SELECT COUNT(*) AS n FROM highlights WHERE paper_id=?').get(id) as { n: number }).n
-  return { ...row, abstract, files, notesCount, myNotes: getMyNotesText(id) }
+  const chunkCount=(db.prepare('SELECT COUNT(*) AS n FROM chunks WHERE paper_id=?').get(id) as { n: number }).n
+  return { ...row, abstract, files, notesCount, chunk_count:chunkCount, myNotes: getMyNotesText(id) }
 }
 
 // ---------- 导入后自动小结队列（配置了 API Key 时） ----------
@@ -695,8 +627,8 @@ export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: 
   // 分类筛选：空 = 全库；指定分类只在该分类内构图（跨分类硬连不相关论文反而干扰）
   const rows = (
     category
-      ? db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
-      : db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
+      ? db.prepare('SELECT id, title, authors, summary, category, year, path FROM active_papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, title, authors, summary, category, year, path FROM active_papers WHERE deleted_at IS NULL').all()
   ) as Array<{ id: number; title: string; authors: string; summary: string | null; category: string; year: number | null; path: string }>
   const chunkStmt = db.prepare('SELECT text FROM chunks WHERE paper_id = ? LIMIT 40')
 
@@ -725,7 +657,7 @@ export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: 
   // 无向量库自动退化为纯词法（与旧版一致）
   const pvecs = new Map<number, Float32Array>()
   try {
-    const pv = db.prepare('SELECT id, pvec FROM papers WHERE deleted_at IS NULL AND pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
+    const pv = db.prepare('SELECT id, pvec FROM active_papers WHERE pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
     for (const r of pv) {
       if (r.pvec && r.pvec.byteLength >= 8) pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
     }
@@ -838,8 +770,8 @@ export function keywordGraph(category?: string, topK = 48): { nodes: KwNode[]; e
   const db = getDb()
   const rows = (
     category
-      ? db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
-      : db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
+      ? db.prepare('SELECT id, title, summary FROM active_papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, title, summary FROM active_papers WHERE deleted_at IS NULL').all()
   ) as Array<{ id: number; title: string; summary: string | null }>
   const freq = new Map<string, number>()
   const paperIds = new Map<string, number[]>()
@@ -888,8 +820,8 @@ export function authorGraph(category?: string, topK = 60): { nodes: AuNode[]; ed
   const db = getDb()
   const rows = (
     category
-      ? db.prepare('SELECT id, authors FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
-      : db.prepare('SELECT id, authors FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
+      ? db.prepare('SELECT id, authors FROM active_papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, authors FROM active_papers WHERE deleted_at IS NULL').all()
   ) as Array<{ id: number; authors: string }>
   const freq = new Map<string, number>()
   const pair = new Map<string, number>()
@@ -932,8 +864,8 @@ export function topicClusters(category?: string): TopicCluster[] {
   const db = getDb()
   const rows = (
     category
-      ? db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
-      : db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
+      ? db.prepare('SELECT id, title, summary FROM active_papers WHERE category=?').all(category)
+      : db.prepare('SELECT id, title, summary FROM active_papers WHERE deleted_at IS NULL').all()
   ) as Array<{ id: number; title: string; summary: string | null }>
   if (rows.length === 0) return []
   const kwOf = new Map<number, string[]>()
@@ -942,7 +874,7 @@ export function topicClusters(category?: string): TopicCluster[] {
   // ---- 优先语义聚类：papers.pvec K-means（k 自适应 ⌊√(n/2)⌋，限 2..12） ----
   const pvecs = new Map<number, Float32Array>()
   try {
-    const pv = db.prepare('SELECT id, pvec FROM papers WHERE deleted_at IS NULL AND pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
+    const pv = db.prepare('SELECT id, pvec FROM active_papers WHERE pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
     for (const r of pv) {
       if (r.pvec && r.pvec.byteLength >= 8) pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
     }

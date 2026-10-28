@@ -53,6 +53,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
   const [toasts, setToasts] = useState<ToastRow[]>([])
   const toastId = useRef(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const dialogRef=useRef<HTMLDialogElement|null>(null)
   const [value, setValue] = useState('')
   const [err, setErr] = useState('')
 
@@ -65,6 +66,8 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
   const prompt = useCallback(
     (opts: PromptOpts): Promise<string | null> =>
       new Promise((resolve) => {
+        setConfirmState(previous=>{previous?.resolve(false);return null})
+        setPromptState(previous=>{previous?.resolve(null);return null})
         setValue(opts.defaultValue ?? '')
         setErr('')
         setPromptState({ opts, resolve })
@@ -74,7 +77,8 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
   const confirm = useCallback(
     (opts: ConfirmOpts): Promise<boolean> =>
       new Promise((resolve) => {
-        setConfirmState({ opts, resolve })
+        setPromptState(previous=>{previous?.resolve(null);return null})
+        setConfirmState(previous=>{previous?.resolve(false);return {opts,resolve}})
       }),
     []
   )
@@ -111,6 +115,10 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
       return null
     })
   }, [])
+
+  useEffect(()=>{
+    if((promptState||confirmState)&&dialogRef.current&&!dialogRef.current.open) dialogRef.current.showModal()
+  },[promptState,confirmState])
 
   // 打开时聚焦输入框（并全选默认值，重命名场景可直接覆盖）
   useEffect(() => {
@@ -152,8 +160,8 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
 
       {promptState && (
         <div className="dlg-mask" onMouseDown={() => closePrompt(null)}>
-          <div className="dlg" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal>
-            <div className="dlg-title">{promptState.opts.title}</div>
+          <dialog ref={dialogRef} className="dlg" onMouseDown={(e) => e.stopPropagation()} aria-labelledby="cspaper-dialog-title" onCancel={e=>{e.preventDefault();if(promptState)closePrompt(null);else closeConfirm(false)}}>
+            <div className="dlg-title" id="cspaper-dialog-title">{promptState.opts.title}</div>
             <input
               ref={inputRef}
               className="dlg-input"
@@ -173,14 +181,14 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
                 {promptState.opts.okText ?? '确定'}
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
 
       {confirmState && (
         <div className="dlg-mask" onMouseDown={() => closeConfirm(false)}>
-          <div className="dlg" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal>
-            <div className="dlg-title">{confirmState.opts.title}</div>
+          <dialog ref={dialogRef} className="dlg" onMouseDown={(e) => e.stopPropagation()} aria-labelledby="cspaper-dialog-title" onCancel={e=>{e.preventDefault();if(promptState)closePrompt(null);else closeConfirm(false)}}>
+            <div className="dlg-title" id="cspaper-dialog-title">{confirmState.opts.title}</div>
             {confirmState.opts.message && <div className="dlg-msg">{confirmState.opts.message}</div>}
             <div className="dlg-foot">
               <button className="dlg-btn" onClick={() => closeConfirm(false)}>
@@ -190,7 +198,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }): JSX
                 {confirmState.opts.okText ?? '确定'}
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
 

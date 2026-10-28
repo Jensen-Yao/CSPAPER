@@ -5,11 +5,19 @@ import { useEffect, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
 import './websearch.css'
 import * as Icon from './Icon'
+import BrandIcon from './BrandIcon'
+import { dispatchWorkspaceAction } from './workspace-actions'
 
 // <webview> 的 JSX 属性由 @types/react（WebViewHTMLAttributes）内置提供，无需自行声明
 
 const HINT_KEY = 'ws.hintHidden'
 const RECENT_KEY = 'ws.recent'
+
+function webVersion(url:string,title:string,snippet:string):string {
+  let hash=0x811c9dc5
+  for(const text of [url,title,snippet]) for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,0x01000193)>>>0}
+  return `web:${hash.toString(16)}:${snippet.length}`
+}
 
 // 站点直达检索：关键词直接拼进该站的搜索结果页
 const ENGINES: Array<{ label: string; host: string; home: string; search: (q: string) => string }> = [
@@ -336,7 +344,7 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
       {mode === 'home' && (
         <div className="ws-home">
           <div className="ws-logo">
-            <span className="ws-logo-mark">C</span>
+            <BrandIcon className="brand-icon-lg ws-logo-mark" />
             <span className="ws-logo-text">CSPAPER 学术搜索</span>
           </div>
           <div className="ws-search">
@@ -405,6 +413,17 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
                         {importing === i ? '入库中…' : '导入'}
                       </button>
                     )}
+                    <button
+                      className="ws-open"
+                      title="把这条检索结果作为新对话上下文"
+                      onClick={() => {
+                        const target=h.url||(h.doi?`https://doi.org/${h.doi}`:'')
+                        const snippet=h.abstract||h.title
+                        dispatchWorkspaceAction({kind:'chat',paperIds:[],web:[{url:target,title:h.title,snippet,documentVersion:webVersion(target,h.title,snippet)}],prompt:`请评估这篇检索结果与当前研究问题的相关性、证据强度和可引用性：${h.title}`,fresh:true})
+                      }}
+                    >
+                      问
+                    </button>
                     <button className="ws-open" title="在内置浏览器打开原文/详情页" onClick={() => openHit(h)}>
                       原文
                     </button>

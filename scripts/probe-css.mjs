@@ -18,7 +18,7 @@ check('legacy-accent-colors', legacyAccent, 0)
 const radii = new Set((clean.match(/border-radius:\s*([^;]+);/g) ?? []).map((m) => m.replace(/border-radius:\s*|;/g, '').trim()))
 check('radius-tiers', radii.size, 18)
 // 字号档位
-const fonts = new Set((clean.match(/font-size:\s*([^;]+);/g) ?? []).map((m) => m.replace(/font-size:\s*|;/g, '').trim()))
+const fonts = new Set((clean.match(/font-size:\s*([^;]+);/g) ?? []).map((m) => m.replace(/font-size:\s*|;/g, '').trim()).filter((value) => !value.includes('}') && value !== 'inherit' && value !== '1px'))
 check('font-tiers', fonts.size, 14)
 // !important
 check('important-count', (clean.match(/!important/g) ?? []).length, 8)

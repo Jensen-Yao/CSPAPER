@@ -1,3 +1,5 @@
+import WorkspaceNavigation from './WorkspaceNavigation'
+import { WORKSPACE_ACTION, type WorkspaceAction } from './workspace-actions'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LibraryPane from './LibraryPane'
 import PdfViewer, { type ViewerHandle } from './PdfViewer'
@@ -5,6 +7,8 @@ import SidePanel, { type SideControl } from './SidePanel'
 import SettingsDialog from './SettingsDialog'
 import SetupWizard from './SetupWizard'
 import CommandPalette from './CommandPalette'
+import ResizeHandle from './ResizeHandle'
+import BrandIcon from './BrandIcon'
 import ChatView from './ChatView'
 import RefViewer from './RefViewer'
 import ImportDialog from './ImportDialog'
@@ -19,9 +23,10 @@ import WebSearchView from './WebSearchView'
 import WorkbenchView from './WorkbenchView'
 import * as Icon from './Icon'
 import { useDialog } from './Dialog'
+import { presetCaps } from './model-caps-presets'
 import { STATUS_KEYS } from './types'
 import type { ChatScope } from './ChatControls'
-import type { Paper, Settings } from './types'
+import type { Paper, Settings, SourceRef } from './types'
 
 export interface Tab {
   paper: Paper
@@ -90,7 +95,8 @@ export default function App(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showLib, setShowLib] = useState(true)
-  const [showSide, setShowSide] = useState(true)
+  const [showSide,setShowSide]=useState(false)
+  const [showLibraryHome,setShowLibraryHome]=useState(true)
   const [indexInfo, setIndexInfo] = useState<{ done: number; total: number; phase: string } | null>(null)
   const [importInfo, setImportInfo] = useState('')
   const [cats, setCats] = useState<string[]>([])
@@ -101,7 +107,7 @@ export default function App(): JSX.Element {
   const [importBusy, setImportBusy] = useState(false)
   const importBusyRef = useRef(false)
   const [chatReset, setChatReset] = useState(0)
-  const [indexedCount, setIndexedCount] = useState({ papers: 0, indexed: 0, chunks: 0 })
+  const [indexedCount, setIndexedCount] = useState({ papers: 0, indexed: 0, chunks: 0, recordOnly: 0, fulltext: 0 })
   const [pendingJump, setPendingJump] = useState<{ slug: string; page: number; snippet?: string; probe?: string } | null>(null)
   const [pageCtx, setPageCtx] = useState('')
   const [floatBar, setFloatBar] = useState<{ x: number; y: number; text: string } | null>(null)
@@ -225,7 +231,7 @@ export default function App(): JSX.Element {
       setSettings(await window.api.getSettings())
       await refreshPapers()
       setIndexedCount(await window.api.indexStatus())
-    })()
+    })().catch(error=>dlg.toast('加载文献库失败：'+String(error),'error'))
     const off = window.api.onIndexProgress((p) => {
       setIndexInfo(p)
       if (p.phase === 'done') {
@@ -281,6 +287,7 @@ export default function App(): JSX.Element {
     (p: Paper, jumpPage?: number, snippet?: string, probe?: string) => {
       setTabs((ts) => (ts.some((t) => t.paper.id === p.id) ? ts : [...ts, { paper: p }]))
       setActiveId(p.id)
+      setShowLibraryHome(false)
       setPendingJump(jumpPage ? { slug: p.slug, page: jumpPage, snippet, probe } : null)
       // 「最近」视图排序依据：与 sqlite datetime('now') 同格式（UTC）
       void window.api.markOpened(p.id)
@@ -329,6 +336,16 @@ export default function App(): JSX.Element {
     setShowSide(true)
     sideControl.current?.translate(text, pageCtxRef.current)
   }, [])
+  useEffect(()=>{
+    const handler=(event:Event)=>{
+      const detail=(event as CustomEvent<{text:string;context?:string}>).detail
+      if(!detail?.text)return
+      setShowSide(true)
+      sideControl.current?.translate(detail.text,detail.context??pageCtxRef.current)
+    }
+    window.addEventListener('cspaper:translate-request',handler)
+    return ()=>window.removeEventListener('cspaper:translate-request',handler)
+  },[])
   const doExplain = useCallback((text: string) => {
     setFloatBar(null)
     setShowSide(true)
@@ -368,7 +385,7 @@ export default function App(): JSX.Element {
 
   // 引用跳转 / 侧栏点开论文：都回到阅读模式
   const jumpTo = useCallback(
-    (slug: string, page: number, snippet?: string, probe?: string) => {
+    (slug: string, page: number, snippet?: string, probe?: string, source?: SourceRef) => {
       const p = papers.find((x) => x.slug === slug)
       if (p) {
         setMode('read')
@@ -442,11 +459,11 @@ export default function App(): JSX.Element {
 
   // 对话模式：检索范围与引用面板
   const [chatScope, setChatScope] = useState<ChatScope>({ type: 'all', cat: '' })
-  const [refView, setRefView] = useState<{ paper: Paper; page: number; snippet?: string; probe?: string } | null>(null)
+  const [refView, setRefView] = useState<{ paper: Paper; page: number; snippet?: string; probe?: string; documentVersion?: string } | null>(null)
   const [refWidth, setRefWidth] = useState(() => Number(localStorage.getItem('pl.refW')) || 460)
 
   // 对话字号（问答/翻译/对话三处共用），CSS 变量 --chat-fs 驱动，localStorage 记忆
-  const [chatFs, setChatFs] = useState(() => Math.max(11, Math.min(19, Number(localStorage.getItem('pl.chatFs')) || 13)))
+  const [chatFs, setChatFs] = useState(() => Math.max(11, Math.min(19, Number(localStorage.getItem('pl.chatFs')) || 15)))
   useEffect(() => {
     document.documentElement.style.setProperty('--chat-fs', `${chatFs}px`)
   }, [chatFs])
@@ -458,8 +475,8 @@ export default function App(): JSX.Element {
     })
   }, [])
   const resetFs = useCallback(() => {
-    localStorage.setItem('pl.chatFs', '13')
-    setChatFs(13)
+    localStorage.setItem('pl.chatFs', '15')
+    setChatFs(15)
   }, [])
 
   const catCounts = useMemo(() => {
@@ -469,25 +486,63 @@ export default function App(): JSX.Element {
   }, [papers])
   // Chat 模式点引用：在右侧引用面板打开，不离开对话
   const openCite = useCallback(
-    (slug: string, page: number, snippet?: string, probe?: string) => {
+    (slug: string, page: number, snippet?: string, probe?: string, source?: SourceRef) => {
       const p = papers.find((x) => x.slug === slug)
       if (p) {
         setTopMode('paper')
         // RefViewer 挂在对话容器内：不在 chat 模式时先切过去，否则跳转不可见
         if (mode !== 'chat') setMode('chat')
-        setRefView({ paper: p, page, snippet, probe })
+        setRefView({ paper: p, page, snippet, probe, documentVersion:source?.documentVersion })
       }
     },
     [papers, mode]
   )
+  useEffect(()=>{
+    const handle=(event:Event)=>{
+      const action=(event as CustomEvent<WorkspaceAction>).detail
+      if(action.kind==='artifact') {
+        setTopMode('paper')
+        if(action.artifact.kind==='comparison')setMode('compare')
+        else if(action.artifact.kind==='note'||action.artifact.kind==='synthesis')setMode('notes')
+      } else if(action.kind==='chat') { setTopMode('paper');setMode('chat');if(action.fresh)setRefView(null) }
+      else if(action.kind==='citation')openCite(action.slug,action.page,action.snippet,action.probe,{documentVersion:action.documentVersion} as SourceRef)
+      else if(action.kind==='paper') {
+        const paper=papers.find(item=>item.id===action.paperId)
+        if(paper){setTopMode('paper');setMode('read');openPaper(paper,action.page)}
+      }
+    }
+    window.addEventListener(WORKSPACE_ACTION,handle)
+    return ()=>window.removeEventListener(WORKSPACE_ACTION,handle)
+  },[papers,openPaper,openCite])
+  const activeProfile = profiles.find((profile) => profile.models.includes(model))
+  const thinkingLevels = activeProfile?.modelCaps?.[model]?.reasoningLevels ?? presetCaps(model)?.reasoningLevels ?? []
   const changeModel = useCallback(
     (m: string) => {
       // 跨供应商：该模型属于哪个配置，就同步切换到那个供应商
       const pf = profiles.find((p) => p.models.includes(m))
-      if (pf) void saveSettings({ model: m, provider: pf.provider, apiBase: pf.apiBase, apiKey: pf.apiKey })
-      else void saveSettings({ model: m })
+      if (pf) {
+        const levels=pf.modelCaps?.[m]?.reasoningLevels ?? presetCaps(m)?.reasoningLevels ?? []
+        void saveSettings({
+          model: m,
+          provider: pf.provider,
+          apiBase: pf.apiBase,
+          apiKey: pf.apiKey,
+          ...(levels.length&&!levels.includes(thinking)?{thinkingLevel:'default'}:{})
+        })
+      } else void saveSettings({ model: m })
     },
-    [profiles, saveSettings]
+    [profiles, saveSettings, thinking]
+  )
+  const addThinkingLevel = useCallback(
+    async (level: string) => {
+      if(!settings||!activeProfile||!model) return
+      const current=activeProfile.modelCaps?.[model] ?? presetCaps(model)
+      const levels=current?.reasoningLevels ?? []
+      if(levels.includes(level)) { await saveSettings({thinkingLevel:level}); return }
+      const modelCaps={...(activeProfile.modelCaps??{}),[model]:{...current,reasoningLevels:[...levels,level]}}
+      await saveSettings({profiles:(settings.profiles??[]).map(profile=>profile.id===activeProfile.id?{...profile,modelCaps}:profile),thinkingLevel:level})
+    },
+    [activeProfile,model,saveSettings,settings]
   )
   const changeThinking = useCallback(
     (l: string) => {
@@ -498,32 +553,13 @@ export default function App(): JSX.Element {
 
   // 侧栏无级拖宽（宽度记忆在 localStorage）
   const [libWidth, setLibWidth] = useState(() => Number(localStorage.getItem('pl.libW')) || 264)
-  const [sideWidth, setSideWidth] = useState(() => Number(localStorage.getItem('pl.sideW')) || 380)
-  const startDrag = useCallback((which: 'lib' | 'side' | 'ref') => (e: React.MouseEvent) => {
-    e.preventDefault()
-    const key = which === 'lib' ? 'pl.libW' : which === 'side' ? 'pl.sideW' : 'pl.refW'
-    const startX = e.clientX
-    const startW = Number(localStorage.getItem(key)) || (which === 'lib' ? 264 : which === 'side' ? 380 : 460)
-    const move = (ev: MouseEvent): void => {
-      const dx = ev.clientX - startX
-      // lib 把手在右缘（右拖变宽）；side/ref 把手在左缘（左拖变宽）
-      const w = which === 'lib' ? startW + dx : startW - dx
-      const min = which === 'lib' ? 200 : 300
-      const max = which === 'lib' ? 480 : which === 'side' ? 680 : 900
-      const clamped = Math.max(min, Math.min(max, w))
-      if (which === 'lib') setLibWidth(clamped)
-      else if (which === 'side') setSideWidth(clamped)
-      else setRefWidth(clamped)
-      localStorage.setItem(key, String(clamped))
-    }
-    const up = (): void => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-    }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
-  }, [])
-
+  const [sideWidth,setSideWidth]=useState(()=>Math.max(320,Math.min(440,Number(localStorage.getItem('pl.sideW'))||360)))
+  useEffect(()=>{
+    const query=window.matchMedia('(max-width: 1250px)')
+    const collapse=()=>{if(query.matches)setShowSide(false)}
+    collapse();query.addEventListener('change',collapse)
+    return ()=>query.removeEventListener('change',collapse)
+  },[])
   // 文件菜单 / 空库引导：直接选库文件夹并扫描（与设置页同效）
   const pickLibraryNow = useCallback(async () => {
     const p = await window.api.pickLibrary()
@@ -533,7 +569,7 @@ export default function App(): JSX.Element {
     await refreshPapers()
   }, [saveSettings, refreshPapers])
 
-  const statusLeft = importInfo || (indexInfo ? `正在索引 ${indexInfo.done}/${indexInfo.total}` : `已索引 ${indexedCount.indexed}/${indexedCount.papers} 篇 · ${indexedCount.chunks} 块`)
+  const statusLeft = importInfo || (indexInfo ? `正在索引 ${indexInfo.done}/${indexInfo.total}` : `已索引 ${indexedCount.indexed}/${indexedCount.papers} 篇 · 原文 ${indexedCount.fulltext} · 题录 ${indexedCount.recordOnly} · ${indexedCount.chunks} 块`)
   const curIdx = papers.findIndex((p) => p.id === activeId)
   const canBack = curIdx > 0
   const canFwd = curIdx >= 0 && curIdx < papers.length - 1
@@ -615,7 +651,7 @@ export default function App(): JSX.Element {
 
   return (
     <div
-      className="shell"
+      className={`shell ${showSide?'with-assistant':''}`}
       onMouseDown={() => {
         setFloatBar(null)
         setOpenMenu(null)
@@ -647,38 +683,10 @@ export default function App(): JSX.Element {
           )}
         </div>
         <div className="tb-drag" />
-        <div className="tb-title"><span className="seal">文</span><span className="tb-title-name">CSPAPER</span></div>
+        <div className="tb-title"><BrandIcon /><span className="tb-title-name">CSPAPER</span></div>
         <div className="tb-drag" />
         <div className="tb-side tb-right">
-          {/* 顶栏快捷区：仅 Paper 模式下显示（Work 模式下隐藏避免混乱） */}
-          {topMode === 'paper' && (
-          <div className="tb-quick">
-            <button className={`tb-q ${mode === 'compare' ? 'on' : ''}`} title="AI 对比表格" onClick={() => { setTopMode('paper'); setMode('compare') }}>
-              <Icon.Compare size={15} />
-            </button>
-            <button
-              className={`tb-q ${mode === 'overview' && overviewTab !== 'stats' ? 'on' : ''}`}
-              title="纵览（文献表格 / 知识体系）"
-              onClick={() => {
-                setTopMode('paper')
-                setMode('overview')
-                setOverviewTab('table')
-              }}
-            >
-              <Icon.Table size={15} />
-            </button>
-            <button className={`tb-q ${mode === 'notes' ? 'on' : ''}`} title="笔记中心" onClick={() => { setTopMode('paper'); setMode('notes') }}>
-              <Icon.Notes size={15} />
-            </button>
-            <button className={`tb-q ${mode === 'web' ? 'on' : ''}`} title="文献浏览器" onClick={() => { setTopMode('paper'); setMode('web') }}>
-              <Icon.Globe size={15} />
-            </button>
-            <button className="tb-q" title="在线添加文献（DOI / arXiv / 关键词）" onClick={() => setOnlineOpen(true)}>
-              <Icon.Plus size={15} />
-            </button>
-          </div>
-          )}
-          {mode === 'read' && (
+          {topMode==='paper' && mode === 'read' && !showLibraryHome && (
             <button
               className={`icon-btn tb-toggle ${showSide ? 'on' : ''}`}
               title={showSide ? '隐藏 问答·翻译面板' : '显示 问答·翻译面板'}
@@ -693,12 +701,17 @@ export default function App(): JSX.Element {
         </div>
       </div>
 
+      {topMode==='paper'&&<WorkspaceNavigation mode={mode} libraryVisible={showLibraryHome || tabs.length===0} openCount={tabs.length}
+        onLibrary={()=>{setMode('read');setShowLibraryHome(true)}}
+        onResume={()=>{setMode('read');setShowLibraryHome(false)}}
+        onNavigate={next=>{setMode(next);setFloatBar(null)}}/>}
       <div className="body3">
         <div className={topMode === 'work' ? '' : 'pane-hidden'} style={{ display: 'flex', flex: 1, minWidth: 0 }}>
           <WorkbenchView
             visible={topMode === 'work'}
             papers={papers}
             models={models}
+            profiles={profiles}
             onOpenPaper={(p) => {
               setTopMode('paper')
               openPaperFromTree(p)
@@ -714,8 +727,7 @@ export default function App(): JSX.Element {
             onOpenSettings={() => setShowSettings(true)}
           />
         </div>
-        {topMode === 'paper' && (
-        <>
+        <div className={`paper-workspace ${topMode==='paper'?'':'pane-hidden'}`}>
         {showLib && (
           <>
             <LibraryPane
@@ -743,24 +755,23 @@ export default function App(): JSX.Element {
               onModeChange={setMode}
               onPapersChanged={refreshPapers}
             />
-            <div className="col-resizer" onMouseDown={startDrag('lib')} title="拖动调节宽度，双击复位" onDoubleClick={() => { setLibWidth(264); localStorage.setItem('pl.libW', '264') }} />
+            <ResizeHandle id="library" label="文献栏宽度" width={libWidth} min={200} max={520} defaultWidth={264} storageKey="pl.libW" edge="right" onWidthChange={setLibWidth} />
           </>
         )}
         <div className="workspace">
           {/* 阅读区：模式切换只隐藏不卸载，保留标签页与滚动状态 */}
           <div className={`main-win ${mode === 'read' ? '' : 'pane-hidden'}`}>
-            {tabs.length === 0 ? (
-              <LibraryHome
+            <div className={`library-surface ${showLibraryHome || tabs.length===0?'':'pane-hidden'}`}><LibraryHome
                 papers={papers}
                 activeId={activeId}
                 onOpen={openPaperFromTree}
                 onAddPapers={addPapers}
                 onOpenRecords={() => setRecordsOpen(true)}
                 onOpenOnline={() => setOnlineOpen(true)}
+                onOpenZotero={()=>setZoteroOpen(true)}
                 onPapersChanged={refreshPapers}
-              />
-            ) : (
-              <PdfViewer
+              /></div>
+            <div className={`reader-surface ${!showLibraryHome&&tabs.length>0?'':'pane-hidden'}`}><PdfViewer
                 ref={viewerRef}
                 tabs={tabs}
                 activeId={activeId}
@@ -776,22 +787,12 @@ export default function App(): JSX.Element {
                 onSelect={onSelect}
                 onDeleteHighlight={onDeleteHighlight}
                 onEditHighlight={onEditHighlight}
-                visible={mode === 'read'}
+                visible={topMode==='paper' && mode==='read' && !showLibraryHome}
                 onPageChange={setPageNo}
                 onOpenFulltext={() => sideControl.current?.openFulltext()}
-              />
-            )}
-            {showSide && (
-              <div
-                className="col-resizer"
-                onMouseDown={startDrag('side')}
-                title="拖动调节宽度，双击复位"
-                onDoubleClick={() => {
-                  setSideWidth(380)
-                  localStorage.setItem('pl.sideW', '380')
-                }}
-              />
-            )}
+              /></div>
+            {showSide && !showLibraryHome && tabs.length>0 && (
+              <ResizeHandle id="assistant" label="助手栏宽度" width={sideWidth} min={300} max={700} defaultWidth={380} storageKey="pl.sideW" edge="left" onWidthChange={setSideWidth} />)}
             {/* 问答面板常驻 + 右缘功能竖轨：面板收起时轨道仍可点击展开 */}
             <div className="side-wrap">
               <SidePanel
@@ -803,13 +804,16 @@ export default function App(): JSX.Element {
                 onJump={jumpTo}
                 onDeleteHighlight={onDeleteHighlight}
                 onPapersChanged={refreshPapers}
-                collapsed={!showSide}
+                collapsed={!showSide || showLibraryHome || tabs.length===0}
                 onTabChange={setSideTab}
                 models={models}
+                profiles={profiles}
                 model={model}
                 thinking={thinking}
+                thinkingLevels={thinkingLevels}
                 onChangeModel={changeModel}
                 onChangeThinking={changeThinking}
+                onAddThinkingLevel={addThinkingLevel}
                 fs={chatFs}
                 onFs={changeFs}
               />
@@ -821,6 +825,20 @@ export default function App(): JSX.Element {
                       className={`side-rail-btn ${sideTab === k && showSide ? 'on' : ''}`}
                       title={tip}
                       onClick={() => {
+                        if(!tabs.length) {
+                          if(k==='chat') setMode('chat')
+                          else {
+                            setTopMode('paper')
+                            setMode('read')
+                            setShowLibraryHome(true)
+                            setShowSide(false)
+                            dlg.toast('请先打开一篇文献，再使用'+tip)
+                          }
+                          return
+                        }
+                        setTopMode('paper')
+                        setMode('read')
+                        setShowLibraryHome(false)
                         setShowSide(true)
                         sideControl.current?.openTab(k)
                       }}
@@ -842,10 +860,13 @@ export default function App(): JSX.Element {
               scope={chatScope}
               onScopeChange={setChatScope}
               models={models}
+              profiles={profiles}
               model={model}
               thinking={thinking}
+              thinkingLevels={thinkingLevels}
               onChangeModel={changeModel}
               onChangeThinking={changeThinking}
+              onAddThinkingLevel={addThinkingLevel}
               onJump={openCite}
               resetKey={chatReset}
               fs={chatFs}
@@ -854,16 +875,7 @@ export default function App(): JSX.Element {
           />
             {refView && (
               <>
-                <div
-                  className="col-resizer"
-                  onMouseDown={startDrag('ref')}
-                  title="拖动调节宽度，双击复位"
-                  onDoubleClick={() => {
-                    setRefWidth(460)
-                    localStorage.setItem('pl.refW', '460')
-                  }}
-                />
-                <RefViewer paper={refView.paper} page={refView.page} snippet={refView.snippet} probe={refView.probe} width={refWidth} onClose={() => setRefView(null)} />
+                <ResizeHandle id="citation" label="引用原文栏宽度" width={refWidth} min={320} max={900} defaultWidth={460} storageKey="pl.refW" edge="left" onWidthChange={setRefWidth} /><RefViewer paper={refView.paper} page={refView.page} snippet={refView.snippet} probe={refView.probe} documentVersion={refView.documentVersion} width={refWidth} onClose={() => setRefView(null)} />
               </>
             )}
           </div>
@@ -873,17 +885,16 @@ export default function App(): JSX.Element {
           </div>
           {/* 纵览区：文献总表 + 知识网络 + 统计 */}
           <div className={`ov-host ${mode === 'overview' ? '' : 'pane-hidden'}`}>
-            <OverviewView papers={papers} visible={mode === 'overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} onRefresh={refreshPapers} />
+            <OverviewView papers={papers} visible={topMode==='paper' && mode==='overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} onRefresh={refreshPapers} />
           </div>
           {/* 笔记中心：全库我的笔记 + 划词标注聚合（W3） */}
           <div className={`ov-host ${mode === 'notes' ? '' : 'pane-hidden'}`}>
-            <NotesView papers={papers} visible={mode === 'notes'} onOpenPaper={(id, page) => { const p = papers.find((x) => x.id === id); if (p) { setTopMode('paper'); setMode('read'); openPaper(p, page) } }} onRefresh={refreshPapers} />
+            <NotesView papers={papers} visible={topMode==='paper' && mode==='notes'} onOpenPaper={(id, page) => { const p = papers.find((x) => x.id === id); if (p) { setTopMode('paper'); setMode('read'); openPaper(p, page) } }} onRefresh={refreshPapers} />
           </div>
           {/* 内置文献浏览器：站点快捷入口 + Connector 扩展 + 一键保存入库 */}
-          <WebSearchView visible={mode === 'web'} />
+          <WebSearchView visible={topMode==='paper' && mode==='web'} />
         </div>
-        </>
-        )}
+        </div>
       </div>
 
       <div className="statusbar">

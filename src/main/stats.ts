@@ -62,11 +62,11 @@ export function statsOverview(): StatsOverview {
   const db = getDb()
   const cnt = (sql: string): number => (db.prepare(sql).get() as { n: number }).n
 
-  const totalPapers = cnt('SELECT COUNT(*) AS n FROM papers')
-  const totalReadSeconds = (db.prepare('SELECT COALESCE(SUM(read_seconds), 0) AS n FROM papers').get() as { n: number }).n
-  const readingPapers = cnt("SELECT COUNT(*) AS n FROM papers WHERE status='reading'")
+  const totalPapers = cnt('SELECT COUNT(*) AS n FROM active_papers')
+  const totalReadSeconds = (db.prepare('SELECT COALESCE(SUM(read_seconds), 0) AS n FROM active_papers').get() as { n: number }).n
+  const readingPapers = cnt("SELECT COUNT(*) AS n FROM active_papers WHERE status='reading'")
   const topRead = db
-    .prepare('SELECT id, title, read_seconds AS seconds FROM papers WHERE COALESCE(read_seconds,0) > 0 ORDER BY read_seconds DESC LIMIT 10')
+    .prepare('SELECT id, title, read_seconds AS seconds FROM active_papers WHERE COALESCE(read_seconds,0) > 0 ORDER BY read_seconds DESC LIMIT 10')
     .all() as Array<{ id: number; title: string; seconds: number }>
 
   // 最近 12 个月（含当月），从 11 个月前到本月；空月份补零，保证图表横轴连续
@@ -79,7 +79,7 @@ export function statsOverview(): StatsOverview {
   const start = months[0]
   const addedByYm = new Map<string, number>()
   for (const r of db
-    .prepare("SELECT substr(added_at,1,7) AS ym, COUNT(*) AS n FROM papers WHERE added_at IS NOT NULL AND substr(added_at,1,7) >= ? GROUP BY ym")
+    .prepare("SELECT substr(added_at,1,7) AS ym, COUNT(*) AS n FROM active_papers WHERE added_at IS NOT NULL AND substr(added_at,1,7) >= ? GROUP BY ym")
     .all(start) as Array<{ ym: string; n: number }>) {
     addedByYm.set(r.ym, r.n)
   }
@@ -92,19 +92,19 @@ export function statsOverview(): StatsOverview {
   const monthly = months.map((ym) => ({ ym, added: addedByYm.get(ym) ?? 0, readSeconds: readByYm.get(ym) ?? 0 }))
 
   const categories = (
-    db.prepare("SELECT category AS name, COUNT(*) AS count FROM papers WHERE category <> '' GROUP BY category ORDER BY count DESC").all() as Array<{
+    db.prepare("SELECT category AS name, COUNT(*) AS count FROM active_papers WHERE category <> '' GROUP BY category ORDER BY count DESC").all() as Array<{
       name: string
       count: number
     }>
   ).map((r) => ({ name: r.name, count: r.count }))
   const statuses = (
-    db.prepare('SELECT status, COUNT(*) AS count FROM papers GROUP BY status ORDER BY count DESC').all() as Array<{
+    db.prepare('SELECT status, COUNT(*) AS count FROM active_papers GROUP BY status ORDER BY count DESC').all() as Array<{
       status: string
       count: number
     }>
   ).map((r) => ({ status: r.status, count: r.count }))
 
-  const titles = (db.prepare('SELECT title FROM papers').all() as Array<{ title: string }>).map((r) => r.title)
+  const titles = (db.prepare('SELECT title FROM active_papers').all() as Array<{ title: string }>).map((r) => r.title)
   return {
     totalPapers,
     totalReadSeconds,
@@ -142,7 +142,7 @@ function wordsOfTitle(title: string): string[] {
 // Top 关键词近 10 年的年度频次（关键词时序图 / 主题河流数据源）
 export function wordsByYear(topN = 10): WordYear[] {
   const db = getDb()
-  const rows = db.prepare('SELECT title, year FROM papers WHERE year IS NOT NULL AND year >= 2015').all() as Array<{ title: string; year: number }>
+  const rows = db.prepare('SELECT title, year FROM active_papers WHERE year IS NOT NULL AND year >= 2015').all() as Array<{ title: string; year: number }>
   const perYear = new Map<number, Map<string, number>>() // year -> word -> n
   const total = new Map<string, number>()
   for (const r of rows) {
@@ -167,7 +167,7 @@ export function wordsByYear(topN = 10): WordYear[] {
 // 高产作者排行（按论文数）
 export function authorsTop(topN = 15): Array<{ author: string; n: number }> {
   const db = getDb()
-  const rows = db.prepare('SELECT authors FROM papers').all() as Array<{ authors: string }>
+  const rows = db.prepare('SELECT authors FROM active_papers').all() as Array<{ authors: string }>
   const freq = new Map<string, number>()
   for (const r of rows)
     for (const a of r.authors.split(/[,;，；]/).map((s) => s.trim()).filter((s) => s && s.length <= 40)) freq.set(a, (freq.get(a) ?? 0) + 1)
@@ -195,11 +195,11 @@ export function weeklyReport(): string {
   const since = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 19).replace('T', ' ')
   const read = db
     .prepare(
-      `SELECT id, title, summary, read_seconds FROM papers
+      `SELECT id, title, summary, read_seconds FROM active_papers
        WHERE opened_at IS NOT NULL AND opened_at >= ? ORDER BY opened_at DESC LIMIT 50`
     )
     .all(since) as Array<{ id: number; title: string; summary: string | null; read_seconds: number }>
-  const newCount = (db.prepare('SELECT COUNT(*) c FROM papers WHERE added_at >= ?').get(since) as { c: number }).c
+  const newCount = (db.prepare('SELECT COUNT(*) c FROM active_papers WHERE added_at >= ?').get(since) as { c: number }).c
   const hlCount = (db.prepare('SELECT COUNT(*) c FROM highlights WHERE created_at >= ?').get(since) as { c: number }).c
   const totalSecs = read.reduce((a, r) => a + (r.read_seconds ?? 0), 0)
   const fmt = (s: number): string => (s >= 3600 ? `${(s / 3600).toFixed(1)} 小时` : `${Math.round(s / 60)} 分钟`)

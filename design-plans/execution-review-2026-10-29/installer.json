@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-29T04:33:40+08:00",
+  "installer": "dist/CSPAPER Setup 0.20.0.exe",
+  "sizeBytes": 194290941,
+  "sha256": "d4b01b048adbff001bb0c3f99ec8476f06bc214aaad6b032611a36d2f6b39aaa",
+  "target": "windows-x64-nsis",
+  "brandIcon": "build/icon.ico derived from build/icon-需要替换成ico.png",
+  "packagedApp": "dist/win-unpacked/CSPAPER.exe",
+  "packagedAppBytes": 201275904,
+  "packagedAppSha256": "b70b4bb7c439907c3522876915f62b9809c7685daebd8b4290069eb72a00c775",
+  "packagedAppUiTests": {
+    "passed": 63,
+    "errors": []
+  },
+  "installerLifecycle": {
+    "passed": true,
+    "silentInstallExit": 0,
+    "installedAppTitle": "CSPAPER",
+    "silentUpgradeExit": 0,
+    "secondInstalledAppTitle": "CSPAPER",
+    "silentUninstallExit": 0,
+    "executableRemoved": true,
+    "uninstallerRemoved": true
+  },
+  "scope": "isolated temporary install directory; current user installation untouched"
+}

@@ -1,3 +1,4 @@
+import { normalizePath, notesFromMarkdown, paperFiles, patchFrontmatter, readPaperMarkdown, replaceMarkdownNotes, writeFilesAtomically } from './paper-files'
 // Zotero Web API v3 同步（v0.9）：userId + apiKey 直连 api.zotero.org。
 // 分页（limit=100 + Total-Results）、429 退避、Last-Modified-Version → since= 增量游标（存 meta 表）。
 // 采集：条目 + 分类映射 + 标签 + 子笔记 + **PDF 标注**（children 端点）+ CSL-JSON + stored PDF 附件下载（限速）。
@@ -5,12 +6,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
-import { getSettings, getMeta, setMeta, scanLibrary } from './db'
+import { getSettings, getMeta, setMeta, scanLibraryAsync } from './db'
 import { sanitizeCategoryName, findCategoryDir, nextCategoryDir } from './import'
 import { createPlaceholderPdf } from './records'
 
 const API = 'https://api.zotero.org'
 const API_VERSION = '3'
+function syncKey():string { const s=getSettings();return 'zotero.syncVersion:'+s.zoteroUserId+':'+normalizePath(s.libraryPath) }
 
 export interface ZoteroApiStatus {
   configured: boolean
@@ -22,7 +24,7 @@ export function apiStatus(): ZoteroApiStatus {
   const s = getSettings()
   return {
     configured: !!s.zoteroUserId && !!s.zoteroApiKey,
-    lastSyncVersion: getMeta('zotero.syncVersion') ? parseInt(getMeta('zotero.syncVersion')!) : null,
+    lastSyncVersion: getMeta(syncKey()) ? parseInt(getMeta(syncKey())!) : null,
     lastSyncAt: getMeta('zotero.lastSyncAt')
   }
 }
@@ -177,7 +179,7 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
 
   // 2) 顶层条目（增量/全量）
   const params = new URLSearchParams({ limit: '100', format: 'json', itemType: '-attachment' })
-  const since = opts.mode === 'incremental' ? getMeta('zotero.syncVersion') : null
+  const since = opts.mode === 'incremental' ? getMeta(syncKey()) : null
   if (since) params.set('since', since)
   let start = 0
   let version: number | null = null
@@ -219,13 +221,13 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       const collectionsOf = (it.data.collections ?? []).map((k) => collName.get(k)).filter(Boolean) as string[]
       const catName = collectionsOf[0] || 'inbox'
       const dir = upsertDir(catName)
-      const existing = fs.existsSync(dir) ? fs.readdirSync(dir).find((d) => eqKey(d, it.key))
-        : (fs.existsSync(libPapers) ? findDupAcrossDirs(libPapers, it.key) : undefined)
+      const localName=fs.readdirSync(dir).find(d=>eqKey(d,it.key))
+      const existing=localName?path.join(dir,localName):findDupAcrossDirs(libPapers,it.key)
       let isUpdate = false
       if (existing) {
         // upsert：远端版本更新则重写 md（此前永远 skip，Zotero 改了卷期页本地不变）
         try {
-          const mdFile = fs.readdirSync(existing).find((f) => f.toLowerCase().endsWith('.md'))
+          const mdFile=path.basename(paperFiles(path.join(existing,'paper.pdf')).md)
           if (mdFile) {
             const raw = fs.readFileSync(path.join(existing, mdFile), 'utf8')
             const mVer = raw.match(/^zotero-version:\s*(\d+)/m)
@@ -242,7 +244,7 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
             continue
           }
         } catch {
-          res.skipped++
+          res.failed++
           continue
         }
       }
@@ -284,10 +286,10 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
             if (d.filename) pdfName = d.filename
           }
         }
-      } catch { /* children 拉取失败不阻塞条目落地 */ }
+      } catch(error) { throw new Error('Zotero 子条目未完整获取：'+String(error)) }
 
       // 3b) 目录 + slug + 去重后落地
-      const slug = `${year ?? 'nd'}-${it.key.toLowerCase()}`
+      const slug=existing?path.basename(existing):`${year ?? 'nd'}-${it.key.toLowerCase()}`
       const dest = existing ?? path.join(dir, slug)
       fs.mkdirSync(dest, { recursive: true })
 
@@ -339,7 +341,11 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
           `\n## Zotero 标注（${annotations.length}）\n\n` +
           annotations.map((a) => `> ${a.page ? `（第 ${a.page} 页）` : ''}${a.text}${a.comment ? `\n\n备注：${a.comment}` : ''}`).join('\n\n') +
           '\n'
-      fs.writeFileSync(path.join(dest, `${slug}.md`), md)
+      const doc=readPaperMarkdown(path.join(dest,'paper.pdf'),slug)
+      const localNotes=notesFromMarkdown(doc.raw)
+      if(localNotes) md=replaceMarkdownNotes(md,localNotes)
+      md=patchFrontmatter(md,{source_kind:hasPdf?'pdf':'record',doi,abstract,volume:it.data.volume??'',issue:it.data.issue??'',pages:it.data.pages??'',publisher:it.data.publisher??'',language:it.data.language??''})
+      writeFilesAtomically([{path:doc.path,content:md}])
 
       // 3d) CSL-JSON：API 的 item.data 本身就是 Zotero JSON，转成 CSL 兼容侧车（引文引擎优先用）
       try {
@@ -352,7 +358,7 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
           ...(venue ? { 'container-title': venue } : {}),
           ...(doi ? { DOI: doi } : {}),
           ...(it.data.url ? { URL: it.data.url } : {}),
-          ...(abstract ? { abstract } : {})
+          ...(abstract?{abstract}:{}),volume:it.data.volume,issue:it.data.issue,page:it.data.pages,publisher:it.data.publisher,language:it.data.language
         }
         fs.writeFileSync(path.join(dest, `${slug}.csl.json`), JSON.stringify(csl, null, 2))
       } catch { /* 侧车失败不影响条目 */ }
@@ -364,10 +370,11 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
   }
 
   // 有失败项不推进增量游标：失败条目 version ≤ 新游标后 since= 增量永远漏拉
-  if (version && res.failed === 0) setMeta('zotero.syncVersion', String(version))
+  if (version && res.failed === 0) setMeta(syncKey(),String(version))
   setMeta('zotero.lastSyncAt', new Date().toLocaleString('zh-CN'))
-  scanLibrary(s.libraryPath)
-  res.ok = true
+  await scanLibraryAsync(s.libraryPath)
+  res.ok = res.failed === 0
+  if(res.failed) res.error=`有 ${res.failed} 条文献未同步，已保留游标，请重试`
   res.version = version
   return res
 }

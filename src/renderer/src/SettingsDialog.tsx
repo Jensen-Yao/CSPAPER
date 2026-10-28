@@ -52,13 +52,13 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const [profiles, setProfiles] = useState<NonNullable<Settings['profiles']>>(
     () =>
       settings.profiles?.length
-        ? settings.profiles
+        ? settings.profiles.map((profile,index)=>({id:profile.id??`profile-${index+1}`,...profile}))
         : [
             {
               provider: settings.provider,
               apiBase: settings.apiBase,
               apiKey: settings.apiKey,
-              models: settings.models?.length ? settings.models : settings.model ? [settings.model] : []
+              models: settings.models?.length ? settings.models : settings.model ? [settings.model] : [],id:'profile-1'
             }
           ]
   )
@@ -123,7 +123,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
     profileSaveTimer.current = setTimeout(() => {
-      void onSave({ profiles: list })
+      void onSave({ profiles:list.map((profile,index)=>({id:profile.id??`profile-${index+1}`,...profile})) })
     }, 300)
   }
 
@@ -345,7 +345,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
 
   const addFromPreset = (preset: ProviderPreset): void => {
     setProfiles((list) => {
-      const next = [...list, { provider: preset.id, apiBase: preset.base, apiKey: '', models: [...preset.models] }]
+      const next = [...list, { id:'profile-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),provider: preset.id, apiBase: preset.base, apiKey: '', models: [...preset.models] }]
       saveProfiles(next)
       return next
     })
@@ -653,16 +653,21 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 <div className="section-title" style={{ marginTop: 18 }}>推理</div>
                 <div className="field-row">
                   <div className="field grow">
-                    <label>思考深度（支持的服务商生效；agent 与对话共用）</label>
+                    <label>思考深度（跟随当前模型档位；agent 与对话共用）</label>
                     <select
                       value={form.thinkingLevel ?? 'default'}
                       onChange={(e) => set({ thinkingLevel: e.target.value as Settings['thinkingLevel'] })}
                     >
-                      {Object.entries(THINKING_LABEL).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
+                      {(() => {
+                        const activeProfile=profiles.find((profile) => profile.models.includes(form.model))
+                        const levels=activeProfile?.modelCaps?.[form.model]?.reasoningLevels ?? presetCaps(form.model)?.reasoningLevels ?? []
+                        const options=['default',...levels,...(levels.includes(form.thinkingLevel??'')||!form.thinkingLevel?[]:[form.thinkingLevel!])]
+                        return options.map((k) => (
+                          <option key={k} value={k}>
+                            {THINKING_LABEL[k] ?? k}
+                          </option>
+                        ))
+                      })()}
                     </select>
                   </div>
                 </div>

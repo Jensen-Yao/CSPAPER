@@ -103,18 +103,14 @@ export function mcpConnected(): boolean {
 }
 
 // 调用一个 MCP 工具（60s 超时；返回拼接后的文本观察）
-export async function callMcpTool(fullName: string, args: Record<string, unknown>): Promise<string> {
+export async function callMcpTool(fullName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   const ref = listMcpTools().find((t) => t.fullName === fullName)
   if (!ref) throw new Error(`MCP 工具不存在：${fullName}`)
   const conn = conns.get(ref.server)
   if (!conn) throw new Error(`MCP 服务器 ${ref.server} 未连接`)
-  let timer: NodeJS.Timeout | undefined
-  const r = (await Promise.race([
-    conn.client.callTool({ name: ref.name, arguments: args }),
-    new Promise((_r, rej) => {
-      timer = setTimeout(() => rej(new Error('MCP 调用超时（60s）')), 60000)
-    })
-  ]).finally(() => clearTimeout(timer))) as { content?: Array<{ type: string; text?: string }> }
+  signal?.throwIfAborted()
+  const settled=await conn.client.callTool({name:ref.name,arguments:args},undefined,{signal,timeout:60000})
+  const r=settled as { content?: Array<{ type: string; text?: string }> }
   const text = (r.content ?? [])
     .filter((c) => c.type === 'text')
     .map((c) => c.text ?? '')

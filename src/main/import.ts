@@ -1,8 +1,10 @@
+import { paperFiles, ownsPaperDirectory, isWithinDirectory, normalizePath } from './paper-files'
+import { excludePaperPath, updatePaperMetadata } from './paper-service'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { shell } from 'electron'
-import { getDb, getSettings, scanLibrary, setExtraCats, getExtraCats } from './db'
+import { getDb, getSettings, scanLibraryAsync, setExtraCats, getExtraCats } from './db'
 import { extractPages } from './ingest'
 import { chatStream } from './llm'
 import { enqueueSummaries } from './insight'
@@ -410,7 +412,7 @@ async function importPapersInternal(items: ImportItem[], send: (ev: string, p: u
     }
   }
   send('import:progress', { done: files.length, total: files.length, current: '' })
-  scanLibrary(s.libraryPath)
+  await scanLibraryAsync(s.libraryPath)
   // 导入即分析：配置了 API Key 时，后台排队为新文献生成 AI 小结
   if (s.apiKey) {
     const ids = outcomes
@@ -435,6 +437,7 @@ export function movePaperToCategory(
   if (!p) return null
   const name = sanitizeCategoryName(categoryName)
   if (!name) throw new Error('分类名无效')
+  fs.mkdirSync(libPapers,{recursive:true})
   let destDir = findCategoryDir(libPapers, name)
   if (!destDir) destDir = nextCategoryDir(libPapers, name)
   const dest = path.join(destDir, p.slug)
@@ -442,10 +445,26 @@ export function movePaperToCategory(
     return { category: path.basename(destDir).replace(/^\d+-/, ''), path: p.path, moved: false }
   }
   fs.mkdirSync(destDir, { recursive: true })
-  fs.renameSync(path.dirname(p.path), dest) // 整个论文文件夹搬过去
-  const newPath = path.join(dest, path.basename(p.path))
-  db.prepare('UPDATE papers SET path=?, category=? WHERE id=?').run(newPath, path.basename(destDir).replace(/^\d+-/, ''), paperId)
-  return { category: path.basename(destDir).replace(/^\d+-/, ''), path: newPath, moved: true }
+  const moves:Array<{from:string;to:string}>=[]
+  const library=getSettings().libraryPath
+  if(ownsPaperDirectory(p.path,library)) moves.push({from:path.dirname(p.path),to:dest})
+  else {
+    if(fs.existsSync(dest)) throw new Error('目标分类已有同名文献目录')
+    fs.mkdirSync(dest,{recursive:true})
+    const files=paperFiles(p.path,p.slug)
+    for(const file of [p.path,files.md,files.csl]) if(fs.existsSync(file)) moves.push({from:file,to:path.join(dest,path.basename(file))})
+  }
+  const moved:typeof moves=[]
+  const newPath=path.join(dest,path.basename(p.path))
+  try {
+    for(const move of moves) {fs.renameSync(move.from,move.to);moved.push(move)}
+    db.prepare('UPDATE papers SET path=?,category=?,source_stamp=NULL WHERE id=?').run(newPath,name,paperId)
+  } catch(error) {
+    for(const move of moved.reverse()) fs.renameSync(move.to,move.from)
+    if(fs.existsSync(dest)&&fs.readdirSync(dest).length===0) fs.rmdirSync(dest)
+    throw error
+  }
+  return { category:name,path:newPath,moved:true }
 }
 
 // 新建空分类：建目录 + 记入 extra_cats（空目录扫描不可见，靠它出现在侧栏与移动菜单里）
@@ -495,9 +514,11 @@ export async function deletePaper(paperId: number, opts?: { keepFiles?: boolean 
   if (!opts?.keepFiles) {
     const dir = path.dirname(p.path)
     try {
-      await shell.trashItem(dir)
+      const library=getSettings().libraryPath
+      if(!isWithinDirectory(p.path,library)) throw new Error('文献文件不在当前库中')
+      await shell.trashItem(ownsPaperDirectory(p.path,library)?dir:p.path)
     } catch {
-      fs.rmSync(dir, { recursive: true, force: true }) // 废纸篓不可用（罕见）时直接删除
+      throw new Error('无法移入系统废纸篓，文件已保留，请稍后重试')
     }
   }
   const chunkIds = (db.prepare('SELECT id FROM chunks WHERE paper_id=?').all(paperId) as Array<{ id: number }>).map((r) => r.id)
@@ -507,6 +528,9 @@ export async function deletePaper(paperId: number, opts?: { keepFiles?: boolean 
     db.prepare('DELETE FROM chunks WHERE paper_id=?').run(paperId)
     db.prepare('DELETE FROM papers_fts WHERE rowid=?').run(paperId)
     db.prepare('DELETE FROM highlights WHERE paper_id=?').run(paperId)
+    if(opts?.keepFiles) excludePaperPath(p.path,'removed')
+    db.prepare('DELETE FROM paper_related WHERE paper_id=? OR related_id=?').run(paperId,paperId)
+    db.prepare('DELETE FROM read_log WHERE paper_id=?').run(paperId)
     db.prepare('DELETE FROM papers WHERE id=?').run(paperId)
   })
   tx()
@@ -514,49 +538,8 @@ export async function deletePaper(paperId: number, opts?: { keepFiles?: boolean 
 
 // 重命名：只改标题（md 笔记 + DB + 标题索引），不动文件夹名/slug——
 // 扫描 upsert 会用 md 里的 title 覆盖 DB，所以 md 必须同步改（缺失就补建），否则下次扫描会还原
-export function renamePaper(paperId: number, rawTitle: string): { title: string } {
-  const title = rawTitle.replace(/\s+/g, ' ').trim().slice(0, 300)
-  if (!title) throw new Error('标题不能为空')
-  const db = getDb()
-  const p = db
-    .prepare('SELECT id, slug, title, authors, year, venue, path FROM papers WHERE id=?')
-    .get(paperId) as
-    | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; path: string }
-    | undefined
-  if (!p) throw new Error('论文不存在（可能已被删除）')
-  const dir = path.dirname(p.path)
-  let mdPath = path.join(dir, `${p.slug}.md`)
-  if (!fs.existsSync(mdPath)) {
-    const alt = fs.existsSync(dir) ? fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md')) : undefined
-    if (alt) mdPath = path.join(dir, alt)
-  }
-  const safe = title.replace(/"/g, "'")
-  const year = p.year ?? 'null'
-  if (fs.existsSync(mdPath)) {
-    let raw = fs.readFileSync(mdPath, 'utf8')
-    if (/^title:.*$/m.test(raw)) raw = raw.replace(/^title:.*$/m, `title: "${safe}"`)
-    else raw = raw.replace(/^---\n/, `---\ntitle: "${safe}"\n`)
-    if (/^# .+$/m.test(raw)) raw = raw.replace(/^# .+$/m, `# ${safe}`)
-    fs.writeFileSync(mdPath, raw)
-  } else {
-    fs.writeFileSync(
-      mdPath,
-      `---\ntitle: "${safe}"\nauthors: "${p.authors.replace(/"/g, "'")}"\nyear: ${year}\nvenue: "${p.venue.replace(/"/g, "'")}"\ntags: [status/unread]\nstatus: unread\n---\n\n# ${safe}\n`
-    )
-  }
-  const tx = db.transaction(() => {
-    db.prepare('UPDATE papers SET title=? WHERE id=?').run(title, paperId)
-    // papers_fts 的 rowid 与 papers.id 对齐（buildIndex 同一约定）
-    db.prepare('INSERT OR REPLACE INTO papers_fts(rowid,title,authors,venue,slug) VALUES(?,?,?,?,?)').run(
-      paperId,
-      title,
-      p.authors,
-      p.venue,
-      p.slug
-    )
-    // 标题变了，整篇级向量（含标题）过期：清掉让索引器只重嵌这一篇的 pvec，正文块不受影响
-    db.prepare('UPDATE papers SET pvec=NULL WHERE id=?').run(paperId)
-  })
-  tx()
-  return { title }
+export function renamePaper(paperId: number, rawTitle: string): { title:string } {
+  const title=rawTitle.replace(/\s+/g,' ').trim().slice(0,300)
+  updatePaperMetadata(paperId,{title})
+  return {title}
 }

@@ -106,6 +106,8 @@ html[data-theme='dark'] .demo-banner { background: linear-gradient(90deg, #6d0a2
 .menu-btn:hover { background: var(--bg3); color: var(--text); }
 .tb-drag { flex: 1; }
 .tb-title { font-size: 12px; font-weight: 600; letter-spacing: 0.6px; color: var(--text-dim); }
+  .tb-brand { display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:650;letter-spacing:.7px;color:var(--text-dim); }
+  .tb-brand img { width:17px;height:17px;object-fit:contain; }
 .icon-btn {
   width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; border-radius: var(--radius-sm); color: var(--text-dim); cursor: pointer;
@@ -435,7 +437,7 @@ html[data-theme='dark'] .demo-banner { background: linear-gradient(90deg, #6d0a2
 
   <!-- 演示横幅 -->
   <div class="demo-banner" id="demoBanner" style="position:relative">
-    <span>🔍 <b>CSPAPER 网页演示</b> — 界面 1:1 还原桌面版，数据为模拟 · <a href="./">← 返回首页</a> · 下载安装包请戳
+    <span>🔍 <b>CSPAPER 0.20 网页演示</b> — 统一运行引擎界面预览，数据为模拟 · <a href="./">← 返回首页</a> · 下载安装包请戳
       <a href="https://github.com/Jensen-Yao/CSPAPER/releases" target="_blank" rel="noopener">GitHub Releases</a></span>
     <button class="x" onclick="document.getElementById('demoBanner').style.display='none'" title="关闭">✕</button>
   </div>
@@ -449,7 +451,7 @@ html[data-theme='dark'] .demo-banner { background: linear-gradient(90deg, #6d0a2
       <button class="menu-btn" data-menu>帮助</button>
     </div>
     <div class="tb-drag"></div>
-    <span class="tb-title">CSPAPER</span>
+    <span class="tb-title"><img src="./icon.png" alt="">CSPAPER</span>
     <button class="icon-btn" id="themeBtn" title="切换深浅色主题">🌙</button>
   </div>
 
@@ -702,7 +704,7 @@ html[data-theme='dark'] .demo-banner { background: linear-gradient(90deg, #6d0a2
     <span class="chip">BM25 + 向量混合检索</span>
     <div class="sb-right">
       <span class="chip" id="sbZoom">缩放 100%</span>
-      <span class="chip">CSPAPER 0.3 · 演示</span>
+      <span class="chip">CSPAPER 0.20 · 统一运行引擎</span>
     </div>
   </div>
 </div>
@@ -725,19 +727,19 @@ html[data-theme='dark'] .demo-banner { background: linear-gradient(90deg, #6d0a2
   html[data-theme='dark'] .card p { color:#9d98a1; }
 </style>
 <section class="feat" id="features">
-  <div class="kicker">WHATSNEW · v0.4</div>
-  <h2>不止是阅读器 —— 一套完整的文献工作流</h2>
-  <div class="sub">从浏览器里一键收藏，到手机上随时阅读，写作时一键插引文，多篇论文 AI 横向对比。全部本地、无需注册、开箱即用。</div>
+  <div class="kicker">WHATSNEW · v0.20</div>
+  <h2>统一运行引擎：从提问到产物都可追溯</h2>
+  <div class="sub">阅读侧栏、全屏对话、Work Agent 和翻译共享同一套持久会话。每个引用保留文档版本、页码与选区；每次写入都有权限、操作记录和恢复状态。</div>
   <div class="grid">
-    <div class="card"><div class="ic">📊</div><h3>AI 对比表格</h3><p>多篇文献按维度横向对比，AI 提取要点（研究问题 / 研究成果…，可自定义维度），每条要点附页码角标、点击跳回原文验证，支持导出 Markdown / CSV。</p><span class="tag">v0.4 · 侧栏「对比」模式</span></div>
-    <div class="card"><div class="ic">🗂</div><h3>文献卡片墙 + AI 小结</h3><p>库首页按月分组的封面卡片墙：PDF 首页缩略图、作者出处一览；每篇一键生成 150 字 AI 小结，整库要点一目了然。</p><span class="tag">v0.4 · 打开即见</span></div>
-    <div class="card"><div class="ic">📖</div><h3>全文翻译 · 逐段对照</h3><p>当前页按段落切成中英双语对照，逐段流式翻译，支持「跟随翻页」自动连译；不配 API Key 也能走免费通道。</p><span class="tag">v0.4 · 侧栏「全文」标签</span></div>
-    <div class="card"><div class="ic">🧩</div><h3>浏览器插件</h3><p>Chrome / Edge 安装 Connector，在 arXiv、期刊页、PDF 链接上右键「保存到 CSPAPER」，PDF 自动下载入库；期刊页面自动识别标题与作者。</p><span class="tag">extension/ · 开发者模式加载</span></div>
-    <div class="card"><div class="ic">📱</div><h3>Android 端</h3><p>桌面端「导出移动端数据包」，手机 APK 打开即读：分类、阅读状态、划词高亮完整迁移；手机上的批注一键合并回电脑。</p><span class="tag">android-app/ · APK</span></div>
-    <div class="card"><div class="ic">📝</div><h3>Word / WPS 插引文</h3><p>搜索文献库，在光标处插入 [n] 引用，文末一键生成 GB/T 7714-2015 参考文献列表；支持 BibTeX 导出给 LaTeX 用户。</p><span class="tag">Word 加载项 + 引文助手</span></div>
-    <div class="card"><div class="ic">🇨🇳</div><h3>CNKI 题录导入</h3><p>知网批量勾选文献导出题录（RIS / EndNote / 自定义格式），导入自动生成题录页：可检索、可引用，拿到 PDF 随时替换全文。</p><span class="tag">文件 → 导入题录文件</span></div>
-    <div class="card"><div class="ic">🔍</div><h3>深度搜索</h3><p>搜标题之外，还能搜正文与划词笔记关键词，直接显示命中片段与页码；本地 FTS + 向量混合检索，越库越大越好用。</p><span class="tag">v0.4 · 侧栏搜索框</span></div>
-    <div class="card"><div class="ic">🔄</div><h3>Zotero 无缝迁移</h3><p>自动找到 Zotero 数据目录（Zotero 开着也能读），文献、PDF 附件、分类结构一键迁入；按 Zotero 条目自动去重，中文分类无障碍。</p><span class="tag">文件 → 从 Zotero 导入</span></div>
+    <div class="card"><div class="ic">🧠</div><h3>Work 科研 Agent</h3><p>计划确认、工具审批、失败修订和产物入库在同一运行链路中完成；重启后可从已提交工具结果继续。</p><span class="tag">统一 Runtime</span></div>
+    <div class="card"><div class="ic">💬</div><h3>可溯源问答</h3><p>回答角标绑定持久 Source，点击打开论文、页码和精确文本；来源版本变化会明确提示。</p><span class="tag">版本感知定位</span></div>
+    <div class="card"><div class="ic">🗂</div><h3>题录 / 原文状态</h3><p>Zotero 无 PDF 条目保留为题录并清晰标记；支持从 Zotero storage 精确修复原文，替换前自动备份。</p><span class="tag">数据不丢</span></div>
+    <div class="card"><div class="ic">📊</div><h3>AI 对比表格</h3><p>三篇或多篇文献按研究问题、方法、数据、结果与局限对比，产物与笔记落盘后可继续追问。</p><span class="tag">真实平台产物</span></div>
+    <div class="card"><div class="ic">🕸</div><h3>知识网络</h3><p>相似网络、关键词共现、作者合作与主题星系均支持滚轮缩放和平移，快速查看局部结构。</p><span class="tag">交互图谱</span></div>
+    <div class="card"><div class="ic">⚙️</div><h3>模型能力档案</h3><p>多服务商独立配置，同一模型名按 profile+model 精确绑定；思考等级跟随模型并支持自定义档位。</p><span class="tag">Agnes / OpenAI 兼容</span></div>
+    <div class="card"><div class="ic">🔐</div><h3>崩溃恢复</h3><p>文件替换前后和数据库提交中断都有操作日志；恢复进入回滚、待复核或冲突，不静默重放写入。</p><span class="tag">可审计写入</span></div>
+    <div class="card"><div class="ic">🧩</div><h3>浏览器插件</h3><p>Chrome / Edge 一键保存 arXiv、期刊页和 PDF 链接，本地桥接通信，数据不上传云端。</p><span class="tag">extension/</span></div>
+    <div class="card"><div class="ic">📝</div><h3>写作与引文</h3><p>笔记模板、思维导图、GB/T 7714 与万种 CSL、Word/WPS 引文助手、BibTeX 导出。</p><span class="tag">本地写作链路</span></div>
   </div>
 </section>
 

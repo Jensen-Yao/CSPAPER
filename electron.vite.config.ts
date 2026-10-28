@@ -8,7 +8,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve('src/main/index.ts'), 'ingest-worker': resolve('src/main/ingest-worker.ts') },
+        input: { index: resolve('src/main/index.ts'), 'ingest-worker': resolve('src/main/ingest-worker.ts'), 'library-worker': resolve('src/main/library-worker.ts') },
         output: { entryFileNames: '[name].js', chunkFileNames: 'chunk-[name].js' }
       }
     }

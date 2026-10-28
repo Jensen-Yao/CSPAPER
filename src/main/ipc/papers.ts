@@ -1,3 +1,6 @@
+import { renameLibraryCategory } from '../library-files'
+import { updatePaperMetadata, mergePapers, duplicatePapers } from '../paper-service'
+import { collectionPapers, createCollection, listCollections, removeCollection, setPaperInCollection } from '../collection-service'
 // 文献库域 IPC：库扫描/导入/移动/删除/右键菜单/分类/高亮/PDF 读取/索引/标签/阅读进度
 import { listRelated, setRelated, removeRelated, refreshAutoRelated } from '../related'
 import { ipcMain, dialog, shell, Menu, clipboard } from 'electron'
@@ -5,7 +8,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import * as dbmod from '../db'
-import { buildIndex, isIndexRunning, indexNeedsRebuild } from '../ingest'
+import { buildIndex, clearActiveLibraryIndex, isIndexRunning, indexNeedsRebuild } from '../ingest'
 import { logReadTime } from '../stats'
 import {
   importPapers,
@@ -27,9 +30,9 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     return r.canceled ? null : r.filePaths[0]
   })
 
-  ipcMain.handle('library:scan', (_e, libPath?: string) => {
+  ipcMain.handle('library:scan', async (_e, libPath?: string) => {
     const p = libPath ?? dbmod.getSettings().libraryPath
-    const r = dbmod.scanLibrary(p)
+    const r = await dbmod.scanLibraryAsync(p)
     if (libPath) dbmod.saveSettings({ libraryPath: libPath })
     const pending = indexNeedsRebuild()
     if (pending && !isIndexRunning()) void buildIndex(send).catch((e) => console.error('[index]', e))
@@ -90,7 +93,7 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   ipcMain.handle('papers:preview-import', (_e, paths: string[]) => previewImport(paths, send))
   ipcMain.handle('papers:import', async (_e, items: Array<{ path: string; category?: string }>) => {
     const outcomes = await importPapers(items, send)
-    const r = dbmod.scanLibrary(dbmod.getSettings().libraryPath)
+    const r = await dbmod.scanLibraryAsync(dbmod.getSettings().libraryPath)
     if (indexNeedsRebuild() && !isIndexRunning()) void buildIndex(send).catch(() => {})
     send('papers:changed', { ids: outcomes.filter((o) => o.ok).map((o) => o.slug) }) // 兜底同步界面（弹窗收尾之外的路径）
     return { outcomes, scan: r }
@@ -325,48 +328,9 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     menu.popup({ window: win, x: Math.round(x), y: Math.round(y) })
   })
 
-  ipcMain.handle('category:rename', (_e, from: string, to: string) => {
-    // 分类名允许中文（与新建/移动归类同一套清洗规则），只做文件系统安全清洗
-    const toSlug = sanitizeCategoryName(String(to))
-    if (!toSlug) throw new Error('名称无效')
-    const lib = dbmod.getSettings().libraryPath
-    const papersDir = path.join(lib, 'papers')
-    const base = fs.existsSync(papersDir) ? papersDir : lib
-    const eq = (a: string, b: string): boolean => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
-    // 磁盘上属于该分类的所有目录（分类名 = 目录名去掉 NN- 编号前缀；历史操作可能分裂成多个）
-    const catDirs = fs
-      .readdirSync(base)
-      .filter((d) => !d.startsWith('.') && fs.statSync(path.join(base, d)).isDirectory() && eq(d.replace(/^\d+-/, ''), from))
-    if (catDirs.length === 0) throw new Error(`未找到分类「${from}」的文件夹（可能已被移动）`)
-    const prefix = catDirs[0].match(/^(\d+-)/)?.[1] ?? ''
-    const target = path.join(base, `${prefix}${toSlug}`)
-    const db = dbmod.getDb()
-    const updPath = db.prepare('UPDATE papers SET path=? WHERE id=?')
-    const rows = db.prepare('SELECT id, path FROM papers WHERE category=?').all(from) as Array<{ id: number; path: string }>
-    for (const dir of catDirs) {
-      const src = path.join(base, dir)
-      if (eq(dir, path.basename(target))) continue
-      fs.mkdirSync(target, { recursive: true })
-      // 逐个论文目录并入目标（重名自动加 -N 后缀）；同步改写 DB 行的 path，
-      // 保留行身份——阅读状态/高亮不丢，也不会触发整批重新嵌入
-      for (const entry of fs.readdirSync(src)) {
-        let dest = path.join(target, entry)
-        let k = 2
-        while (fs.existsSync(dest)) dest = path.join(target, `${entry}-${k++}`)
-        fs.renameSync(path.join(src, entry), dest)
-        for (const row of rows) {
-          if (eq(path.dirname(path.dirname(row.path)), src)) updPath.run(path.join(dest, path.basename(row.path)), row.id)
-        }
-      }
-      try {
-        fs.rmdirSync(src) // 内容已全部并入，删掉空壳；有残留就留给扫描
-      } catch {
-        /* 目录非空 */
-      }
-    }
-    db.prepare('UPDATE papers SET category=? WHERE category=?').run(toSlug, from)
-    const r = dbmod.scanLibrary(lib)
-    return { renamed: toSlug, scan: r }
+  ipcMain.handle('category:rename',(_e,from:string,to:string)=>{
+    const name=sanitizeCategoryName(String(to)); if(!name) throw new Error('分类名称无效')
+    const result=renameLibraryCategory(from,name);send('papers:changed',{ids:[]});return result
   })
 
   // 导出标注笔记：把划词高亮按页整理成 Markdown 或 Word(.doc，HTML 格式) 文档
@@ -488,66 +452,24 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   })
 
   ipcMain.handle('index:status', () => {
-    const total = dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers').get() as { n: number }
-    const done = dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM papers WHERE indexed=1').get() as { n: number }
+    const total = dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM active_papers').get() as { n: number }
+    const counts = dbmod.getDb().prepare(`SELECT
+      SUM(CASE WHEN source_kind='record' THEN 1 ELSE 0 END) AS records,
+      SUM(CASE WHEN source_kind='pdf' THEN 1 ELSE 0 END) AS pdfs,
+      SUM(CASE WHEN source_kind='record' OR (indexed=1 AND EXISTS(SELECT 1 FROM chunks WHERE paper_id=active_papers.id)) THEN 1 ELSE 0 END) AS done
+    FROM active_papers`).get() as { records:number|null;pdfs:number|null;done:number|null }
     const nChunks = dbmod.getDb().prepare('SELECT COUNT(*) AS n FROM chunks').get() as { n: number }
-    return { papers: total.n, indexed: done.n, chunks: nChunks.n, running: isIndexRunning() }
+    return { papers: total.n, indexed: counts.done??0, chunks: nChunks.n, recordOnly: counts.records??0, fulltext: counts.pdfs??0, running: isIndexRunning() }
   })
   ipcMain.handle('index:rebuild', async () => {
-    dbmod.getDb().exec('DELETE FROM chunks; DELETE FROM chunks_fts; DELETE FROM papers_fts; UPDATE papers SET indexed=0, pvec=NULL')
+    clearActiveLibraryIndex(dbmod.getDb())
     if (!isIndexRunning()) void buildIndex(send).catch((e) => send('index:error', String(e)))
     return true
   })
   ipcMain.on('index:start', () => {
     if (!isIndexRunning()) void buildIndex(send).catch((e) => send('index:error', String(e)))
   })
-  // 元数据编辑（v0.15.2：卷/期/页/出版社/语言此前只活在 csl 侧车，不可编辑不可检索）
-  ipcMain.handle('papers:update-meta', (_e, id: number, patch: Partial<Record<'title' | 'authors' | 'year' | 'venue' | 'volume' | 'issue' | 'pages' | 'publisher' | 'doi' | 'language', string | number | null>>) => {
-    const db = dbmod.getDb()
-    // 字段白名单：renderer 传来的 key 直接拼 SQL，必须挡住 path/id/deleted_at 等任意列改写
-    const ALLOWED_META = new Set(['title', 'authors', 'year', 'venue', 'volume', 'issue', 'pages', 'publisher', 'doi', 'language'])
-    const sets: string[] = []
-    const vals: unknown[] = []
-    for (const [k, v] of Object.entries(patch)) {
-      if (!ALLOWED_META.has(k)) continue
-      sets.push(`${k}=?`)
-      vals.push(v)
-    }
-    if (!sets.length) return false
-    vals.push(id)
-    db.prepare(`UPDATE papers SET ${sets.join(', ')} WHERE id=?`).run(...vals)
-    // 同步写 md frontmatter：否则 4 分钟周期扫描用旧 frontmatter 无声回滚用户编辑
-    try {
-      const row = db.prepare('SELECT path, title, authors, year, venue, doi FROM papers WHERE id=?').get(id) as
-        | { path: string; title: string; authors: string; year: number | null; venue: string; doi: string | null }
-        | undefined
-      if (row) {
-        const dir = require('path').dirname(row.path)
-        const mdFile = require('fs').readdirSync(dir).find((f: string) => f.toLowerCase().endsWith('.md'))
-        if (mdFile) {
-          const mdPath = require('path').join(dir, mdFile)
-          let raw = require('fs').readFileSync(mdPath, 'utf8')
-          const q = (v: unknown): string => String(v ?? '').replace(/"/g, "'")
-          const setFm = (key: string, value: string): void => {
-            const re = new RegExp(`^(${key}:)[^
-]*`, 'm')
-            if (re.test(raw)) raw = raw.replace(re, `$1 "${value}"`)
-          }
-          setFm('title', row.title)
-          setFm('authors', row.authors)
-          setFm('year', String(row.year ?? 'null'))
-          setFm('venue', row.venue)
-          if (row.doi) {
-            const doiRe = /^doi:[^\n]*/m
-            if (doiRe.test(raw)) raw = raw.replace(doiRe, `doi: "${q(row.doi)}"`)
-            else raw = raw.replace(/^---\n/, `---\ndoi: "${q(row.doi)}"\n`)
-          }
-          require('fs').writeFileSync(mdPath, raw)
-        }
-      }
-    } catch { /* md 同步失败不阻断 DB 写入 */ }
-    return true
-  })
+  ipcMain.handle('papers:update-meta',(_e,id:number,patch:Parameters<typeof updatePaperMetadata>[1])=>updatePaperMetadata(id,patch))
   // 保存的搜索（迁出 localStorage，随库迁移）
   ipcMain.handle('searches:list', () =>
     (dbmod.getDb().prepare('SELECT id, name, conditions FROM saved_searches ORDER BY id DESC').all() as Array<{ id: number; name: string; conditions: string }>).map((r) => ({ id: r.id, name: r.name, cond: JSON.parse(r.conditions) }))
@@ -561,81 +483,16 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     return true
   })
   // 多分类（collections 树 + 挂接）
-  ipcMain.handle('collections:list', () =>
-    dbmod.getDb().prepare('SELECT c.id, c.name, c.parent_id, COUNT(pc.paper_id) n FROM collections c LEFT JOIN paper_collections pc ON pc.collection_id=c.id GROUP BY c.id ORDER BY c.name').all()
-  )
-  ipcMain.handle('collections:create', (_e, name: string, parentId?: number) => {
-    const r = dbmod.getDb().prepare('INSERT INTO collections(name, parent_id) VALUES(?,?)').run(name, parentId ?? null)
-    return Number(r.lastInsertRowid)
-  })
-  ipcMain.handle('collections:remove', (_e, id: number) => {
-    dbmod.getDb().prepare('DELETE FROM collections WHERE id=?').run(id)
-    return true
-  })
-  ipcMain.handle('collections:toggle-paper', (_e, paperId: number, collectionId: number, on: boolean) => {
-    const db = dbmod.getDb()
-    if (on) db.prepare('INSERT OR IGNORE INTO paper_collections(paper_id, collection_id) VALUES(?,?)').run(paperId, collectionId)
-    else db.prepare('DELETE FROM paper_collections WHERE paper_id=? AND collection_id=?').run(paperId, collectionId)
-    return true
-  })
+  ipcMain.handle('collections:list', () => listCollections())
+  ipcMain.handle('collections:create', (_e, name: string, parentId?: number) => createCollection(String(name??''),parentId==null?undefined:Number(parentId)).id)
+  ipcMain.handle('collections:remove', (_e, id: number) => removeCollection(Number(id)))
+  ipcMain.handle('collections:toggle-paper', (_e, paperId: number, collectionId: number, on: boolean) => setPaperInCollection(Number(collectionId),Number(paperId),Boolean(on)))
   ipcMain.handle('collections:for-paper', (_e, paperId: number) =>
     (dbmod.getDb().prepare('SELECT collection_id FROM paper_collections WHERE paper_id=?').all(paperId) as Array<{ collection_id: number }>).map((r) => r.collection_id)
   )
-  ipcMain.handle('collections:papers', (_e, collectionId: number) =>
-    (dbmod.getDb().prepare('SELECT paper_id FROM paper_collections WHERE collection_id=?').all(collectionId) as Array<{ paper_id: number }>).map((r) => r.paper_id)
-  )
-  // 重复条目检测（同 DOI 或同规范化标题）+ 一键合并
-  ipcMain.handle('papers:duplicates', () => {
-    const db = dbmod.getDb()
-    const norm = 'lower(replace(replace(replace(title, " ", ""), "　", ""), ":", ""))'
-    const groups: Array<Array<{ id: number; title: string; year: number | null; added_at: string }>> = []
-    const seen = new Set<number>()
-    const rows = db.prepare(`SELECT id, title, year, added_at, doi FROM papers WHERE deleted_at IS NULL`).all() as Array<{ id: number; title: string; year: number | null; added_at: string; doi: string | null }>
-    const byKey = new Map<string, typeof rows>()
-    for (const r of rows) {
-      const key = r.doi ? `doi:${r.doi.toLowerCase()}` : `t:${r.title.toLowerCase().replace(/[\s　:：]/g, '')}`
-      const arr = byKey.get(key) ?? []
-      arr.push(r)
-      byKey.set(key, arr)
-    }
-    for (const [, arr] of byKey) {
-      if (arr.length > 1) {
-        groups.push(arr)
-        for (const r of arr) seen.add(r.id)
-      }
-    }
-    return groups
-  })
-  ipcMain.handle('papers:merge', async (_e, keepId: number, dropIds: number[]) => {
-    const db = dbmod.getDb()
-    // 事务前取 drop 的 path（事务内删行后查不到），事务后清指纹墓碑
-    const dropPaths = dropIds.map((d) => (db.prepare('SELECT path FROM papers WHERE id=?').get(d) as { path: string } | undefined)?.path).filter((x): x is string => !!x)
-    const tx = db.transaction(() => {
-      for (const drop of dropIds) {
-        // 标签/集合挂接并集迁移（UPDATE 会撞复合主键，必须 INSERT OR IGNORE + DELETE）
-        db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id, tag_id) SELECT ?, tag_id FROM paper_tags WHERE paper_id=?').run(keepId, drop)
-        db.prepare('INSERT OR IGNORE INTO paper_collections(paper_id, collection_id) SELECT ?, collection_id FROM paper_collections WHERE paper_id=?').run(keepId, drop)
-        db.prepare('UPDATE highlights SET paper_id=? WHERE paper_id=?').run(keepId, drop)
-        // 条目关联双向迁移（drop 两侧的手动关联不能静默丢）
-        db.prepare('UPDATE paper_related SET paper_id=? WHERE paper_id=? AND related_id != ?').run(keepId, drop, keepId)
-        db.prepare('UPDATE paper_related SET related_id=? WHERE related_id=? AND paper_id != ?').run(keepId, drop, keepId)
-        db.prepare('DELETE FROM paper_related WHERE paper_id=? AND related_id=?').run(keepId, keepId)
-        // FTS 表无 FK 级联：先清 FTS 再删行（chunks 由 FK 级联）
-        db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE paper_id=?)').run(drop)
-        db.prepare('DELETE FROM papers_fts WHERE rowid=?').run(drop)
-        db.prepare('DELETE FROM papers WHERE id=?').run(drop)
-      }
-    })
-    tx()
-    // 事务外清指纹（事务内不能 await 动态 import）
-    try {
-      const { fingerprintFile } = await import('../import')
-      for (const p of dropPaths) {
-        try { db.prepare('DELETE FROM import_fp WHERE fp=?').run(fingerprintFile(p)) } catch { /* 单个失败继续 */ }
-      }
-    } catch { /* 模块加载失败忽略 */ }
-    return true
-  })
+  ipcMain.handle('collections:papers',(_e,collectionId:number)=>collectionPapers(Number(collectionId)))
+  ipcMain.handle('papers:duplicates',()=>duplicatePapers())
+  ipcMain.handle('papers:merge',(_e,keepId:number,dropIds:number[])=>mergePapers(keepId,dropIds))
   // 独立笔记（库级，不挂某篇文献）
   ipcMain.handle('notes:standalone-list', () =>
     dbmod.getDb().prepare('SELECT id, title, updated_at FROM standalone_notes ORDER BY updated_at DESC').all()

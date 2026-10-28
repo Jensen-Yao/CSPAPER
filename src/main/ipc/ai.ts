@@ -22,10 +22,16 @@ import {
   knowledgeGraph,
   type CompareData
 } from '../insight'
+import { createComparison, updateComparison } from '../comparison-service'
 import type { IpcCtx } from './context'
 
 export function registerAiIpc(ctx: IpcCtx): void {
   const { send } = ctx
+  const requests=new Map<number,{controller:AbortController;sender:number}>()
+  ipcMain.on('llm:cancel',(event,reqId:number)=>{
+    const request=requests.get(reqId)
+    if(request?.sender===event.sender.id) request.controller.abort()
+  })
 
   // 深度搜索：正文（FTS）+ 划词笔记
   ipcMain.handle('search:deep', (_e, q: string) => deepSearch(q))
@@ -37,6 +43,8 @@ export function registerAiIpc(ctx: IpcCtx): void {
   ipcMain.handle('compare:delete', (_e, id: number) => deleteCompare(id))
   ipcMain.handle('compare:save', (_e, id: number, data: CompareData) => saveCompare(id, data))
   ipcMain.handle('compare:generate', (_e, paperId: number, dimensions: string[]) => generateCells(paperId, dimensions, send))
+  ipcMain.handle('comparison:create', (_e, paperIds: number[], dimensions?: string[]) => createComparison(paperIds, dimensions))
+  ipcMain.handle('comparison:update', (_e, id: number, paperIds: number[], dimensions: string[]) => updateComparison(id, paperIds, dimensions))
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, ctx.getWin()))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
   ipcMain.handle('papers:extract-get', (_e, id: number) => getExtract(id))
@@ -119,6 +127,10 @@ export function registerAiIpc(ctx: IpcCtx): void {
         history?: Array<{ role: 'user' | 'assistant'; content: string }>
       }
     ) => {
+      const controller=new AbortController()
+      requests.set(args.reqId,{controller,sender:_e.sender.id})
+      const onDestroyed=():void=>controller.abort()
+      _e.sender.once('destroyed',onDestroyed)
       try {
         let msgs: ChatMessage[]
         let sources: import('../ingest').RetrievedChunk[] = []
@@ -173,7 +185,7 @@ export function registerAiIpc(ctx: IpcCtx): void {
           }
         } else msgs = args.messages ?? []
 
-        for await (const delta of chatStream(msgs)) send(`llm:delta:${args.reqId}`, delta)
+        for await (const delta of chatStream(msgs,{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(300000)])})) send(`llm:delta:${args.reqId}`, delta)
         if (args.mode === 'rag')
           send(
             `llm:sources:${args.reqId}`,
@@ -181,8 +193,11 @@ export function registerAiIpc(ctx: IpcCtx): void {
           )
         send(`llm:end:${args.reqId}`, null)
       } catch (err) {
-        send(`llm:delta:${args.reqId}`, `\n\n❌ ${String(err)}`)
+        if(!controller.signal.aborted) send(`llm:delta:${args.reqId}`, `\n\n❌ ${String(err)}`)
         send(`llm:end:${args.reqId}`, null)
+      } finally {
+        requests.delete(args.reqId)
+        _e.sender.removeListener('destroyed',onDestroyed)
       }
     }
   )

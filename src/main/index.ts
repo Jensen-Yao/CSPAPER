@@ -15,6 +15,7 @@ import { registerExtraIpc } from './ipc/extra'
 import { registerKnowledgeIpc } from './ipc/extra'
 import { registerIntegrateIpc, setupWebSession } from './ipc/integrate'
 import { registerAgentIpc } from './ipc/agent'
+import { registerChatIpc, refreshChatMcpTools } from './ipc/chat'
 import { registerZoteroApiIpc } from './ipc/eco'
 
 let win: BrowserWindow | null = null
@@ -28,14 +29,14 @@ function send(ev: string, payload: unknown): void {
 // ---------- 工作区重扫描：iCloud/网盘可能随时从别的设备同步来新文献 ----------
 // 启动 / dock 重新激活 / 窗口聚焦（节流）/ 定时，都会扫描一遍；有变化才通知界面刷新
 let lastScanAt = 0
-function rescanLibrary(reason: string): void {
+async function rescanLibrary(reason: string): Promise<void> {
   const s = dbmod.getSettings()
   if (!s.libraryPath || !fs.existsSync(s.libraryPath)) return
   lastScanAt = Date.now()
   try {
-    const r = dbmod.scanLibrary(s.libraryPath)
+    const r = await dbmod.scanLibraryAsync(s.libraryPath)
     console.log(`[scan:${reason}] 新增 ${r.added} 更新 ${r.updated} 共 ${r.total}`)
-    if (r.added > 0 || r.updated > 0) send('papers:changed', { ids: [] })
+    if (r.added > 0 || r.updated > 0 || r.missing > 0) send('papers:changed', { ids: [] })
     if (indexNeedsRebuild() && !isIndexRunning()) void buildIndex(send).catch((e) => console.error('[index]', e))
   } catch (e) {
     console.error('[scan]', e)
@@ -153,9 +154,13 @@ app.setAppUserModelId('com.jensenyao.cspaper')
 
 applyDataDir()
 migrateLegacyData()
+const ownsInstance=app.requestSingleInstanceLock()
+if(!ownsInstance) app.quit()
+app.on('second-instance',()=>{void app.whenReady().then(showMainWindow)})
 
 app.on('will-quit', () => { void import('./mcp').then(m => m.disconnectAll()).catch(() => {}) })
 app.whenReady().then(() => {
+  if(!ownsInstance) return
   dbmod.initDb()
   const ctx = {
     getWin: (): BrowserWindow | null => win,
@@ -178,9 +183,10 @@ app.whenReady().then(() => {
   registerExtraIpc({ send })
   registerKnowledgeIpc()
   registerIntegrateIpc()
+  registerChatIpc(ctx)
   registerAgentIpc(ctx)
   // 预热 MCP 连接（若用户配置了 mcp.json）
-  void import('./mcp').then((m) => m.connectAll()).catch(() => {})
+  void import('./mcp').then((m) => m.connectAll()).then(() => refreshChatMcpTools()).catch(() => {})
   registerZoteroApiIpc(ctx)
   // 内置浏览器会话：独立分区 + Connector 扩展 + PDF 下载自动入库
   setupWebSession((title, detail) => send('app:notice', { title, detail }))

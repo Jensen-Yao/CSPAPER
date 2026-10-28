@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { Paper } from './types'
 import { locateSnippet, locateByKeywords, flashHit } from './locate'
+import { dispatchWorkspaceAction } from './workspace-actions'
 
 interface Props {
   paper: Paper
@@ -9,6 +10,7 @@ interface Props {
   snippet?: string
   // 整篇问答等无 snippet 场景：用「问题 + 回答上下文」做关键词定位
   probe?: string
+  documentVersion?: string
   width: number
   onClose: () => void
 }
@@ -79,10 +81,12 @@ function PageCanvas({ doc, num, scale, dim }: { doc: any; num: number; scale: nu
 // 打开即定位到被引页：snippet 精确定位 → 关键词定位；放大后可左右滚动（CSS 用
 // max-content + auto 边距，flex 居中溢出时左半页不可达）；Ctrl/⌘+滚轮（触控板
 // pinch 同信号）与 +/-/0 快捷键缩放，以视口中心为锚点保持阅读位置
-export default function RefViewer({ paper, page, snippet, probe, width, onClose }: Props): JSX.Element {
+export default function RefViewer({ paper, page, snippet, probe, documentVersion, width, onClose }: Props): JSX.Element {
   const [doc, setDoc] = useState<any>(null)
   const docRef = useRef<any>(null)
   const [err, setErr] = useState('')
+  const currentVersion=`${paper.file_mtime??0}:${paper.file_size??0}`
+  const versionChanged=!!documentVersion&&documentVersion.split(':')[0]!==String(paper.file_mtime??0)
   const [numPages, setNumPages] = useState(0)
   const [dims, setDims] = useState<Array<{ w: number; h: number }>>([])
   const [scale, setScale] = useState(1)
@@ -280,9 +284,32 @@ const metas: Array<{ w: number; h: number }> = []
     <div className="ref-viewer" style={{ width }}>
       <div className="ref-head">
         <span className="ref-tag">引用</span>
+        {versionChanged&&<span className="source-badge record small" title={`来源版本 ${documentVersion}；当前版本 ${currentVersion}。原文可能已变更，定位结果需人工复核。`}>版本变化</span>}
         <span className="ellipsis ref-title" title={paper.title}>
           {paper.title}
         </span>
+        <button
+          className="icon-btn"
+          title="把这段引用原文加入新的统一对话"
+          onClick={() =>
+            dispatchWorkspaceAction({
+              kind: 'chat',
+              paperIds: [paper.id],
+              selections: [{
+                paperId: paper.id,
+                page,
+                text: snippet ?? probe ?? paper.title,
+                documentVersion: `${paper.file_mtime ?? 0}:${paper.path}`,
+                origin: 'pdf'
+              }],
+              prompt: `请围绕这段引用原文分析方法和证据：
+「${(snippet ?? probe ?? paper.title).slice(0, 1000)}」`,
+              fresh: true
+            })
+          }
+        >
+          问
+        </button>
         <button className="icon-btn" title="关闭引用面板" onClick={onClose}>
           ✕
         </button>

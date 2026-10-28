@@ -16,6 +16,7 @@ app.whenReady().then(() => {
     provider: 'custom',
     agentModel: 'mock-model',
     agentMaxSteps: 12,
+    profiles: [{ id: 'profile-default', provider: 'custom', apiBase: 'http://127.0.0.1:9390/v1', apiKey: 'mock-key', models: ['mock-model'], modelCaps: { 'mock-model': { reasoningLevels: ['none', 'minimal', 'xhigh', 'max'], caps: ['json', 'system'], toolCalling: true } } }],
     embedProvider: 'local',
     translateTarget: '中文',
     theme: 'light'

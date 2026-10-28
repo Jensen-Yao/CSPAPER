@@ -1,3 +1,5 @@
+import AddLiteratureMenu from './AddLiteratureMenu'
+import { dispatchWorkspaceAction } from './workspace-actions'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -15,65 +17,60 @@ interface Props {
   onAddPapers: () => void
   onOpenRecords: () => void
   onOpenOnline?: () => void
+  onOpenZotero?:()=>void
   onPapersChanged?: () => void
 }
 
 // 缩略图缓存（进程内）：paperId → dataURL
-const thumbCache = new Map<number, string>()
+const thumbCache = new Map<string,string>()
+const thumbnailQueue:Array<()=>Promise<void>>=[]
+let thumbnailRunning=0
+function queueThumbnail(job:()=>Promise<void>):void {
+  thumbnailQueue.push(job)
+  const next=():void=>{
+    while(thumbnailRunning<2&&thumbnailQueue.length){
+      thumbnailRunning++
+      void thumbnailQueue.shift()!().finally(()=>{thumbnailRunning--;next()})
+    }
+  }
+  next()
+}
 
 // 单张封面：懒加载（进入视口才渲染 PDF 第一页）
-function Thumb({ paper }: { paper: Paper }): JSX.Element {
-  const [src, setSrc] = useState<string | null>(thumbCache.get(paper.id) ?? null)
-  const ref = useRef<HTMLDivElement | null>(null)
-  const started = useRef(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      (entries) => entries.forEach((en) => en.isIntersecting && start()),
-      { rootMargin: '400px 0px' }
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [])
-
-  const start = (): void => {
-    if (started.current) return
-    started.current = true
-    void (async () => {
-      try {
-        const buf = await window.api.readPdf(paper.path)
-        const assetBase = window.location.href.replace(/[^/]*$/, '')
-        const d = await pdfjsLib.getDocument({
-          data: new Uint8Array(buf),
-          standardFontDataUrl: `${assetBase}standard_fonts/`,
-          cMapUrl: `${assetBase}cmaps/`,
-          cMapPacked: true
-        }).promise
-        const page = await d.getPage(1)
-        const base = page.getViewport({ scale: 1 })
-        const scale = Math.min(1.2, 560 / base.width) // 2x 渲染抗模糊，CSS 缩回
-        const vp = page.getViewport({ scale })
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.floor(vp.width)
-        canvas.height = Math.floor(vp.height)
-        await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp } as any).promise
-        const url = canvas.toDataURL('image/jpeg', 0.72)
-        thumbCache.set(paper.id, url)
-        setSrc(url)
-        void d.destroy()
-      } catch {
-        /* PDF 无法读取（题录占位损坏等），保留占位图 */
-      }
-    })()
-  }
-
-  return (
-    <div className="card-thumb" ref={ref}>
-      {src ? <img src={src} alt="" loading="lazy" /> : <div className="thumb-ph"><Icon.Pdf size={20} /></div>}
-    </div>
-  )
+function Thumb({paper}:{paper:Paper}):JSX.Element {
+  const key=paper.id+':'+paper.path+':'+(paper.file_mtime??'')
+  const [src,setSrc]=useState<string|null>(thumbCache.get(key)??null)
+  const ref=useRef<HTMLDivElement|null>(null)
+  useEffect(()=>{
+    setSrc(thumbCache.get(key)??null)
+    let cancelled=false,started=false
+    const start=():void=>{
+      if(started||thumbCache.has(key)) return
+      started=true
+      queueThumbnail(async()=>{
+        if(cancelled) return
+        let doc:pdfjsLib.PDFDocumentProxy|undefined
+        try {
+          const bytes=await window.api.readPdf(paper.path)
+          if(cancelled) return
+          const base=window.location.href.replace(/[^/]*$/,'')
+          doc=await pdfjsLib.getDocument({data:new Uint8Array(bytes),standardFontDataUrl:base+'standard_fonts/',cMapUrl:base+'cmaps/',cMapPacked:true}).promise
+          const page=await doc.getPage(1),original=page.getViewport({scale:1}),vp=page.getViewport({scale:Math.min(1,420/original.width)})
+          const canvas=document.createElement('canvas');canvas.width=Math.floor(vp.width);canvas.height=Math.floor(vp.height)
+          await page.render({canvasContext:canvas.getContext('2d')!,viewport:vp} as any).promise
+          const url=canvas.toDataURL('image/jpeg',0.68)
+          if(thumbCache.size>=120) thumbCache.delete(thumbCache.keys().next().value!)
+          thumbCache.set(key,url)
+          if(!cancelled) setSrc(url)
+        } catch { /* A missing PDF keeps a stable placeholder. */ }
+        finally {if(doc) void doc.destroy()}
+      })
+    }
+    const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting))start()},{rootMargin:'180px'})
+    if(ref.current)observer.observe(ref.current)
+    return ()=>{cancelled=true;observer.disconnect()}
+  },[key,paper.path])
+  return <div className="card-thumb" ref={ref}>{src?<img src={src} alt="" loading="lazy"/>:<div className="thumb-ph"><Icon.Pdf size={22}/></div>}</div>
 }
 
 // AI 小结区块：有缓存直接展示，否则一键生成
@@ -124,7 +121,7 @@ function StatusBadge({ status }: { status: string }): JSX.Element {
   )
 }
 
-export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onOpenRecords, onOpenOnline, onPapersChanged }: Props): JSX.Element {
+export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onOpenRecords, onOpenOnline, onOpenZotero, onPapersChanged }: Props): JSX.Element {
   // 标签名 → 颜色（卡片 hover 标签行用）
   const [tagColors, setTagColors] = useState<Record<string, string>>({})
   useEffect(() => {
@@ -140,48 +137,81 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
     }
   }, [papers])
 
-  // 按导入月份分组（最新月份在前）
-  const groups = useMemo(() => {
-    const m = new Map<string, Paper[]>()
-    for (const p of papers) {
-      const d = new Date((p.added_at || '').replace(' ', 'T') + 'Z')
-      const key = isNaN(d.getTime()) ? '更早' : `${d.getFullYear()}年${d.getMonth() + 1}月`
-      if (!m.has(key)) m.set(key, [])
-      m.get(key)!.push(p)
+  const [query,setQuery]=useState('')
+  const [filter,setFilter]=useState('all')
+  const [sourceFilter,setSourceFilter]=useState<'all'|'pdf'|'record'>('all')
+  const [zoteroRepairBusy,setZoteroRepairBusy]=useState(false)
+  const [zoteroRepairMsg,setZoteroRepairMsg]=useState('')
+  const [sort,setSort]=useState('recent')
+  const [limit,setLimit]=useState(60)
+  const [display,setDisplay]=useState(()=>localStorage.getItem('cspaper.library-display')||'cards')
+  const arranged=useMemo(()=>{
+    const needle=query.trim().toLocaleLowerCase()
+    return papers
+      .filter(p=>(filter==='all'||p.status===filter)&&(sourceFilter==='all'||p.source_kind===sourceFilter)&&(!needle||[p.title,p.authors,p.year,p.venue,p.category,...(p.tags||[])].join(' ').toLocaleLowerCase().includes(needle)))
+      .sort((a,b)=>{
+        if(sort==='recent'&&(a.source_kind==='record')!==(b.source_kind==='record'))return a.source_kind==='record'?1:-1
+        return sort==='title'?a.title.localeCompare(b.title,'zh'):sort==='year'?(b.year||0)-(a.year||0):String(b.added_at||'').localeCompare(a.added_at||'')
+      })
+  },[papers,query,filter,sourceFilter,sort])
+  const groups=useMemo(()=>{
+    const visible=arranged.slice(0,limit)
+    if(sort!=='recent') return [['全部文献',visible]] as Array<[string,Paper[]]>
+    const groups=new Map<string,Paper[]>()
+    for(const paper of visible){
+      const date=new Date((paper.added_at||'').replace(' ','T')+'Z')
+      const month=Number.isNaN(date.getTime())?'更早':`${date.getFullYear()}年${date.getMonth()+1}月`
+      const group=groups.get(month)??[];group.push(paper);groups.set(month,group)
     }
-    return [...m.entries()].sort((a, b) => {
-      if (a[0] === '更早') return 1
-      if (b[0] === '更早') return -1
-      return b[0].localeCompare(a[0])
-    })
-  }, [papers])
+    return [...groups.entries()]
+  },[arranged,limit,sort])
 
   const refresh = (id: number, s: string): void => {
     const p = papers.find((x) => x.id === id)
-    if (p) (p as Paper & { summary?: string }).summary = s
+    if(p) void onPapersChanged?.()
   }
 
   // 单击选中 → 右侧详情栏；双击 / 「打开阅读」进入阅读器
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const selected = papers.find((p) => p.id === selectedId) ?? null
+  const sourceOptions: Array<[typeof sourceFilter,string]> = [['all','全部来源'],['pdf','有原文'],['record','仅题录']]
+  const repairZotero = async (): Promise<void> => {
+    if(zoteroRepairBusy)return
+    setZoteroRepairBusy(true);setZoteroRepairMsg('')
+    try {
+      const result=await window.api.zoteroRepairApply()
+      setZoteroRepairMsg(`Zotero 原文修复：匹配 ${result.repaired} 篇 · 无可读原文 ${result.skipped+result.failed} 篇；已保留替换前备份。`)
+      onPapersChanged?.()
+    } catch(error) {
+      setZoteroRepairMsg(String(error).replace(/^Error: /,'').slice(0,180))
+    } finally {
+      setZoteroRepairBusy(false)
+    }
+  }
 
   return (
     <div className="libhome-outer">
-      <div className="libhome">
+      <div className={`libhome library-${display}`}>
         <div className="libhome-bar">
-          <span className="libhome-title">文献库</span>
-          <span className="libhome-count">{papers.length} 篇</span>
-          <span style={{ flex: 1 }} />
-          <button className="btn ghost" onClick={onOpenRecords} title="导入从 CNKI / 万方等批量导出的题录文件">
-            <Icon.Upload size={13} /> 导入题录…
-          </button>
-          <button className="btn ghost" onClick={onOpenOnline} title="DOI / arXiv / 链接 / 关键词在线检索抓取（Translators 脚本）">
-            <Icon.Globe size={13} /> 在线添加
-          </button>
-          <button className="btn" onClick={onAddPapers} title="导入 PDF，AI 自动归类；也可拖入窗口">
-            <Icon.Upload size={13} /> 上传文献
-          </button>
+          <div className="library-heading"><small>阅读、整理，让想法有据可循</small><h1>文献库 <span>{papers.length} 篇</span></h1></div>
+          <AddLiteratureMenu onPdf={onAddPapers} onOnline={onOpenOnline} onRecords={onOpenRecords} onZotero={onOpenZotero}/>
         </div>
+        {papers.length>0&&<div className="library-controls">
+          <label className="library-search"><Icon.Search size={15}/><input aria-label="筛选文献库" placeholder="搜索标题、作者、标签…" value={query} onChange={e=>{setQuery(e.target.value);setLimit(60)}}/></label>
+          <select aria-label="文献排序" value={sort} onChange={e=>{setSort(e.target.value);setLimit(60)}}><option value="recent">最近添加</option><option value="year">发表年份</option><option value="title">标题顺序</option></select>
+          <div className="library-display" aria-label="文献显示方式">
+            <button className={display==='cards'?'on':''} aria-label="封面视图" aria-pressed={display==='cards'} onClick={()=>{setDisplay('cards');localStorage.setItem('cspaper.library-display','cards')}}><Icon.Library size={15}/></button>
+            <button className={display==='list'?'on':''} aria-label="紧凑视图" aria-pressed={display==='list'} onClick={()=>{setDisplay('list');localStorage.setItem('cspaper.library-display','list')}}><Icon.Table size={15}/></button>
+          </div>
+        </div>}
+        {papers.length>0&&<div className="library-filters">{[['all','全部'],['unread','待读'],['reading','在读'],['read','已读'],['todo','稍后读']].map(([key,label])=><button key={key} className={filter===key?'on':''} aria-pressed={filter===key} onClick={()=>{setFilter(key);setLimit(60)}}>{label}<span>{key==='all'?papers.length:papers.filter(p=>p.status===key).length}</span></button>)}
+          <span className="library-source-filter">
+            {sourceOptions.map(([key,label])=><button key={key} className={sourceFilter===key?'on':''} aria-pressed={sourceFilter===key} onClick={()=>{setSourceFilter(key);setLimit(60)}}>{label}<span>{key==='all'?papers.length:papers.filter(p=>p.source_kind===key).length}</span></button>)}
+          </span>
+          <button className="btn ghost" disabled={zoteroRepairBusy} onClick={()=>void repairZotero()}>{zoteroRepairBusy?'正在精确匹配 Zotero 原文…':'修复 Zotero 原文'}</button>
+          {zoteroRepairMsg&&<span className="ov-dim">{zoteroRepairMsg}</span>}
+          </div>}
+        {papers.length>0&&arranged.length===0&&<div className="library-no-results"><Icon.Search size={24}/><h2>没有匹配的文献</h2><p>试试其他关键词，或清除阅读状态与来源筛选。</p><button className="btn ghost" onClick={()=>{setQuery('');setFilter('all');setSourceFilter('all')}}>清除筛选</button></div>}
         {papers.length === 0 && (
           <div className="libhome-empty">
             <div className="big">📚</div>
@@ -212,6 +242,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                   title="单击查看详情，双击进入阅读"
                 >
                   <StatusBadge status={p.status} />
+                  {p.source_kind==='record'&&<span className="source-badge record" title="Zotero 题录条目：尚未导入 PDF 全文">题录 · 无原文</span>}
                   <Thumb paper={p} />
                   {p.last_page != null && p.last_page > 0 && p.n_pages > 0 && p.last_page < p.n_pages && (
                     <div className="pcard-prog is-thumb" title={`读到第 ${p.last_page} 页，共 ${p.n_pages} 页`}>
@@ -219,7 +250,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                     </div>
                   )}
                   <div className="pcard-body">
-                  <div className="pcard-title">{p.title}</div>
+                  <button className="pcard-title" title={p.title} onClick={()=>setSelectedId(p.id)}>{p.title}</button>
                   <div className="pcard-meta">
                     {p.authors && <div className="pcard-authors">作者：{p.authors.split(/[,;，；]/)[0]} 等</div>}
                     <div className="pcard-venue">
@@ -228,6 +259,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
                     </div>
                   </div>
                   <SummaryBlock paper={p} onDone={refresh} />
+                  <button type="button" className="pcard-chat" onClick={event=>{event.stopPropagation();dispatchWorkspaceAction({kind:'chat',paperIds:[p.id]})}}>加入对话</button>
                   {(p.tags?.length ?? 0) > 0 && (
                     <div className="pcard-tags">
                       {(p.tags ?? []).slice(0, 3).map((t) => (
@@ -249,6 +281,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
           </div>
         </div>
         ))}
+        {arranged.length>limit&&<div className="library-load-more"><span>已显示 {Math.min(limit,arranged.length)} / {arranged.length} 篇</span><button className="btn ghost" onClick={()=>setLimit(n=>n+60)}>显示更多文献</button></div>}
       </div>
       {selected && (
         <PaperDetailPanel
