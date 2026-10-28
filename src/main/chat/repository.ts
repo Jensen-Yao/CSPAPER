@@ -77,6 +77,19 @@ export class ChatRepository {
     return this.getConversation(id)
   }
 
+  /** Permanently removes a terminal conversation and its replayable evidence. Active runs must be stopped first. */
+  deleteConversation(id:string):boolean {
+    return this.db.transaction(() => {
+      const conversation=this.getConversation(id)
+      if(!conversation)return false
+      const active=this.db.prepare("SELECT id FROM chat_runs WHERE conversation_id=? AND status IN ('queued','preparing','generating','executing_tools','awaiting_approval') LIMIT 1").get(id)
+      if(active)throw new Error('任务仍在执行，请先停止再删除会话')
+      this.db.prepare('DELETE FROM agent_tasks WHERE conversation_id=?').run(id)
+      this.db.prepare('DELETE FROM conversations WHERE id=?').run(id)
+      return true
+    })()
+  }
+
   appendMessage(input:{conversationId:string;parentId?:string|null;clientMessageId?:string|null;role:MessageRole;parts?:MessagePart[];status?:MessageStatus;runId?:string|null}):Message {
     if(input.clientMessageId) {
       const existing=this.getMessageByClientId(input.conversationId,input.clientMessageId)

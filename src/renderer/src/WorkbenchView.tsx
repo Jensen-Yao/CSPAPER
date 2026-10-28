@@ -13,6 +13,7 @@ import './wb.css'
 import ContextPicker from './features/chat/ContextPicker'
 import TaskChatWorkspace from './features/chat/TaskChatWorkspace'
 import { conversationStore } from './features/chat/conversation-store'
+import { useDialog } from './Dialog'
 
 interface PlanStep {
   tool: string
@@ -39,6 +40,8 @@ interface TaskSummary {
   status: 'awaiting-confirm' | 'running' | 'done' | 'partial' | 'error' | 'cancelled'
   createdAt: string
   answer: string
+  conversationId?: string | null
+  runId?: string | null
 }
 interface TaskFull extends TaskSummary {
   plan: PlanStep[]
@@ -152,6 +155,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   const [selId, setSelId] = useState<string | null>(null)
   const [task, setTask] = useState<TaskFull | null>(null)
   const chatStore=conversationStore(),chatState=useSyncExternalStore(chatStore.subscribe,chatStore.getSnapshot)
+  const dialog=useDialog()
   const chatConversations=useMemo(()=>chatState.conversations.filter(conversation=>conversation.mode==='act'),[chatState.conversations])
   const [chatQueue, setChatQueue] = useState<string[]>([])
   const [selectedPaperIds,setSelectedPaperIds]=useState<number[]>([])
@@ -172,6 +176,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   const [slashSel, setSlashSel] = useState(0)
   const [goalLong, setGoalLong] = useState('')
   const [notice, setNotice] = useState('')
+  const [copied, setCopied] = useState(false)
   const [wide, setWide] = useState(false)
   const [openStep, setOpenStep] = useState<number | null>(null)
   const [workOpen, setWorkOpen] = useState(true)
@@ -507,7 +512,65 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   }
   const copyReport = (): void => {
     if (!task) return
-    void navigator.clipboard.writeText(task.answer || reportMd()).catch(() => {})
+    void navigator.clipboard.writeText(task.answer || reportMd())
+      .then(() => {
+        setCopied(true)
+        flash('结果已复制到剪贴板')
+        window.setTimeout(() => setCopied(false), 1800)
+      })
+      .catch(error => flash(`复制失败：${String(error).slice(0,90)}`))
+  }
+  const removeConversation = async (id: string): Promise<void> => {
+    if (task?.conversationId === id && task.status === 'running') {
+      flash('任务仍在执行，请先停止再删除会话')
+      return
+    }
+    const ok = await dialog.confirm({
+      title: '删除这个会话？',
+      message: '将永久删除消息、运行记录、来源、产物记录和关联旧任务；不会删除已写入文献库的笔记、对比表或文献文件。',
+      okText: '永久删除',
+      danger: true
+    })
+    if (!ok) return
+    try {
+      await chatStore.deleteConversation(id)
+      refreshTasks()
+      if (selId === id) {
+        setSelId(null)
+        setTaskBoth(null)
+        setEditPlan(null)
+      }
+      flash('会话已删除')
+    } catch (error) {
+      flash(String(error).replace(/^Error: /, '').slice(0,160))
+    }
+  }
+  const removeLegacyTask = async (id: string): Promise<void> => {
+    const summary = tasks.find(item => item.id === id)
+    if (!summary) return
+    if (summary.status === 'running') {
+      flash('任务仍在执行，请先停止再删除')
+      return
+    }
+    const ok = await dialog.confirm({
+      title: '删除旧任务记录？',
+      message: '将删除这条兼容任务及其计划、事件和总结；不会删除已写入文献库的产物。',
+      okText: '删除任务',
+      danger: true
+    })
+    if (!ok) return
+    try {
+      await window.api.agentTaskDelete(id)
+      if (selId === id) {
+        setSelId(null)
+        setTaskBoth(null)
+        setEditPlan(null)
+      }
+      refreshTasks()
+      flash('任务记录已删除')
+    } catch (error) {
+      flash(String(error).replace(/^Error: /, '').slice(0,160))
+    }
   }
   const scrollBottom = (): void => {
     const el = scrollRef.current
@@ -521,6 +584,8 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
     const f = filter.trim().toLowerCase()
     const groups = new Map<string, TaskSummary[]>()
     for (const t of tasks) {
+      // 已挂接到统一会话的旧任务只保留会话入口，避免同一任务在左栏出现两份。
+      if (t.conversationId) continue
       if (f && !t.goal.toLowerCase().includes(f)) continue
       const g = dateGroupOf(t.createdAt)
       const arr = groups.get(g) ?? []
@@ -533,6 +598,20 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   const doneCount = progress.filter((p) => p.done).length
   const running = task?.status === 'running'
   const worked = task ? workedMsOf(task, Date.now()) : 0
+  const currentRun=task?.conversationId?chatState.views[task.conversationId]?.run??null:null
+  const interrupted=currentRun?.status==='interrupted'
+  const continueTask=async():Promise<void>=>{
+    if(task?.runId&&interrupted){
+      try{
+        await window.api.chat.resumeRun(task.runId)
+        await loadChatTask(task.conversationId!)
+        flash('已从中断处继续执行')
+      }catch(error){flash(String(error).replace(/^Error: /,'').slice(0,160))}
+      return
+    }
+    inputRef.current?.focus()
+    flash('输入框已聚焦，可直接继续追问')
+  }
 
   if (!visible) return null
 
@@ -592,11 +671,14 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
             <div>
               <div className="wb-group">统一会话</div>
               {chatConversations.map(conversation=>(
-                <button key={conversation.id} className={`wb-hist ${selId===conversation.id?'on':''}`} title={conversation.title} onClick={()=>void loadChatTask(conversation.id)}>
-                  <span className="wb-hist-dot running" />
-                  <span className="wb-hist-goal ellipsis">{conversation.title||'科研任务'}</span>
-                  <span className="wb-hist-time">{relTime(conversation.createdAt)}</span>
-                </button>
+                <div key={conversation.id} className={`wb-hist-row ${selId===conversation.id?'on':''}`} data-conversation-id={conversation.id}>
+                  <button className="wb-hist" title={conversation.title} onClick={()=>void loadChatTask(conversation.id)}>
+                    <span className="wb-hist-dot running" />
+                    <span className="wb-hist-goal ellipsis">{conversation.title||'科研任务'}</span>
+                    <span className="wb-hist-time">{relTime(conversation.createdAt)}</span>
+                  </button>
+                  <button className="wb-row-action danger" aria-label={`删除会话：${conversation.title||'科研任务'}`} title="永久删除会话" onClick={()=>void removeConversation(conversation.id)}>×</button>
+                </div>
               ))}
             </div>
           )}
@@ -605,19 +687,24 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
               <div key={g}>
                 <div className="wb-group">{g}</div>
                 {list.map((t) => (
-                  <button
+                  <div
                     key={t.id}
-                    className={`wb-hist ${selId === t.id ? 'on' : ''}`}
-                    title={t.goal}
-                    onClick={() => {
-                      setSelId(t.id)
-                      loadTask(t.id)
-                    }}
+                    className={`wb-hist-row ${selId === t.id ? 'on' : ''}`}
                   >
-                    <span className={`wb-hist-dot ${t.status}`} />
-                    <span className="wb-hist-goal ellipsis">{t.goal}</span>
-                    <span className="wb-hist-time">{relTime(t.createdAt)}</span>
-                  </button>
+                    <button
+                      className="wb-hist"
+                      title={t.goal}
+                      onClick={() => {
+                        setSelId(t.id)
+                        loadTask(t.id)
+                      }}
+                    >
+                      <span className={`wb-hist-dot ${t.status}`} />
+                      <span className="wb-hist-goal ellipsis">{t.goal}</span>
+                      <span className="wb-hist-time">{relTime(t.createdAt)}</span>
+                    </button>
+                    <button className="wb-row-action danger" aria-label={`删除任务：${t.goal}`} title="删除旧任务记录" onClick={() => void removeLegacyTask(t.id)}>×</button>
+                  </div>
                 ))}
               </div>
             ))}
@@ -645,21 +732,40 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
             {nav === 'mcp' && <McpPane />}
           </div>
         ) : task ? (
-          <div className="wb-run-view">
+          <div className={`wb-run-view ${wide ? 'wide' : ''}`}>
             <div className="wb-run-head">
-              <span className={`wb-status-pill ${task.status}`}>
-                {running && <i className="wb-spin" />}
-                {STATUS_META[task.status]?.label}
-              </span>
-              <span className="wb-run-goal ellipsis" title={task.goal}>
-                {task.goal}
-              </span>
-              <span style={{ flex: 1 }} />
-              {running && (
-                <button className="wb-mini danger" onClick={() => void cancelTask()}>
-                  <Icon.Stop size={12} /> 中止
+              <div className="wb-run-title">
+                <span className={`wb-status-pill ${task.status}`}>
+                  {running && <i className="wb-spin" />}
+                  {STATUS_META[task.status]?.label}
+                </span>
+                <span className="wb-run-goal ellipsis" title={task.goal}>
+                  {task.goal}
+                </span>
+              </div>
+              <div className="wb-run-actions" aria-label="任务操作">
+                <button className="wb-action" title="复制本次结果或完整执行报告" onClick={copyReport}>
+                  <Icon.Copy size={12} /> {copied?'已复制':'复制结果'}
                 </button>
-              )}
+                <button className="wb-action" title="导出 Markdown 任务报告" onClick={exportReport}>
+                  <Icon.Save size={12} /> 导出 Markdown
+                </button>
+                <button className="wb-action" title={wide?'恢复标准阅读宽度':'加宽任务正文，适合长表格和代码'} onClick={() => setWide((v) => !v)}>
+                  <Icon.Expand size={12} /> {wide?'标准宽度':'宽屏阅读'}
+                </button>
+                <button className="wb-action" title={interrupted?'从保存的工具结果继续执行':'聚焦输入框，继续当前任务'} onClick={() => void continueTask()}>
+                  <Icon.Doc size={12} /> {interrupted?'中断续跑':'继续任务'}
+                </button>
+                {running ? (
+                  <button className="wb-mini danger" onClick={() => void cancelTask()}>
+                    <Icon.Stop size={12} /> 停止任务
+                  </button>
+                ) : (
+                  <button className="wb-action danger" title={task.conversationId?'永久删除当前会话':'删除旧任务记录'} onClick={() => void (task.conversationId?removeConversation(task.conversationId):removeLegacyTask(task.id))}>
+                    × 删除{task.conversationId?'会话':'任务'}
+                  </button>
+                )}
+              </div>
             </div>
             {(() => {
               const arts = task.events.filter((e) => e.kind === 'artifact' && e.artifact)
@@ -836,30 +942,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                 {<Icon.ArrowD />}
               </button>
             )}
-            <div className="wb-actions">
-              <button className="wb-act" title="复制总结 / 报告" onClick={copyReport}>
-                {<Icon.Copy />}
-                <span>复制</span>
-              </button>
-              <button className="wb-act" title="导出任务报告 (Markdown)" onClick={exportReport}>
-                {<Icon.Save />}
-                <span>报告</span>
-              </button>
-              <button className="wb-act" title={wide ? '收窄正文栏' : '加宽正文栏'} onClick={() => setWide((v) => !v)}>
-                {<Icon.Expand />}
-                <span>{wide ? '收窄' : '加宽'}</span>
-              </button>
-              <button
-                className="wb-act"
-                title="继续输入"
-                onClick={() => {
-                  inputRef.current?.focus()
-                }}
-              >
-                {<Icon.Doc />}
-                <span>继续</span>
-              </button>
-            </div>
+
           </div>
         ) : (
           <div className="wb-center-empty">

@@ -20,7 +20,7 @@
 | `npm run typecheck` | 通过（含 tests 工程） |
 | `npm run test:core` | 75 / 75 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 64 / 64，无 renderer 异常 |
+| `npm run test:ui` | 69 / 69，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
@@ -43,6 +43,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 用户勾选确认后才下载；请求强制公网 HTTPS、校验重定向终点、100MB 上限和 PDF 头，拒绝把网页或内网地址当作原文。
 - 替换题录页仍通过操作日志执行，保留原 PDF / Markdown 备份，成功后 `source_kind` 升级为 `pdf` 并触发索引重建。
 - 验证：typecheck 通过、核心回归 75/75（新增 OA 修复与取消用例）、生产构建通过、UI 回归 64/64（新增入口检查）、无 renderer 异常。
+## 持续迭代：Work 会话管理与操作语义（2026-10-29）
+
+- Work 统一会话新增确认后永久删除；运行中任务必须先停止。删除事务清理会话、消息、运行、事件、来源、产物记录和关联旧任务，已写入文献库的笔记 / 对比表 / 文献不受影响。
+- 旧任务记录新增删除；已挂接统一会话的旧任务不再在左栏重复出现。
+- 顶部操作改为明确动作：复制结果、导出 Markdown、宽屏阅读、继续任务 / 中断续跑、删除会话或任务。
+- Task 会话用户输入去掉嵌套卡片，改为文档流边线；宽屏模式真实扩展统一任务会话。
+- 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 69/69、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

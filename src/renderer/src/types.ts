@@ -540,7 +540,8 @@ declare global {
       agentUpdatePlan: (id: string, plan: Array<{ tool: string; args: Record<string, unknown>; purpose: string }>) => Promise<unknown>
       agentRun: (id: string) => Promise<{ ok: boolean; conversationId?: string; runId?: string }>
       agentCancel: (id: string) => Promise<boolean>
-      agentTasks: () => Promise<Array<{ id: string; goal: string; status: string; createdAt: string; answer: string }>>
+      agentTasks: () => Promise<Array<{ id: string; goal: string; status: string; createdAt: string; answer: string; conversationId?: string | null; runId?: string | null }>>
+      agentTaskDelete: (id: string) => Promise<boolean>
       agentTask: (id: string) => Promise<{
         id: string
         goal: string

@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-29",
+  "feature": "Work session management and explicit task affordances",
+  "scope": [
+    "permanent terminal conversation deletion with active-run guard",
+    "legacy task deletion",
+    "deduplicate legacy tasks linked to unified conversations",
+    "explicit header action labels",
+    "real wide reading mode for unified task conversations",
+    "interrupted-run resume action",
+    "flat task user prompt without nested card"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "75/75",
+    "build": "pass",
+    "cssGate": "pass",
+    "ui": "69/69",
+    "rendererExceptions": 0
+  },
+  "coreCase": [
+    "active conversation deletion is rejected until the run is stopped",
+    "terminal deletion cascades messages, runs, events, tool calls and linked legacy task",
+    "running legacy task cannot be deleted",
+    "terminal legacy task deletion succeeds"
+  ],
+  "uiCases": [
+    "Work actions expose outcome-oriented labels",
+    "task user prompt is no longer a nested card",
+    "wide reading measurably expands the conversation",
+    "persistent delete action removes a Work session"
+  ]
+}

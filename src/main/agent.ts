@@ -90,9 +90,16 @@ export function cancelTask(id:string):boolean {
   if(task.status!=='running')return false
   task.status='cancelled';saveTask(task);emit(task,{kind:'cancelled',text:'任务已停止'});return true
 }
-export function listTasks():Array<Pick<AgentTask,'id'|'goal'|'status'|'createdAt'|'answer'>> {
+export function listTasks():Array<Pick<AgentTask,'id'|'goal'|'status'|'createdAt'|'answer'|'conversationId'|'runId'>> {
   ensureTable()
-  return (getDb().prepare('SELECT * FROM agent_tasks ORDER BY created_at DESC LIMIT 50').all() as TaskRow[]).map(row=>{const task=rowToTask(row);return{id:task.id,goal:task.goal,status:task.status,createdAt:task.createdAt,answer:task.answer}})
+  return (getDb().prepare('SELECT * FROM agent_tasks ORDER BY created_at DESC LIMIT 50').all() as TaskRow[]).map(row=>{const task=rowToTask(row);return{id:task.id,goal:task.goal,status:task.status,createdAt:task.createdAt,answer:task.answer,conversationId:task.conversationId??null,runId:task.runId??null}})
 }
 export function getTask(id:string):AgentTask|null {ensureTable();return loadTask(id)}
+export function removeTask(id:string):boolean {
+  ensureTable()
+  const task=loadTask(id)
+  if(!task)return false
+  if(task.status==='running')throw new Error('任务仍在执行，请先停止再删除')
+  return getDb().prepare('DELETE FROM agent_tasks WHERE id=?').run(id).changes>0
+}
 export function setNotifier(fn:(event:string,payload:unknown)=>void):void {send=fn}

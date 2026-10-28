@@ -92,6 +92,15 @@ export class ConversationStore {
       else await this.newConversation()
     }
   }
+  deleteConversation = async(id: string): Promise<void> => {
+    await this.api.deleteConversation(id)
+    const views={...this.state.views};delete views[id]
+    const conversations=this.state.conversations.filter(item=>item.id!==id)
+    const activeId=this.state.activeId===id?(conversations[0]?.id??null):this.state.activeId
+    this.publish({views,conversations,activeId,nextCursor:null,error:''})
+    if(activeId)await this.selectConversation(activeId)
+    else if(this.state.conversations.length===0)await this.newConversation()
+  }
   reload = (id: string): Promise<void> => {
     const current = this.loading.get(id)
     if(current)return current

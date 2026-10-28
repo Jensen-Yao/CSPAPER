@@ -24,6 +24,7 @@ export interface ChatApi {
   getConversation(id: string): Promise<Conversation | null>
   renameConversation(id: string, title: string): Promise<Conversation | null>
   archiveConversation(id: string, archived: boolean): Promise<Conversation | null>
+  deleteConversation(id: string): Promise<boolean>
   loadMessages(input: { conversationId: string; beforeMessageId?: string | null; limit?: number }): Promise<MessagePage>
   snapshot(input: { conversationId: string; limit?: number }): Promise<ConversationSnapshot>
   submitTurn(input: SubmitTurnInput): Promise<TurnResult>

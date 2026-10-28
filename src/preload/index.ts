@@ -230,6 +230,7 @@ const api = {
     getConversation: (id: string) => ipcRenderer.invoke('chat:conversation-get', id),
     renameConversation: (id: string, title: string) => ipcRenderer.invoke('chat:conversation-rename', id, title),
     archiveConversation: (id: string, archived: boolean) => ipcRenderer.invoke('chat:conversation-archive', id, archived),
+    deleteConversation: (id: string) => ipcRenderer.invoke('chat:conversation-delete', id),
     loadMessages: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:messages', input),
     snapshot: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:snapshot', input),
     submitTurn: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:submit', input),
@@ -352,6 +353,7 @@ const api = {
   agentCancel: (id: string) => ipcRenderer.invoke('agent:cancel', id),
   agentTasks: () => ipcRenderer.invoke('agent:tasks'),
   agentTask: (id: string) => ipcRenderer.invoke('agent:task', id),
+  agentTaskDelete: (id: string) => ipcRenderer.invoke('agent:task-delete', id),
   onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; sid?: number; stream?: boolean; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } }; replace?: boolean }) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p as never)
     ipcRenderer.on('agent:event', h)

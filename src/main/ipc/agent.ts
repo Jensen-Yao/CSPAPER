@@ -1,6 +1,6 @@
 // 工作台 Agent 域 IPC（v0.9）：计划 / 执行 / 中止 / 任务列表与回放
 import { ipcMain } from 'electron'
-import { planTask, updatePlan, cancelTask, listTasks, getTask, setNotifier, recoverInterruptedTasks, type PlanStep, type AgentTask } from '../agent'
+import { planTask, updatePlan, cancelTask, listTasks, getTask, removeTask, setNotifier, recoverInterruptedTasks, type PlanStep, type AgentTask } from '../agent'
 import { shell } from 'electron'
 import fs from 'node:fs'
 import { connectAll, listMcpTools, mcpConfigPath } from '../mcp'
@@ -90,6 +90,7 @@ export function registerAgentIpc(ctx: IpcCtx): void {
   })
   ipcMain.handle('agent:tasks', () => listTasks())
   ipcMain.handle('agent:task', (_e, id: string) => getTask(String(id)))
+  ipcMain.handle('agent:task-delete',(_e,id:string)=>removeTask(String(id)))
 
   // ---------- MCP / 技能 / 自动化（v0.10） ----------
   ipcMain.handle('agent:mcp-status', async () => {

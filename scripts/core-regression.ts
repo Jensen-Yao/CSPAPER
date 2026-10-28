@@ -15,7 +15,7 @@ import { collectLibrary } from '../src/main/library-inventory'
 import { applyLibraryInventory } from '../src/main/library-store'
 import { formatCite } from '../src/main/csl'
 import { syncZotero, apiStatus } from '../src/main/zotero-api'
-import { listTasks, getTask, recoverInterruptedTasks } from '../src/main/agent'
+import { listTasks, getTask, removeTask, recoverInterruptedTasks } from '../src/main/agent'
 import { modelSettings } from '../src/main/model-config'
 import { collectionPapers, createCollection, listCollections, removeCollection, setPaperInCollection } from '../src/main/collection-service'
 import { ChatRepository } from '../src/main/chat/repository'
@@ -342,6 +342,21 @@ app.whenReady().then(async()=>{
     const completed=repo.updateToolCall('call-1','success',{summary:'已保存',changes:[{entity:'note',entityId:String(one.id),action:'update',reversible:true}]})
     assert.equal(completed?.status,'success')
     assert.throws(()=>repo.createToolCall({runId:turn.run.id,toolCallId:'call-2',tool:'note.save',args:{},operationId:'op-1'}))
+    db.prepare("INSERT INTO agent_tasks(id,goal,status,plan,events,answer,created_at,conversation_id,run_id) VALUES('legacy-linked','旧任务','done','[]','[]','完成',datetime('now'),?,?)").run(conversation.id,turn.run.id)
+    assert.equal(turn.run.status,'queued')
+    assert.throws(()=>repo.deleteConversation(conversation.id),/请先停止/)
+    repo.updateRunStatus(turn.run.id,'completed')
+    assert.equal(repo.deleteConversation(conversation.id),true)
+    assert.equal(repo.getConversation(conversation.id),null)
+    assert.equal(repo.getMessage(turn.userMessage.id),null)
+    assert.equal(repo.getRun(turn.run.id),null)
+    assert.equal(repo.getToolCall('call-1'),null)
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM chat_run_events WHERE conversation_id=?').get(conversation.id).n,0)
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM agent_tasks WHERE conversation_id=?').get(conversation.id).n,0)
+    db.prepare("INSERT INTO agent_tasks(id,goal,status,plan,events,answer,created_at) VALUES('legacy-standalone','独立旧任务','running','[]','[]','',datetime('now'))").run()
+    assert.throws(()=>removeTask('legacy-standalone'),/请先停止/)
+    db.prepare("UPDATE agent_tasks SET status='done' WHERE id='legacy-standalone'").run()
+    assert.equal(removeTask('legacy-standalone'),true)
   })
   await test('chat runtime persists streams, isolates concurrent runs and is idempotent',async()=>{
     const repo=new ChatRepository(db),bus=new ChatEventBus(repo)

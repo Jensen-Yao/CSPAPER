@@ -301,3 +301,35 @@ html[data-theme='dark'] .wb-pop { background: var(--bg2); }
 html[data-theme='dark'] .wb-model-item:hover, html[data-theme='dark'] .wb-pop-item:hover { background: rgba(233, 226, 214, 0.08); }
 .wb-task-status.running { background: rgba(74, 175, 105, 0.18); color: #2f7d4e; }
 html[data-theme='dark'] .wb-task-status.running { background: rgba(111, 174, 130, 0.2); color: #8fc9a2; }
+
+/* ---------- v0.20 Work 会话管理与明确操作 affordances ---------- */
+.wb-hist-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
+.wb-hist-row > .wb-hist { flex: 1; min-width: 0; border-radius: 6px; }
+.wb-hist-row.on > .wb-hist { background: rgba(127, 127, 127, 0.15); }
+.wb-row-action {
+  width: 22px; height: 22px; flex: none; border: 0; background: transparent; color: var(--text-dim);
+  border-radius: 5px; cursor: pointer; font-size: 12px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+}
+.wb-row-action:hover { background: rgba(213, 96, 108, 0.12); color: var(--danger); }
+.wb-hist-row .wb-hist-time { display: none; }
+.wb-hist-row:hover .wb-hist-time, .wb-hist-row.on .wb-hist-time { display: inline; }
+.wb-hist-row:hover .wb-row-action, .wb-hist-row.on .wb-row-action { visibility: visible; }
+.wb-row-action { visibility: visible; }
+.wb-run-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; flex-shrink: 0; padding: 10px 16px 7px; }
+.wb-run-title { display: flex; align-items: center; gap: 8px; min-width: 220px; flex: 1 1 260px; }
+.wb-run-actions { display: flex; align-items: center; justify-content: flex-end; gap: 3px; flex-wrap: wrap; }
+.wb-action {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; background: transparent;
+  color: var(--text-dim); font-size: 11px; font-family: inherit; cursor: pointer; padding: 4px 7px; border-radius: 6px;
+}
+.wb-action:hover:not(:disabled), .wb-action.on { color: var(--text); background: rgba(127, 127, 127, 0.09); border-color: var(--border); }
+.wb-action:disabled { opacity: 0.45; cursor: not-allowed; }
+.wb-action.danger:hover { color: var(--danger); border-color: var(--danger); background: rgba(213, 96, 108, 0.09); }
+.wb-run-view.wide .chat-message-items, .wb-run-view.wide .chat-run-panel { max-width: none; }
+.chat-workspace-task .msg.user .bubble { border: 0; border-left: 2px solid var(--accent); border-radius: 0; background: transparent; padding: 2px 0 2px 12px; }
+.chat-workspace-task .msg.user .who { margin-bottom: 5px; }
+@media (max-width: 900px) {
+  .wb-run-head { align-items: stretch; flex-direction: column; }
+  .wb-run-actions { justify-content: flex-start; }
+  .wb-action { padding: 5px 8px; }
+}

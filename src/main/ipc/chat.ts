@@ -78,6 +78,7 @@ export function registerChatIpc(ctx:IpcCtx):void {
   ipcMain.handle('chat:conversation-get',(_e,id:string)=>ownedConversation(id))
   ipcMain.handle('chat:conversation-rename',(_e,id:string,title:string)=>repository.renameConversation(ownedConversation(id).id,String(title)))
   ipcMain.handle('chat:conversation-archive',(_e,id:string,archived:boolean)=>repository.archiveConversation(ownedConversation(id).id,Boolean(archived)))
+  ipcMain.handle('chat:conversation-delete',(_e,id:string)=>repository.deleteConversation(ownedConversation(id).id))
   ipcMain.handle('chat:events',(_e,input:unknown)=>{const request=parse(subscribeRequestSchema,input);return request.conversationId?(ownedConversation(request.conversationId),repository.listConversationEvents(request.conversationId,request.afterSeq??0)):[]})
   ipcMain.handle('chat:messages',(_e,input:unknown)=>{const request=parse(loadMessagesRequestSchema,input);ownedConversation(request.conversationId);const result=repository.loadMessages(request);return {...result,eventCursor:repository.conversationEventCursor(request.conversationId)}})
   ipcMain.handle('chat:snapshot',(_e,input:unknown)=>{

@@ -16,5 +16,5 @@ export function useConversation(modelBindingId:string,reasoning:ModelBindingSnap
     return store.send({conversationId:conversation.id,clientMessageId:'client_'+crypto.randomUUID(),parentMessageId:conversation.activeLeafMessageId,text,context:contextRef.current(conversation.workspaceId),...modelRef.current,mode:'ask',promptKind:'ask',permission:'readonly'})
   },[store])
   return {...view,conversations:state.conversations,sources:Object.values(view.runs).flatMap(item=>item.sources),loading:state.loading||view.loading,error:view.error||state.error,includeArchived:state.includeArchived,nextCursor:state.nextCursor,
-    send,stop:store.stop,newConversation:store.newConversation,selectConversation:store.selectConversation,refreshConversations:store.refreshConversations,renameConversation:store.renameConversation,archiveConversation:store.archiveConversation,showArchived:store.showArchived,loadOlder:store.loadOlder}
+    send,stop:store.stop,newConversation:store.newConversation,selectConversation:store.selectConversation,refreshConversations:store.refreshConversations,renameConversation:store.renameConversation,archiveConversation:store.archiveConversation,deleteConversation:store.deleteConversation,showArchived:store.showArchived,loadOlder:store.loadOlder}
 }
