@@ -8,7 +8,7 @@
 
 /* ---------- 子导航 chips + 分类筛选 ---------- */
 .kv-nav { display: flex; align-items: center; gap: 6px; padding: 9px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.kv-chip { border: 1px solid var(--border-lit); background: var(--bg); color: var(--text); border-radius: 9px; padding: 5px 12px; font-size: 12px; cursor: pointer; transition: background var(--speed), border-color var(--speed), color var(--speed); }
+.kv-chip { border: 1px solid var(--border-lit); background: var(--bg); color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; transition: background var(--speed), border-color var(--speed), color var(--speed); }
 .kv-chip:hover { border-color: var(--accent); color: var(--accent2); }
 .kv-chip.on { color: #fff;  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .kv-nav-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -26,7 +26,7 @@
 .kv-canvas-wrap canvas { display: block; flex-shrink: 0; }
 
 /* ---------- 详情浮层面板 ---------- */
-.kv-panel { position: absolute; right: 18px; top: 18px; width: 300px; max-height: calc(100% - 36px); overflow: auto; background: var(--bg); border: 1px solid var(--border-lit); border-radius: 13px; padding: 13px 14px; box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 8px; z-index: 6; }
+.kv-panel { position: absolute; right: 18px; top: 18px; width: 300px; max-height: calc(100% - 36px); overflow: auto; background: var(--bg); border: 1px solid var(--border-lit); border-radius: 12px; padding: 13px 14px; box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 8px; z-index: 6; }
 .kv-panel-head { display: flex; align-items: flex-start; gap: 8px; }
 .kv-panel-title { font-size: 13px; font-weight: 600; line-height: 1.5; flex: 1; min-width: 0; word-break: break-all; }
 .kv-panel-close { border: none; background: none; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
@@ -34,13 +34,13 @@
 .kv-panel-sub { font-size: 11px; color: var(--text-dim); }
 .kv-panel-sec { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 1px; margin-top: 2px; }
 .kv-panel-kws { display: flex; flex-wrap: wrap; gap: 5px; }
-.kv-kw-chip { font-size: 11px; background: var(--accent-soft); color: var(--accent2); border-radius: 5px; padding: 2px 8px; }
+.kv-kw-chip { font-size: 11px; background: var(--accent-soft); color: var(--accent2); border-radius: 6px; padding: 2px 8px; }
 .kv-panel-list { display: flex; flex-direction: column; }
-.kv-panel-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+.kv-panel-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 .kv-panel-row:hover { background: var(--accent-soft); }
 .kv-panel-row .kv-ell { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kv-panel-meta { color: var(--text-dim); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
-.kv-btn-mini { border: 1px solid var(--border-lit); background: none; color: var(--text); border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer; align-self: flex-start; flex-shrink: 0; }
+.kv-btn-mini { border: 1px solid var(--border-lit); background: none; color: var(--text); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; align-self: flex-start; flex-shrink: 0; }
 .kv-btn-mini:hover { border-color: var(--accent); color: var(--accent2); background: var(--accent-soft); }
 
 /* ---------- 空状态 ---------- */
@@ -61,14 +61,14 @@
 .kv-kb-note { font-size: 12px; color: var(--text-dim); padding: 0 2px 12px; }
 .kv-kb-sec { font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.5px; margin: 4px 0 10px; }
 .kv-kb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 18px; }
-.kv-kb-card { background: var(--bg); border: 1px solid var(--border-lit); border-radius: 11px; padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; transition: border-color var(--speed), box-shadow var(--speed); }
+.kv-kb-card { background: var(--bg); border: 1px solid var(--border-lit); border-radius: 10px; padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; transition: border-color var(--speed), box-shadow var(--speed); }
 .kv-kb-card:hover { border-color: var(--accent); box-shadow: var(--shadow-card); }
 .kv-kb-title { font-size: 12px; font-weight: 600; line-height: 1.5; }
 .kv-kb-meta { font-size: 11px; color: var(--text-dim); }
 .kv-kb-sum { font-size: 11px; color: var(--text-dim); line-height: 1.65; }
 .kv-kb-foot { display: flex; justify-content: flex-end; margin-top: 2px; }
 .kv-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-.kv-tag-card { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-lit); background: var(--bg); border-radius: 9px; padding: 6px 12px; font-size: 12px; color: var(--text); cursor: pointer; transition: background var(--speed), border-color var(--speed); }
+.kv-tag-card { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-lit); background: var(--bg); border-radius: 8px; padding: 6px 12px; font-size: 12px; color: var(--text); cursor: pointer; transition: background var(--speed), border-color var(--speed); }
 .kv-tag-card:hover { border-color: var(--accent); background: var(--accent-soft); }
 .kv-tag-card.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent2); font-weight: 600; }
 .kv-tag-card i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
