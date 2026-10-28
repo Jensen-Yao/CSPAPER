@@ -135,7 +135,7 @@ Markdown + CSL + PDF    Operation Journal
 | Lifecycle / crash | ✅ 单实例、窗口清理、操作崩溃、托盘恢复 |
 | Installer 0.20.0 | ✅ 首装、启动、升级、卸载、残留检查；安装包 SHA-256 `D4B01B048ADBFF001BB0C3F99EC8476F06BC214AAAD6B032611A36D2F6B39AAA` |
 | Real model | ✅ Agnes 两个模型严格 JSON；三文献任务 7 个工具、3 篇笔记、1 张对比表 |
-| 10k library | ✅ list 50.19ms，最大事件循环间隔 53.16ms（低于 100ms 预算） |
+| 10k library | ✅ list 73.63ms，最大事件循环间隔 74.06ms（低于 100ms 预算） |
 | CSS gate | ✅ 圆角 17 档、字号 14 档、important 5 |
 
 更多证据见 [`design-plans/execution-review-2026-10-29/`](./design-plans/execution-review-2026-10-29/)。架构、协议、迁移和当前边界见：

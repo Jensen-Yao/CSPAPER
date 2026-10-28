@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { app } from 'electron'
 import { Worker } from 'node:worker_threads'
 import { READING_STATUSES } from '../shared/paper'
-import { collectLibrary, type LibraryInventory } from './library-inventory'
+import { collectLibrary, type LibraryEntry, type LibraryInventory } from './library-inventory'
 import { applyLibraryInventory, applyLibraryInventoryAsync } from './library-store'
 import { backupBeforeLibraryMigration, runMigrations } from './migrations'
 import { recoverOperations } from './operations/journal'
@@ -360,6 +360,7 @@ export function scanLibraryAsync(libPath:string,options:ScanLibraryOptions={}):P
   options.signal?.throwIfAborted()
   const workerStarted=Date.now()
   const promise=new Promise<import('./library-store').ScanResult>((resolve,reject)=>{
+    const received:LibraryEntry[]=[]
     const worker=new Worker(path.join(__dirname,'library-worker.js'),{workerData:{root:libPath,previous:scanStamps(libPath)}})
     let aborted=false
     const abort=():void=>{
@@ -368,15 +369,21 @@ export function scanLibraryAsync(libPath:string,options:ScanLibraryOptions={}):P
       void worker.terminate()
     }
     options.signal?.addEventListener('abort',abort,{once:true})
-    worker.on('message',async(message:{progress?:boolean;found?:number;current?:string;ok?:boolean;inventory?:LibraryInventory;error?:string})=>{
-      if(message.progress){options.onProgress?.(message.found??0,message.current??'');return}
+    worker.on('message',async(message:{batch?:boolean;entries?:LibraryEntry[];found?:number;progress?:boolean;current?:string;ok?:boolean;inventory?:LibraryInventory;error?:string})=>{
+      if(message.batch){
+        const entries=Array.isArray(message.entries)?message.entries:[]
+        received.push(...entries)
+        options.onProgress?.(message.found??received.length,entries.at(-1)?.path??'')
+        return
+      }
+      if(message.progress){options.onProgress?.(message.found??received.length,message.current??'');return}
       options.signal?.removeEventListener('abort',abort)
       try {
         options.signal?.throwIfAborted()
         if(!message.ok)throw new Error(message.error)
         if(message.inventory?.cancelled)throw new DOMException('文献库扫描已取消','AbortError')
         const workerMs=Date.now()-workerStarted,applyStarted=Date.now()
-        const result=await applyLibraryInventoryAsync(db,message.inventory!)
+        const result=await applyLibraryInventoryAsync(db,{...message.inventory!,entries:received})
         resolve({...result,timing:{workerMs,applyMs:Date.now()-applyStarted}})
       } catch(error){reject(error)}
     })

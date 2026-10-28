@@ -18,9 +18,19 @@ export interface LibraryEntry {
 export interface LibraryInventory { root: string; entries: LibraryEntry[]; complete: boolean; errors: string[]; cancelled?: boolean }
 
 /** Filesystem-only work. No Electron or SQLite dependency, so it runs in a worker. */
-export function collectLibrary(root: string, previous: Record<string, string> = {}, options: { cancel?: Int32Array; onProgress?: (found: number, current: string) => void } = {}): LibraryInventory {
+export function collectLibrary(root: string, previous: Record<string, string> = {}, options: { cancel?: Int32Array; onProgress?: (found: number, current: string) => void; onEntries?: (entries: Array<LibraryEntry>, found: number) => void } = {}): LibraryInventory {
   const result: LibraryInventory = { root, entries: [], complete: true, errors: [] }
   const cancelled=():boolean=>options.cancel?Atomics.load(options.cancel,0)===1:false
+  let emitted=0
+  const emitEntries=(force=false):void=>{
+    if(!options.onEntries)return
+    const count=result.entries.length-emitted
+    if(count>=20||(force&&count>0)){
+      const batch=result.entries.slice(emitted,emitted+(count>=20?20:count))
+      emitted+=batch.length
+      options.onEntries(batch,emitted)
+    }
+  }
   const base = fs.existsSync(path.join(root, 'papers')) ? path.join(root, 'papers') : root
   const stat = (file: string) => { try { return fs.statSync(file) } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; throw e } }
   const visit = (dir: string, descend = true, categoryRoot = base): void => {
@@ -54,10 +64,12 @@ export function collectLibrary(root: string, previous: Record<string, string> = 
         result.entries.push({ path:file,slug,category,stamp,basedOn:previous[normalizePath(file)] || '',pdfMtime:pdf.mtimeMs,pdfSize:pdf.size,mdMtime:md?.mtimeMs ?? 0,mdSize:md?.size ?? 0,
           metadata: changed ? (md ? parseFrontmatter(fs.readFileSync(files.md, 'utf8')) : {}) : null, csl })
         options.onProgress?.(result.entries.length,file)
+        emitEntries()
       } catch (error) { result.complete = false; result.errors.push(`${file}: ${String(error)}`) }
     }
   }
   if(normalizePath(base)!==normalizePath(root)) visit(root,false,root)
   visit(base)
+  emitEntries(true)
   return result
 }
