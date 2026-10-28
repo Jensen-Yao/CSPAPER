@@ -258,11 +258,10 @@ html[data-theme='dark'] .st2-chip.on {
 }
 
 /* 滚动兜底：无论 flex 高度如何解析，统计页都可滚动 */
-.ov-host { position: relative; }
 .st2-view {
-  position: absolute;
-  inset: 0;
-  height: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
 

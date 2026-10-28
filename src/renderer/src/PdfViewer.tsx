@@ -5,6 +5,7 @@ import type { Tab } from './App'
 import type { Highlight } from './types'
 import { locateSnippet, locateByKeywords, flashHit } from './locate'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -21,6 +22,8 @@ export interface ViewerHandle {
   zoomBy: (delta: number) => void
   zoomReset: () => void
   removeHighlightLocal: (hid: number) => void
+  /** 改色/备注后本地立即生效（不必重开 PDF） */
+  patchHighlightLocal: (hid: number, patch: { color?: string; comment?: string }) => void
 }
 
 interface Props {
@@ -63,6 +66,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
   { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, onEditHighlight, visible, initialPage, findSignal },
   ref
 ): JSX.Element {
+  const dlg = useDialog()
   const active = tabs.find((t) => t.paper.id === activeId) ?? null
   const [doc, setDoc] = useState<any>(null)
   const [pageDims, setPageDims] = useState<Array<{ w: number; h: number }>>([])
@@ -348,6 +352,9 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     },
     removeHighlightLocal(hid: number) {
       setHls((hs) => hs.filter((h) => h.id !== hid))
+    },
+    patchHighlightLocal(hid: number, patch: { color?: string; comment?: string }) {
+      setHls((hs) => hs.map((h) => (h.id === hid ? { ...h, ...patch } : h)))
     }
   }))
 
@@ -842,16 +849,17 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
               onEditHl={onEditHighlight}
               onAddSticky={(page, x, y) => {
                 if (!active?.paper) return
-                const comment = window.prompt('便签内容（贴在页面此位置）：')
-                if (!comment?.trim()) return
-                void window.api
-                  .addHighlight(active.paper.id, page, [{ x: x - 0.015, y: y - 0.012, w: 0.03, h: 0.024 }], `📌 ${comment.trim().slice(0, 200)}`, 'yellow')
-                  .then(() => {
-                    void window.api
-                      .listHighlights(active.paper.id)
-                      .then((hs) => setHls(hs))
-                      .catch(() => {})
-                  })
+                void dlg.prompt({ title: '添加便签', placeholder: '备注内容（贴在页面此位置）' }).then((comment) => {
+                  if (!comment) return
+                  void window.api
+                    .addHighlight(active.paper.id, page, [{ x: x - 0.015, y: y - 0.012, w: 0.03, h: 0.024 }], `📌 ${comment.slice(0, 200)}`, 'yellow')
+                    .then(() => {
+                      void window.api
+                        .listHighlights(active.paper.id)
+                        .then((hs) => setHls(hs))
+                        .catch(() => {})
+                    })
+                })
               }}
               registerRef={(el) => {
                 if (el) pageRefs.current.set(i + 1, el)

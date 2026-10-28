@@ -18,6 +18,7 @@ import OnlineAddDialog from './OnlineAddDialog'
 import WebSearchView from './WebSearchView'
 import WorkbenchView from './WorkbenchView'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 import { STATUS_KEYS } from './types'
 import type { ChatScope } from './ChatControls'
 import type { Paper, Settings } from './types'
@@ -80,6 +81,7 @@ const PROVIDER_LABEL: Record<string, string> = {
 }
 
 export default function App(): JSX.Element {
+  const dlg = useDialog()
   const [papers, setPapers] = useState<Paper[]>([])
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
@@ -328,6 +330,7 @@ export default function App(): JSX.Element {
     sideControl.current?.explain(text, pageCtxRef.current)
   }, [])
   const onEditHighlight = useCallback((hid: number, patch: { color?: string; comment?: string }) => {
+    viewerRef.current?.patchHighlightLocal(hid, patch) // 正文划线即时变色
     void window.api.updateHighlight(hid, patch)
   }, [])
   const onDeleteHighlight = useCallback((hid: number) => {
@@ -405,7 +408,7 @@ export default function App(): JSX.Element {
         await window.api.movePaper(id, cat)
         await refreshPapers()
       } catch (e) {
-        alert(String(e))
+        dlg.toast(String(e).replace(/^Error: /, '').slice(0, 140), 'error')
       }
     },
     [refreshPapers]

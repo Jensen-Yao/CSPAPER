@@ -167,10 +167,10 @@
   position: absolute; bottom: 128px; left: 50%; transform: translateX(-50%);
   width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);
   background: var(--bg); color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); z-index: 6;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); z-index: 4;
 }
 .wb-jump:hover { color: var(--text); border-color: var(--text-dim); }
-.wb-actions { position: absolute; right: 20px; bottom: 122px; display: flex; gap: 2px; z-index: 6; }
+.wb-actions { position: absolute; right: 20px; bottom: 122px; display: flex; gap: 2px; z-index: 4; }
 .wb-act {
   display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent;
   color: var(--text-dim); font-size: 11.5px; cursor: pointer; font-family: inherit; padding: 5px 8px; border-radius: 7px;
@@ -178,7 +178,7 @@
 .wb-act:hover { color: var(--text); background: rgba(127, 127, 127, 0.09); }
 
 /* ---------- 底部合成器 ---------- */
-.wb-composer { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 5; }
+.wb-composer { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 8; }
 .ws-hidden { display: none; }
 .wb-queue { width: min(760px, 92%); display: flex; flex-direction: column; gap: 3px; }
 .wb-queue-item {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ImportOutcome, ImportPreviewItem } from './types'
 import { catLabel } from './LibraryPane'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 interface QueueItem {
   path: string
@@ -32,6 +33,7 @@ const NEW_CAT = '__new__'
 
 // 导入弹窗：拖入 / 选文件 / 选文件夹 → AI 逐篇推荐分类（每行右侧可单独改）→ 确认导入
 export default function ImportDialog({ initialFiles, initialCats, hasApiKey, onBusyChange, onClose, onFinished }: Props): JSX.Element {
+  const dlg = useDialog()
   const [items, setItems] = useState<QueueItem[]>(() =>
     initialFiles
       .filter((p) => p.toLowerCase().endsWith('.pdf'))
@@ -151,7 +153,7 @@ export default function ImportDialog({ initialFiles, initialCats, hasApiKey, onB
       setNewCatRow(null)
       setNewCatVal('')
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 140), 'error')
     } finally {
       setNewCatBusy(false)
     }

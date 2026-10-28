@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Highlight, Paper } from './types'
+import { useDialog } from './Dialog'
 
 interface Props {
   papers: Paper[]
@@ -88,6 +89,7 @@ function downloadText(name: string, text: string, mime: string): void {
  * 就地编辑（防抖自动保存）/ 导出 Markdown。
  */
 export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: Props): JSX.Element | null {
+  const dlg = useDialog()
   const [snotesVer, setSnotesVer] = useState(0)
   const [snotes, setSnotes] = useState<Array<{ id: number; title: string; updated_at: string }>>([])
   const [snEdit, setSnEdit] = useState<number | null>(null)
@@ -287,9 +289,10 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
         </span>
         <span style={{ flex: 1 }} />
         <button className="btn ghost" onClick={() => {
-          const title = window.prompt('独立笔记标题（如：开题思路、组会记录）')
-          if (!title?.trim()) return
-          void window.api.standaloneNotesSave(null, title.trim(), `# ${title.trim()}\n\n`).then(() => setSnotesVer((v) => v + 1))
+          void dlg.prompt({ title: '新建独立笔记', placeholder: '标题（如：开题思路、组会记录）' }).then((title) => {
+            if (!title) return
+            void window.api.standaloneNotesSave(null, title, `# ${title}\n\n`).then(() => setSnotesVer((v) => v + 1))
+          })
         }}>＋ 独立笔记</button>
         {' '}<button className="btn ghost note-export" disabled={exporting.length === 0} onClick={exportAll}>
           导出全部笔记 (Markdown)
@@ -308,7 +311,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
                   if (snEdit === n.id) { void window.api.standaloneNotesSave(n.id, n.title, snBody).then(() => setSnotesVer((v) => v + 1)); setSnEdit(null) }
                   else { void window.api.standaloneNotesGet(n.id).then((d) => { setSnBody(d.body_md); setSnEdit(n.id) }) }
                 }}>{snEdit === n.id ? '保存' : '编辑'}</button>
-                <button className="cmp-mini danger" onClick={() => { if (window.confirm(`删除独立笔记「${n.title}」？`)) void window.api.standaloneNotesRemove(n.id).then(() => setSnotesVer((v) => v + 1)) }}>删除</button>
+                <button className="cmp-mini danger" onClick={() => { void dlg.confirm({ title: `删除独立笔记「${n.title}」？`, okText: '删除', danger: true }).then((ok) => { if (ok) void window.api.standaloneNotesRemove(n.id).then(() => setSnotesVer((v) => v + 1)) }) }}>删除</button>
               </div>
               {snEdit === n.id && (
                 <textarea className="pd-note-ta" style={{ marginTop: 6 }} value={snBody} onChange={(e) => setSnBody(e.target.value)} rows={6} placeholder="Markdown…" />

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DeepHit, Paper, TagRow } from './types'
 import { STATUS_META } from './types'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 interface Props {
   papers: Paper[]
@@ -88,6 +89,7 @@ export default function LibraryPane({
   onTagFilter
 }: Props): JSX.Element {
   // ---------- 标签系统（v0.6） ----------
+  const dlg = useDialog()
   const [tags, setTags] = useState<TagRow[]>([])
   const [tagsVer, setTagsVer] = useState(0) // 增删改标签后手动递增触发重拉
   useEffect(() => {
@@ -122,22 +124,21 @@ export default function LibraryPane({
   const [tagMenu, setTagMenu] = useState<{ x: number; y: number; tag: TagRow } | null>(null)
 
   const onCreateTag = async (): Promise<void> => {
-    const name = window.prompt('新建标签（名称）')
-    const n = name?.trim()
-    if (!n) return
+    const name = await dlg.prompt({ title: '新建标签', placeholder: '标签名称' })
+    if (name == null) return
     try {
-      await window.api.tagsCreate(n)
+      await window.api.tagsCreate(name)
       bumpTags()
+      window.dispatchEvent(new CustomEvent('cspaper:tags-changed'))
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 120), 'error')
     }
   }
   const doRenameTag = async (): Promise<void> => {
     if (!tagMenu) return
     const { tag } = tagMenu
-    const name = window.prompt('重命名标签', tag.name)
-    const n = name?.trim()
-    if (!n || n === tag.name) {
+    const n = await dlg.prompt({ title: `重命名标签「${tag.name}」`, defaultValue: tag.name })
+    if (n == null || n === tag.name) {
       setTagMenu(null)
       return
     }
@@ -147,8 +148,9 @@ export default function LibraryPane({
       setTagMenu(null)
       bumpTags()
       onPapersChanged() // 文献上的 tags 字段含旧名，需刷新
+      window.dispatchEvent(new CustomEvent('cspaper:tags-changed'))
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 120), 'error')
     }
   }
   const doSetTagColor = async (color: string): Promise<void> => {
@@ -157,14 +159,15 @@ export default function LibraryPane({
       await window.api.tagsSetColor(tagMenu.tag.id, color)
       setTagMenu(null)
       bumpTags()
+      window.dispatchEvent(new CustomEvent('cspaper:tags-changed'))
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 120), 'error')
     }
   }
   const doDeleteTag = async (): Promise<void> => {
     if (!tagMenu) return
     const { tag } = tagMenu
-    if (!window.confirm(`删除标签「${tag.name}」？将从所有文献上移除该标签。`)) {
+    if (!(await dlg.confirm({ title: `删除标签「${tag.name}」？`, message: '将从所有文献上移除该标签。', okText: '删除', danger: true }))) {
       setTagMenu(null)
       return
     }
@@ -174,8 +177,9 @@ export default function LibraryPane({
       setTagMenu(null)
       bumpTags()
       onPapersChanged()
+      window.dispatchEvent(new CustomEvent('cspaper:tags-changed'))
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 120), 'error')
     }
   }
 
@@ -303,7 +307,7 @@ export default function LibraryPane({
       setRenamePaper(null)
       onPapersChanged()
     } catch (e) {
-      alert(String(e))
+      dlg.toast(`重命名失败：${String(e).replace(/^Error: /, '').slice(0, 100)}`, 'error')
     } finally {
       setRenamingPaper(false)
     }
@@ -330,7 +334,7 @@ export default function LibraryPane({
       setRenameCat(null)
       onPapersChanged()
     } catch (e) {
-      alert(String(e))
+      dlg.toast(`分类重命名失败：${String(e).replace(/^Error: /, '').slice(0, 100)}`, 'error')
     } finally {
       setRenaming(false)
     }
@@ -345,7 +349,7 @@ export default function LibraryPane({
       setNewCat(null)
       onPapersChanged()
     } catch (e) {
-      alert(String(e))
+      dlg.toast(`新建分类失败：${String(e).replace(/^Error: /, '').slice(0, 100)}`, 'error')
     } finally {
       setCreating(false)
     }
@@ -588,8 +592,9 @@ export default function LibraryPane({
               className="tag-add-btn"
               title="新建集合（逻辑分组，不动文件目录）"
               onClick={() => {
-                const name = window.prompt('新建集合名称：')
-                if (name?.trim()) void window.api.collectionsCreate(name.trim()).then(refreshColls)
+                void dlg.prompt({ title: '新建集合', placeholder: '集合名称（如：导师书单）' }).then((name) => {
+                  if (name) void window.api.collectionsCreate(name).then(refreshColls)
+                })
               }}
             >
               ＋
@@ -603,12 +608,14 @@ export default function LibraryPane({
                 onClick={() => setSelColl(selColl === c.id ? null : c.id)}
                 onContextMenu={(e) => {
                   e.preventDefault()
-                  if (window.confirm(`删除集合「${c.name}」？（只解除挂接，不动文献与文件）`)) {
-                    void window.api.collectionsRemove(c.id).then(() => {
-                      if (selColl === c.id) setSelColl(null)
-                      refreshColls()
-                    })
-                  }
+                  void dlg.confirm({ title: `删除集合「${c.name}」？`, message: '只解除挂接，不动文献与文件。', okText: '删除', danger: true }).then((ok) => {
+                    if (ok) {
+                      void window.api.collectionsRemove(c.id).then(() => {
+                        if (selColl === c.id) setSelColl(null)
+                        refreshColls()
+                      })
+                    }
+                  })
                 }}
                 title="点击查看集合内文献；右键删除集合（文献不受影响）"
               >

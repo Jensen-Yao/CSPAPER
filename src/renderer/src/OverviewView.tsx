@@ -5,6 +5,7 @@ import { catLabel, statusMeta, withAlpha } from './LibraryPane'
 import StatsView from './StatsView'
 import KnowledgeView from './KnowledgeViews'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 interface Props {
   papers: Paper[]
@@ -47,6 +48,7 @@ const PALETTE = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490
 
 // 纵览：Zotero 式文献总表 + 知识网络（同类/同作者/共现关联的力导向图）
 export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh, externalTagFilter }: Props): JSX.Element {
+  const dlg = useDialog()
   const [sortKey, setSortKey] = useState<SortKey>('title')
   const [asc, setAsc] = useState(true)
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -86,7 +88,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
     try {
       await window.api.setStatus(id, st)
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 140), 'error')
     }
     onRefresh()
   }
@@ -100,7 +102,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
       await window.api.citedUpdate(filtered.map((p) => p.id))
       onRefresh()
     } catch (e) {
-      alert(String(e))
+      dlg.toast(String(e).replace(/^Error: /, '').slice(0, 140), 'error')
     } finally {
       setCitedBusy(false)
     }

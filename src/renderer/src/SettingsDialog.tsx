@@ -3,6 +3,7 @@ import type { ScriptInfo, Settings, StyleInfo } from './types'
 import { ALL_PROVIDERS, PROVIDER_GROUPS, type ProviderPreset } from './providers'
 import { presetCaps } from './model-caps-presets'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 interface Props {
   settings: Settings
@@ -46,6 +47,7 @@ const NAV: Array<{ id: Sec; icon: JSX.Element; label: string }> = [
 const THINKING_LABEL: Record<string, string> = { default: '默认', off: '关闭', low: '低', medium: '中', high: '高' }
 
 export default function SettingsDialog({ settings, indexed, indexInfo, onSave, onRescanned, onClose }: Props): JSX.Element {
+  const dlg = useDialog()
   const [form, setForm] = useState<Settings>(settings)
   const [profiles, setProfiles] = useState<NonNullable<Settings['profiles']>>(
     () =>
@@ -694,13 +696,15 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                       className="btn ghost"
                       style={{ padding: '3px 10px', color: '#b4443c' }}
                       onClick={() => {
-                        if (!window.confirm(`删除「${preset?.name ?? pf.provider}」配置？`)) return
-                        setProfiles((list) => {
-                          const next = list.filter((_, idx) => idx !== i)
-                          saveProfiles(next)
-                          return next
+                        void dlg.confirm({ title: `删除「${preset?.name ?? pf.provider}」配置？`, okText: '删除', danger: true }).then((ok) => {
+                          if (!ok) return
+                          setProfiles((list) => {
+                            const next = list.filter((_, idx) => idx !== i)
+                            saveProfiles(next)
+                            return next
+                          })
+                          setModelTab('list')
                         })
-                        setModelTab('list')
                       }}
                     >
                       删除

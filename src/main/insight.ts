@@ -489,6 +489,16 @@ ${out}
 }
 
 // ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
+// ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
+// v0.19：笔记区用 HTML 注释哨兵界定。此前以「下一个 ## 」当结束边界，用户笔记里
+// 出现任何二级标题（插模板/自己写「## 方法」）都会被截断，且保存时旧尾部重复堆回。
+const NOTES_HEAD = '## 我的笔记'
+const NOTES_OPEN = '<!-- cspaper:notes:start -->'
+const NOTES_CLOSE = '<!-- cspaper:notes:end -->'
+// md 内已知的固定章节（导入模板生成）：旧格式无哨兵时作为笔记区的结束边界
+const NOTES_KNOWN_SECTIONS = ['## 阅读状态', '## 速览', '## Zotero 标注', '## 参考文献']
+
+/** 读笔记：优先哨兵；旧格式回退到已知章节标题（绝不用任意 ##） */
 export function getMyNotesText(paperId: number): string {
   const db = getDb()
   const row = db.prepare('SELECT path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as { path: string } | undefined
@@ -498,16 +508,27 @@ export function getMyNotesText(paperId: number): string {
     const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
     if (!mdFile) return ''
     const raw = fs.readFileSync(path.join(dir, mdFile), 'utf8')
-    const si = raw.indexOf('## 我的笔记')
-    if (si < 0) return ''
-    let ei = raw.indexOf('\n## ', si + 10)
-    if (ei < 0) ei = raw.length
-    return raw.slice(si + '## 我的笔记'.length, ei).trim()
+    const hi = raw.indexOf(NOTES_HEAD)
+    if (hi < 0) return ''
+    const after = raw.slice(hi + NOTES_HEAD.length)
+    const oi = after.indexOf(NOTES_OPEN)
+    if (oi >= 0) {
+      const ci = after.indexOf(NOTES_CLOSE, oi)
+      return (ci >= 0 ? after.slice(oi + NOTES_OPEN.length, ci) : after.slice(oi + NOTES_OPEN.length)).trim()
+    }
+    // 旧格式：截到第一个已知章节；没有已知章节则整个尾部都是笔记
+    let ei = after.length
+    for (const sec of NOTES_KNOWN_SECTIONS) {
+      const k = after.indexOf('\n' + sec)
+      if (k >= 0 && k < ei) ei = k
+    }
+    return after.slice(0, ei).trim()
   } catch {
     return ''
   }
 }
 
+/** 写笔记：整段用哨兵重写，笔记内任意 ## 不再影响边界 */
 export function saveMyNotesText(paperId: number, text: string): boolean {
   const db = getDb()
   const row = db.prepare('SELECT path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as { path: string } | undefined
@@ -518,15 +539,24 @@ export function saveMyNotesText(paperId: number, text: string): boolean {
     if (!mdFile) return false
     const mdPath = path.join(dir, mdFile)
     let raw = fs.readFileSync(mdPath, 'utf8')
-    const si = raw.indexOf('## 我的笔记')
-    if (si >= 0) {
-      let ei = raw.indexOf('\n## ', si + 10)
-      if (ei < 0) ei = raw.length
-      raw = raw.slice(0, si) + '## 我的笔记\n\n' + text.trim() + '\n' + raw.slice(ei)
+    const body = '\n' + NOTES_OPEN + '\n' + text.trim() + '\n' + NOTES_CLOSE + '\n'
+    const hi = raw.indexOf(NOTES_HEAD)
+    if (hi >= 0) {
+      const after = raw.slice(hi + NOTES_HEAD.length)
+      const oi = after.indexOf(NOTES_OPEN)
+      if (oi >= 0) {
+        // 新格式：整段哨兵区替换
+        const ci = after.indexOf(NOTES_CLOSE, oi)
+        const endRel = ci >= 0 ? ci + NOTES_CLOSE.length : after.length
+        raw = raw.slice(0, hi) + NOTES_HEAD + '\n' + body + after.slice(endRel)
+      } else {
+        // 旧格式一次性迁移为哨兵区
+        raw = raw.slice(0, hi) + NOTES_HEAD + '\n' + body
+      }
     } else {
-      raw = raw.replace(/\s*$/, '') + '\n\n## 我的笔记\n\n' + text.trim() + '\n'
+      raw = raw.replace(/\s*$/, '') + '\n\n' + NOTES_HEAD + '\n' + body
     }
-    fs.writeFileSync(mdPath, raw)
+        fs.writeFileSync(mdPath, raw)
     return true
   } catch {
     return false

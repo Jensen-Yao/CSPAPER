@@ -661,15 +661,39 @@ export function paperTags(paperId: number): Array<{ id: number; name: string; co
     .all(paperId) as Array<{ id: number; name: string; color: string }>
 }
 
+
+// v0.19：标签写回 md frontmatter。此前标签只进 DB，而扫描在 md 变化时用
+// frontmatter 的 tags 行全量覆盖 DB——用户写完笔记/改完元数据，标签就被清空。
+// 保持「md 是唯一事实源」：增删标签同步改写 tags 行。
+function syncTagsToMd(paperId: number): void {
+  try {
+    const row = db.prepare('SELECT path FROM papers WHERE id=?').get(paperId) as { path: string } | undefined
+    if (!row) return
+    const dir = path.dirname(row.path)
+    const mdFile = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.md'))
+    if (!mdFile) return
+    const mdPath = path.join(dir, mdFile)
+    let raw = fs.readFileSync(mdPath, 'utf8')
+    const names = (db.prepare('SELECT t.name FROM tags t JOIN paper_tags pt ON pt.tag_id=t.id WHERE pt.paper_id=? ORDER BY t.name').all(paperId) as Array<{ name: string }>).map((r) => r.name)
+    const tagLine = names.length > 0 ? `tags: [${names.map((n) => n.replace(/"/g, "'")).join(', ')}]` : 'tags: []'
+    const tagsRe = new RegExp('^tags:[^\n]*', 'm')
+    if (tagsRe.test(raw)) raw = raw.replace(tagsRe, tagLine)
+    else raw = raw.replace(/^---\n/, '---\n' + tagLine + '\n')
+    fs.writeFileSync(mdPath, raw)
+  } catch { /* md 写回失败不阻断 DB 操作 */ }
+}
+
 export function addPaperTag(paperId: number, name: string, color?: string): TagRow {
   const t = createTag(name, color)
   db.prepare('INSERT OR IGNORE INTO paper_tags(paper_id,tag_id) VALUES(?,?)').run(paperId, t.id)
+  syncTagsToMd(paperId) // md frontmatter 同步，防扫描回滚
   const count = (db.prepare('SELECT COUNT(*) AS n FROM paper_tags WHERE tag_id=?').get(t.id) as { n: number }).n
   return { ...t, count }
 }
 
 export function removePaperTag(paperId: number, tagId: number): void {
   db.prepare('DELETE FROM paper_tags WHERE paper_id=? AND tag_id=?').run(paperId, tagId)
+  syncTagsToMd(paperId) // md frontmatter 同步，防扫描回滚
 }
 
 // md frontmatter tags 落库：全量替换该论文的标签（扫描驱动，md 是唯一事实来源）
