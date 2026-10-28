@@ -20,7 +20,7 @@
 | `npm run typecheck` | 通过（含 tests 工程） |
 | `npm run test:core` | 75 / 75 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 69 / 69，无 renderer 异常 |
+| `npm run test:ui` | 70 / 70，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
@@ -50,6 +50,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 顶部操作改为明确动作：复制结果、导出 Markdown、宽屏阅读、继续任务 / 中断续跑、删除会话或任务。
 - Task 会话用户输入去掉嵌套卡片，改为文档流边线；宽屏模式真实扩展统一任务会话。
 - 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 69/69、无 renderer 异常。
+## 持续迭代：已有功能安全与取消体验加固（2026-10-29）
+
+- OpenAccess 批量下载新增「停止下载」：中止当前网络请求，不再继续后续条目；已完成替换保留备份，未执行条目保持题录，结果明确展示已处理 / 成功 / 失败 / 未执行。
+- OpenAccess 下载前会解析 PDF 域名并拒绝本机、私网、链路本地、组播/保留等地址；重定向终点同样执行 DNS 与地址检查，降低公网 OA 链接转向内网服务的风险。
+- 下载超时信号覆盖响应头和响应体读取全程，避免慢响应体绕过超时。
+- 全屏对话列表为每个会话提供可见删除入口，确认后与 Work 使用同一持久删除协议；运行中会话必须先停止。
+- 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 70/70、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

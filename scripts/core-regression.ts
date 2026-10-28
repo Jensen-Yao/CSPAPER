@@ -548,37 +548,54 @@ app.whenReady().then(async()=>{
       store.scanLibrary(library)
       return {pdf,md,id:(store.getDb().prepare('SELECT id FROM papers WHERE path=?').get(pdf) as {id:number}).id}
     }
-    const good=makeRecord('oa-good','10.0000/oa-good'),bad=makeRecord('oa-bad','10.0000/oa-bad')
+    const good=makeRecord('oa-good','10.0000/oa-good'),bad=makeRecord('oa-bad','10.0000/oa-bad'),privateHost=makeRecord('oa-private','10.0000/oa-private'),cancelRecord=makeRecord('oa-cancel','10.0000/oa-cancel')
     const goodPdf=Buffer.concat([Buffer.from('%PDF-1.4 downloaded full text\n'),Buffer.alloc(1100,65)])
     const badPdf=Buffer.concat([Buffer.from('<html>not a pdf'),Buffer.alloc(1100,120)])
-    const fetchImpl=(async(input:string|URL)=>{
+    const fetchImpl=(async(input:string|URL,init?:RequestInit)=>{
       const url=String(input)
       if(url.includes('10.0000/oa-good'))return new Response(JSON.stringify({display_name:'OA good',best_oa_location:{pdf_url:'https://publisher.example/good.pdf',landing_page_url:'https://publisher.example/good',license:'cc-by',source:{display_name:'Public Repository'}}}),{headers:{'content-type':'application/json'}})
       if(url.includes('10.0000/oa-bad'))return new Response(JSON.stringify({display_name:'OA bad',best_oa_location:{pdf_url:'https://publisher.example/bad.pdf'}}),{headers:{'content-type':'application/json'}})
+      if(url.includes('10.0000/oa-private'))return new Response(JSON.stringify({display_name:'OA private',best_oa_location:{pdf_url:'https://private.example/private.pdf'}}),{headers:{'content-type':'application/json'}})
+      if(url.includes('10.0000/oa-cancel'))return new Response(JSON.stringify({display_name:'OA cancel',best_oa_location:{pdf_url:'https://publisher.example/cancel.pdf'}}),{headers:{'content-type':'application/json'}})
       if(url.endsWith('/good.pdf'))return new Response(goodPdf,{headers:{'content-type':'application/pdf','content-length':String(goodPdf.length)}})
       if(url.endsWith('/bad.pdf'))return new Response(badPdf,{headers:{'content-type':'text/html','content-length':String(badPdf.length)}})
+      if(url.endsWith('/private.pdf'))throw new Error('private URL should not be fetched')
+      if(url.endsWith('/cancel.pdf'))return new Promise<Response>((_resolve,reject)=>{
+        const timer=setInterval(()=>{if(init?.signal?.aborted){clearInterval(timer);reject(init.signal.reason??new Error('cancelled'))}},5)
+      })
       throw new Error('unexpected test URL '+url)
     }) as typeof fetch
     const progress:OaRepairProgress[]=[]
-    const preview=await previewOaRepairs({paperIds:[good.id,bad.id],fetchImpl,onProgress:p=>progress.push(p)})
+    const resolveHostImpl=async(host:string)=>{return host==='private.example'?['192.168.1.20']:['203.0.113.10']}
+    const preview=await previewOaRepairs({paperIds:[good.id,bad.id,privateHost.id],fetchImpl,onProgress:p=>progress.push(p)})
     assert.equal(preview.candidates.find(item=>item.paperId===good.id)?.status,'available')
     assert.equal(preview.candidates.find(item=>item.paperId===bad.id)?.status,'available')
+    assert.equal(preview.candidates.find(item=>item.paperId===privateHost.id)?.status,'available')
     assert.ok(preview.candidates.every(item=>item.pdfUrl?.startsWith('https://')))
-    const beforeBad=fs.readFileSync(bad.pdf)
-    const applied=await applyOaRepairs({paperIds:[good.id,bad.id],fetchImpl})
-    const goodOutcome=applied.outcomes.find(item=>item.paperId===good.id),badOutcome=applied.outcomes.find(item=>item.paperId===bad.id)
-    assert.equal(goodOutcome?.repaired,true)
-    assert.equal(badOutcome?.repaired,false)
-    assert.equal(badOutcome?.status,'invalid_pdf')
-    assert.equal(fs.readFileSync(bad.pdf).equals(beforeBad),true)
-    assert.equal(fs.readFileSync(good.pdf).equals(goodPdf),true)
-    assert.equal(parseFrontmatter(fs.readFileSync(good.md,'utf8')).source_kind,'pdf')
+    const beforeBad=fs.readFileSync(bad.pdf),beforePrivate=fs.readFileSync(privateHost.pdf)
+    const cancelController=new AbortController(),beforeCancel=fs.readFileSync(cancelRecord.pdf)
+    const cancelPending=applyOaRepairs({paperIds:[cancelRecord.id],fetchImpl,resolveHostImpl,signal:cancelController.signal})
+    cancelController.abort()
+    const cancelledApply=await cancelPending
+    assert.equal(cancelledApply.cancelled,true,'cancel flag')
+    assert.ok(cancelledApply.outcomes.length===0||cancelledApply.outcomes.at(-1)?.status==='cancelled','cancel outcome')
+    assert.equal(fs.readFileSync(cancelRecord.pdf).equals(beforeCancel),true,'cancel original')
+    const applied=await applyOaRepairs({paperIds:[good.id,bad.id,privateHost.id],fetchImpl,resolveHostImpl})
+    const goodOutcome=applied.outcomes.find(item=>item.paperId===good.id),badOutcome=applied.outcomes.find(item=>item.paperId===bad.id),privateOutcome=applied.outcomes.find(item=>item.paperId===privateHost.id)
+    assert.equal(goodOutcome?.repaired,true,'good')
+    assert.equal(badOutcome?.repaired,false,'bad')
+    assert.equal(badOutcome?.status,'invalid_pdf','bad status')
+    assert.equal(privateOutcome?.status,'download_failed','private');assert.match(privateOutcome?.error??'',/内网|本机/,'private error')
+    assert.equal(fs.readFileSync(bad.pdf).equals(beforeBad),true,'bad original')
+    assert.equal(fs.readFileSync(privateHost.pdf).equals(beforePrivate),true,'private original')
+    assert.equal(fs.readFileSync(good.pdf).equals(goodPdf),true,'good pdf')
+    assert.equal(parseFrontmatter(fs.readFileSync(good.md,'utf8')).source_kind,'pdf','good md')
     assert.match(parseFrontmatter(fs.readFileSync(good.md,'utf8')).oa_pdf_url,/good\.pdf$/)
     const journal=db.prepare('SELECT id,state,backup_dir FROM operation_journal WHERE kind=?').all('oa.repair_pdf') as Array<{id:string;state:string;backup_dir:string}>
     assert.equal(journal.length,1);assert.equal(journal[0].state,'committed');assert.ok(fs.existsSync(journal[0].backup_dir))
     const row=db.prepare('SELECT source_kind FROM active_papers WHERE id=?').get(good.id) as {source_kind:string}
     assert.equal(row.source_kind,'pdf')
-    assert.ok(progress.some(item=>item.phase==='preview'&&item.done===2))
+    assert.ok(progress.some(item=>item.phase==='preview'&&item.done===3))
   })
   await test('OpenAccess preview cancellation aborts the active request',async()=>{
     const controller=new AbortController()

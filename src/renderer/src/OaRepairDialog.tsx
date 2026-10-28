@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<OaRepairCandidate['status'], string> = {
   no_match: '未安全匹配',
   download_failed: '下载失败',
   invalid_pdf: '不是有效 PDF',
+  cancelled: '已停止',
   error: '探测失败'
 }
 
@@ -135,13 +136,13 @@ export default function OaRepairDialog({ open, initialPaperIds, onClose, onPaper
           )}
           {result && (
             <div className="oa-repair-result">
-              <h3>修复完成</h3>
-              <p>成功升级 <b>{result.repaired}</b> 篇；下载/校验失败 <b>{result.failed}</b> 篇；未找到可用 OA 原文 <b>{result.skipped}</b> 篇。原题录 PDF 与 Markdown 均保留备份。</p>
+              <h3>{result.cancelled ? '已停止下载' : '修复完成'}</h3>
+              <p>已处理 <b>{result.outcomes.length}/{result.total}</b> 篇；成功升级 <b>{result.repaired}</b> 篇；下载/校验失败 <b>{result.failed}</b> 篇；未执行 <b>{result.skipped}</b> 篇。已完成的替换保留备份，未执行条目仍保持题录。</p>
               <div className="oa-repair-list">
                 {result.outcomes.filter(item => selected.has(item.paperId)).map(item => (
-                  <div key={item.paperId} className={`oa-repair-row ${item.repaired ? 'available' : 'download_failed'}`}>
+                  <div key={item.paperId} className={`oa-repair-row ${item.repaired ? 'available' : item.status}`}>
                     <span className="oa-repair-main"><b>{item.title}</b><small>{item.error ?? (item.bytes ? `已下载 ${Math.round(item.bytes / 1024)} KB` : '')}</small></span>
-                    <span className={`oa-repair-status ${item.repaired ? 'available' : 'download_failed'}`}>{item.repaired ? '已升级原文' : STATUS_LABEL[item.status]}</span>
+                    <span className={`oa-repair-status ${item.repaired ? 'available' : item.status === 'cancelled' ? 'cancelled' : 'download_failed'}`}>{item.repaired ? '已升级原文' : STATUS_LABEL[item.status]}</span>
                   </div>
                 ))}
               </div>
@@ -149,10 +150,10 @@ export default function OaRepairDialog({ open, initialPaperIds, onClose, onPaper
           )}
         </div>
         <div className="modal-actions">
-          <span className="oa-repair-note">{phase === 'applying' ? `正在下载 ${progress?.done ?? 0}/${progress?.total ?? selected.size}` : '下载前校验 HTTPS、PDF 头和 100MB 上限；替换走操作日志。'}</span>
+          <span className="oa-repair-note">{phase === 'applying' ? `正在下载 ${progress?.done ?? 0}/${progress?.total ?? selected.size}` : '下载前校验公网地址、PDF 头和 100MB 上限；替换走操作日志。'}</span>
           <button className="btn ghost" disabled={phase === 'applying'} onClick={closeDialog}>{result ? '关闭' : '取消'}</button>
           {phase === 'review' && <button className="btn primary" disabled={selected.size === 0} onClick={() => void apply()}>下载并替换 {selected.size} 篇</button>}
-          {phase === 'applying' && <button className="btn primary" disabled>正在处理…</button>}
+          {phase === 'applying' && <button className="btn primary oa-repair-stop" onClick={() => void window.api.oaRepairCancel().catch(() => {})}>停止下载</button>}
         </div>
       </div>
     </div>

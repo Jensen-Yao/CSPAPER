@@ -200,7 +200,7 @@ export interface ZoteroRepairApplyResult {
   outcomes: ZoteroRepairCandidate[]
 }
 
-export type OaRepairStatus = 'available' | 'not_available' | 'no_identifier' | 'no_match' | 'download_failed' | 'invalid_pdf' | 'error'
+export type OaRepairStatus = 'available' | 'not_available' | 'no_identifier' | 'no_match' | 'download_failed' | 'invalid_pdf' | 'cancelled' | 'error'
 
 export interface OaRepairCandidate {
   paperId: number
@@ -235,6 +235,7 @@ export interface OaRepairApplyResult {
   repaired: number
   failed: number
   skipped: number
+  cancelled?: boolean
   outcomes: OaRepairOutcome[]
 }
 

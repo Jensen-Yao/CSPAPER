@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import net from 'node:net'
+import dns from 'node:dns/promises'
 import { createHash } from 'node:crypto'
 import { app } from 'electron'
 import { getDb, getSettings, scanLibraryAsync } from './db'
@@ -10,7 +11,7 @@ import { runFileOperation } from './operations/journal'
 const UA = 'CSPAPER/0.20 (mailto:cspaper@app.local)'
 const MAX_PDF_BYTES = 100 * 1024 * 1024
 
-export type OaRepairStatus = 'available' | 'not_available' | 'no_identifier' | 'no_match' | 'download_failed' | 'invalid_pdf' | 'error'
+export type OaRepairStatus = 'available' | 'not_available' | 'no_identifier' | 'no_match' | 'download_failed' | 'invalid_pdf' | 'cancelled' | 'error'
 
 export interface OaRepairCandidate {
   paperId: number
@@ -45,6 +46,7 @@ export interface OaRepairApplyResult {
   repaired: number
   failed: number
   skipped: number
+  cancelled?: boolean
   outcomes: OaRepairOutcome[]
 }
 
@@ -62,7 +64,7 @@ interface OaLocation { pdf_url?: string | null; landing_page_url?: string | null
 interface OaWork { id?: string; doi?: string | null; title?: string | null; display_name?: string | null; best_oa_location?: OaLocation | null; locations?: OaLocation[] | null }
 
 function emptyCounts(): Record<OaRepairStatus, number> {
-  return { available:0,not_available:0,no_identifier:0,no_match:0,download_failed:0,invalid_pdf:0,error:0 }
+  return { available:0,not_available:0,no_identifier:0,no_match:0,download_failed:0,invalid_pdf:0,cancelled:0,error:0 }
 }
 
 function summarize(items:Array<OaRepairCandidate|OaRepairOutcome>):Record<OaRepairStatus,number> {
@@ -101,6 +103,28 @@ function safePublicHttpsUrl(raw:string):string|null {
   }
 }
 
+const blockedIps=new net.BlockList()
+for(const [address,prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.0.0.0',24],['192.168.0.0',16],['198.18.0.0',15],['224.0.0.0',4],['240.0.0.0',4]] as Array<[string,number]>)blockedIps.addSubnet(address,prefix)
+blockedIps.addAddress('::1','ipv6')
+blockedIps.addSubnet('fc00::',7,'ipv6')
+blockedIps.addSubnet('fe80::',10,'ipv6')
+function isBlockedIp(rawIp:string):boolean {
+  const ip=rawIp.toLowerCase()
+  if(ip==='::')return true
+  const mapped=ip.startsWith('::ffff:')&&net.isIPv4(ip.slice(7))?ip.slice(7):ip
+  return blockedIps.check(mapped,net.isIPv6(mapped)?'ipv6':'ipv4')
+}
+type ResolveHostLike=(hostname:string)=>Promise<string[]>
+const resolveHost:ResolveHostLike=async hostname=>(await dns.lookup(hostname,{all:true,verbatim:true})).map(item=>item.address)
+async function assertPublicHost(hostname:string,resolver:ResolveHostLike):Promise<void> {
+  if(net.isIP(hostname)) {
+    if(isBlockedIp(hostname))throw new Error('PDF 地址解析到内网/本机地址，已拒绝下载')
+    return
+  }
+  const addresses=await resolver(hostname)
+  if(!addresses.length)throw new Error('PDF 域名没有可解析地址，已拒绝下载')
+  if(addresses.some(address=>isBlockedIp(address)))throw new Error('PDF 域名解析到内网/本机地址，已拒绝下载')
+}
 function requestSignal(timeoutMs:number,external?:AbortSignal):{signal:AbortSignal;cleanup:()=>void} {
   const controller=new AbortController()
   const timer=setTimeout(()=>controller.abort(new DOMException('请求超过时间限制','TimeoutError')),timeoutMs)
@@ -181,7 +205,7 @@ async function locate(row:RecordRow,fetchImpl:FetchLike,signal?:AbortSignal):Pro
   }
 }
 
-export async function previewOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchLike;signal?:AbortSignal;onProgress?:(p:OaRepairProgress)=>void}={}):Promise<OaRepairPreview> {
+export async function previewOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchLike;signal?:AbortSignal;resolveHostImpl?:ResolveHostLike;onProgress?:(p:OaRepairProgress)=>void}={}):Promise<OaRepairPreview> {
   const fetchImpl=input.fetchImpl??((url,init)=>fetch(url,init))
   const rows=recordRows(input.paperIds?.map(Number).filter(Number.isInteger))
   const out:OaRepairCandidate[]=[]
@@ -194,53 +218,68 @@ export async function previewOaRepairs(input:{paperIds?:number[];fetchImpl?:Fetc
   return {total:out.length,counts:summarize(out),candidates:out}
 }
 
-async function downloadPdf(url:string,fetchImpl:FetchLike,external?:AbortSignal):Promise<{file:string;bytes:number}> {
+async function downloadPdf(url:string,fetchImpl:FetchLike,external?:AbortSignal,resolver:ResolveHostLike=resolveHost):Promise<{file:string;bytes:number}> {
+  const parsed=new URL(url)
+  if(!safePublicHttpsUrl(parsed.toString()))throw new Error('PDF 地址不是公网 HTTPS，已拒绝下载')
+  await assertPublicHost(parsed.hostname,resolver)
   const request=requestSignal(90_000,external)
-  let response:Response
-  try {response=await fetchImpl(url,{headers:{'User-Agent':UA},signal:request.signal})}
-  finally {request.cleanup()}
-  if(!response.ok)throw new Error(`PDF 下载失败 HTTP ${response.status}`)
-  // fetch 会跟随重定向；最终地址仍必须是公网 HTTPS，防止 OA 链接转到内网地址。
-  if(response.url&&!safePublicHttpsUrl(response.url))throw new Error('PDF 重定向到非公网 HTTPS 地址，已拒绝下载')
-  const declared=Number(response.headers.get('content-length')??'0')
-  if(declared>MAX_PDF_BYTES)throw new Error('PDF 超过 100MB 下载上限')
-  const chunks:Array<Uint8Array>=[]
-  let bytes=0
-  if(response.body) {
-    const reader=response.body.getReader()
-    for(;;) {
-      const chunk=await reader.read()
-      if(chunk.done)break
-      bytes+=chunk.value.byteLength
-      if(bytes>MAX_PDF_BYTES)throw new Error('PDF 超过 100MB 下载上限')
-      chunks.push(chunk.value)
+  try {
+    const response=await fetchImpl(url,{headers:{'User-Agent':UA},signal:request.signal})
+    if(!response.ok)throw new Error(`PDF 下载失败 HTTP ${response.status}`)
+    // fetch 会跟随重定向；最终地址仍必须是公网 HTTPS 且不能解析到内网，防止 OA 链接转到内网地址。
+    if(response.url){
+      const redirected=new URL(response.url)
+      if(!safePublicHttpsUrl(redirected.toString()))throw new Error('PDF 重定向到非公网 HTTPS 地址，已拒绝下载')
+      await assertPublicHost(redirected.hostname,resolver)
     }
-  } else {
-    const buffer=Buffer.from(await response.arrayBuffer())
-    bytes=buffer.byteLength
-    if(bytes>MAX_PDF_BYTES)throw new Error('PDF 超过 100MB 下载上限')
-    chunks.push(buffer)
-  }
-  const pdf=Buffer.concat(chunks.map(chunk=>Buffer.from(chunk)))
-  if(bytes<1024||pdf.subarray(0,5).toString('latin1')!=='%PDF-')throw new Error('下载内容不是有效 PDF')
-  const dir=fs.mkdtempSync(path.join(app.getPath('temp'),'cspaper-oa-'))
-  const file=path.join(dir,'paper.pdf')
-  fs.writeFileSync(file,pdf)
-  return {file,bytes}
+    const declared=Number(response.headers.get('content-length')??'0')
+    if(declared>MAX_PDF_BYTES)throw new Error('PDF 超过 100MB 上限')
+    const chunks:Array<Uint8Array>=[]
+    let bytes=0
+    if(response.body) {
+      const reader=response.body.getReader()
+      for(;;) {
+        const chunk=await reader.read()
+        if(chunk.done)break
+        bytes+=chunk.value.byteLength
+        if(bytes>MAX_PDF_BYTES)throw new Error('PDF 超过 100MB 上限')
+        chunks.push(chunk.value)
+      }
+    } else {
+      const buffer=Buffer.from(await response.arrayBuffer())
+      bytes=buffer.byteLength
+      if(bytes>MAX_PDF_BYTES)throw new Error('PDF 超过 100MB 上限')
+      chunks.push(buffer)
+    }
+    const pdf=Buffer.concat(chunks.map(chunk=>Buffer.from(chunk)))
+    if(bytes<1024||pdf.subarray(0,5).toString('latin1')!=='%PDF-')throw new Error('下载内容不是有效 PDF')
+    const dir=fs.mkdtempSync(path.join(app.getPath('temp'),'cspaper-oa-'))
+    const file=path.join(dir,'paper.pdf')
+    fs.writeFileSync(file,pdf)
+    return {file,bytes}
+  } finally {request.cleanup()}
 }
 
 function sha256(value:string|Buffer):string {
   return createHash('sha256').update(value).digest('hex')
 }
 
-export async function applyOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchLike;signal?:AbortSignal;onProgress?:(p:OaRepairProgress)=>void}={}):Promise<OaRepairApplyResult> {
-  const db=getDb(),fetchImpl=input.fetchImpl??((url,init)=>fetch(url,init))
+export async function applyOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchLike;signal?:AbortSignal;resolveHostImpl?:ResolveHostLike;onProgress?:(p:OaRepairProgress)=>void}={}):Promise<OaRepairApplyResult> {
+  const db=getDb(),fetchImpl=input.fetchImpl??((url,init)=>fetch(url,init)),resolver=input.resolveHostImpl??resolveHost
   const rows=recordRows(input.paperIds?.map(Number).filter(Number.isInteger))
   const outcomes:OaRepairOutcome[]=[]
+  let cancelled=false
   for(let i=0;i<rows.length;i++) {
+    if(input.signal?.aborted){cancelled=true;break}
     const row=rows[i]
     input.onProgress?.({phase:'apply',done:i,total:rows.length,current:row.title})
-    const candidate=await locate(row,fetchImpl,input.signal)
+    let candidate:OaRepairCandidate
+    try{candidate=await locate(row,fetchImpl,input.signal)}
+    catch(error) {
+      if(isAbortError(error)){cancelled=true;break}
+      outcomes.push({paperId:row.id,slug:row.slug,title:row.title,doi:row.doi,status:'error',repaired:false,error:String(error).slice(0,500)})
+      continue
+    }
     if(candidate.status!=='available') {
       outcomes.push({...candidate,repaired:false,error:candidate.reason})
       continue
@@ -248,7 +287,7 @@ export async function applyOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchL
     let tempFile=''
     try {
       const pdfUrl=candidate.pdfUrl!
-      const downloaded=await downloadPdf(pdfUrl,fetchImpl,input.signal)
+      const downloaded=await downloadPdf(pdfUrl,fetchImpl,input.signal,resolver)
       tempFile=downloaded.file
       const source=fs.statSync(tempFile),pdf=Buffer.from(fs.readFileSync(tempFile))
       const operationId=`oa-repair-${row.id}-${sha256(pdfUrl)}-${sha256(pdf)}`
@@ -271,7 +310,11 @@ export async function applyOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchL
       if(record.state==='failed')throw new Error(record.error||'PDF 替换失败')
       outcomes.push({...candidate,repaired:true,bytes:downloaded.bytes,operationId,backupDir:record.backup_dir})
     } catch(error) {
-      if(isAbortError(error))throw error
+      if(isAbortError(error)) {
+        cancelled=true
+        outcomes.push({...candidate,repaired:false,status:'cancelled',error:'用户停止下载，本篇未替换'})
+        break
+      }
       const invalid=/不是有效 PDF/.test(String(error))
       outcomes.push({...candidate,repaired:false,status:invalid?'invalid_pdf':'download_failed',error:String(error).slice(0,500)})
     } finally {
@@ -281,9 +324,9 @@ export async function applyOaRepairs(input:{paperIds?:number[];fetchImpl?:FetchL
     }
     if(i+1<rows.length)await new Promise(resolve=>setTimeout(resolve,120))
   }
-  input.onProgress?.({phase:'apply',done:rows.length,total:rows.length,current:''})
+  input.onProgress?.({phase:'apply',done:cancelled?outcomes.length:rows.length,total:rows.length,current:''})
   const repaired=outcomes.filter(item=>item.repaired).length
-  const failed=outcomes.filter(item=>item.status==='available'||item.status==='download_failed'||item.status==='invalid_pdf'||item.status==='error').length
+  const failed=outcomes.filter(item=>item.status==='download_failed'||item.status==='invalid_pdf'||item.status==='error').length
   if(repaired>0)await scanLibraryAsync(getSettings().libraryPath)
-  return {total:outcomes.length,repaired,failed,skipped:outcomes.length-repaired-failed,outcomes}
+  return {total:rows.length,repaired,failed,skipped:Math.max(0,rows.length-repaired-failed),cancelled,outcomes}
 }

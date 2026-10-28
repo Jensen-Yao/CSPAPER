@@ -142,7 +142,7 @@ export default function ChatView({
     </Composer>
   )
   return (
-    <ChatWorkspace navigation={<ConversationList conversations={chat.conversations} activeId={chat.conversation?.id} onSelect={id=>void chat.selectConversation(id)} onNew={()=>void chat.newConversation()} onRename={chat.renameConversation} onArchive={chat.archiveConversation} includeArchived={chat.includeArchived} onShowArchived={value=>void chat.showArchived(value)} hasMore={!!chat.nextCursor} onLoadMore={()=>void chat.refreshConversations(true)}/> }>
+    <ChatWorkspace navigation={<ConversationList conversations={chat.conversations} activeId={chat.conversation?.id} onSelect={id=>void chat.selectConversation(id)} onNew={()=>void chat.newConversation()} onRename={chat.renameConversation} onArchive={chat.archiveConversation} onDelete={chat.deleteConversation} includeArchived={chat.includeArchived} onShowArchived={value=>void chat.showArchived(value)} hasMore={!!chat.nextCursor} onLoadMore={()=>void chat.refreshConversations(true)}/> }>
       {chat.messages.length===0&&models.length===0&&onOpenSettings?(
         <div className="chat-hero">
           <div className="chat-hero-title" style={{fontFamily:'var(--serif)',fontSize:24,fontWeight:600,letterSpacing:2}}>十分钟后你就用得上</div>

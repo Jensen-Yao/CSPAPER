@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-29",
+  "feature": "existing-feature safety and cancellation hardening",
+  "fixes": [
+    "OpenAccess apply supports user cancellation and reports completed versus not-executed items",
+    "OpenAccess PDF hosts are DNS-resolved and private, loopback, link-local, shared, multicast and reserved ranges are rejected",
+    "redirect targets repeat HTTPS, DNS and private-address validation",
+    "download timeout covers headers and body streaming",
+    "full chat exposes per-conversation permanent delete using the Work deletion protocol"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "75/75",
+    "build": "pass",
+    "cssGate": "pass",
+    "ui": "70/70",
+    "rendererExceptions": 0
+  },
+  "coreCase": [
+    "private DNS result is rejected before PDF fetch and leaves the record unchanged",
+    "apply cancellation stops the active request without replacing the original PDF",
+    "valid OA PDF replacement and invalid PDF rejection continue to work"
+  ],
+  "uiCase": "full chat exposes a persistent delete action per session"
+}

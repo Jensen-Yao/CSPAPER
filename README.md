@@ -131,7 +131,7 @@ Markdown + CSL + PDF    Operation Journal
 |---|---|
 | Typecheck | ✅ 通过 |
 | Core regression | ✅ 75 / 75 |
-| UI regression | ✅ 69 / 69，无 renderer 异常 |
+| UI regression | ✅ 70 / 70，无 renderer 异常 |
 | Packaged app UI | ✅ 63 / 63 |
 | Lifecycle / crash | ✅ 单实例、窗口清理、操作崩溃、托盘恢复 |
 | Installer 0.20.0 | ✅ 首装、启动、升级、卸载、残留检查；安装包 SHA-256 `D4B01B048ADBFF001BB0C3F99EC8476F06BC214AAAD6B032611A36D2F6B39AAA` |

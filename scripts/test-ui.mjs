@@ -443,6 +443,7 @@ try{
   check('edit-and-resubmit exposes a persisted branch IPC',editedTurn.userMessage.parentId===editedResult.messages.find(message=>message.role==='user'&&message.parts.some(part=>part.type==='text'&&part.text.includes('EDIT-BRANCH')))?.parentId)
   await page.reload();await page.waitForSelector('.workspace-nav',{timeout:30000});await wait(600)
   check('unified chat survives renderer reload',(await page.locator('.chat-log .msg').count())>=2&&(await page.locator('.chat-log .msg.assistant').count())>=1)
+  check('full chat exposes a persistent delete action per session',await page.locator('.chat-conversation-delete').count()>=1)
   await navigate('文献库');await page.locator('.pcard').first().dblclick()
   await page.waitForSelector('.reader-surface:not(.pane-hidden) .page-wrap canvas',{timeout:20000})
   await page.locator('.top-switch button').filter({hasText:'Work'}).click();await wait(300)

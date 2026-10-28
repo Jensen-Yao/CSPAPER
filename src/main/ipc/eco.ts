@@ -34,31 +34,37 @@ export function registerEcoIpc(ctx: IpcCtx): void {
     return result
   })
 
-  // 开放获取原文修复：先只读探测 OpenAlex OA PDF，用户在 UI 确认后才下载替换。
-  let oaPreviewController:AbortController|null=null
+  // 开放获取原文修复：先只读探测 OpenAlex OA PDF，用户确认后才下载替换；探测和下载都可取消。
+  let oaActiveController:AbortController|null=null
   ipcMain.handle('oa:repair-preview', async (_e,paperIds?:number[]) => {
-    oaPreviewController?.abort()
+    oaActiveController?.abort()
     const controller=new AbortController()
-    oaPreviewController=controller
+    oaActiveController=controller
     try {
       return await previewOaRepairs({paperIds:paperIds?.map(Number).filter(Number.isInteger),signal:controller.signal,onProgress:p=>send('oa-repair:progress',p)})
     } finally {
-      if(oaPreviewController===controller)oaPreviewController=null
+      if(oaActiveController===controller)oaActiveController=null
     }
   })
   ipcMain.handle('oa:repair-cancel', () => {
-    const active=oaPreviewController
-    oaPreviewController=null
+    const active=oaActiveController
+    oaActiveController=null
     active?.abort()
     return !!active
   })
   ipcMain.handle('oa:repair-apply', async (_e,paperIds?:number[]) => {
-    const result=await applyOaRepairs({paperIds:paperIds?.map(Number).filter(Number.isInteger),onProgress:p=>send('oa-repair:progress',p)})
-    send('papers:changed',{ids:result.outcomes.filter(item=>item.repaired).map(item=>item.paperId)})
-    if(result.repaired>0&&indexNeedsRebuild()&&!isIndexRunning())void buildIndex(send).catch(error=>send('index:error',String(error)))
-    return result
+    oaActiveController?.abort()
+    const controller=new AbortController()
+    oaActiveController=controller
+    try {
+      const result=await applyOaRepairs({paperIds:paperIds?.map(Number).filter(Number.isInteger),signal:controller.signal,onProgress:p=>send('oa-repair:progress',p)})
+      send('papers:changed',{ids:result.outcomes.filter(item=>item.repaired).map(item=>item.paperId)})
+      if(result.repaired>0&&indexNeedsRebuild()&&!isIndexRunning())void buildIndex(send).catch(error=>send('index:error',String(error)))
+      return result
+    } finally {
+      if(oaActiveController===controller)oaActiveController=null
+    }
   })
-
   // 题录文件导入：RIS / EndNote(.enw) / CNKI 自定义格式 → 生成题录页入库（可后续替换为原文 PDF）
   ipcMain.handle('records:pick-parse', async () => {
     const r = await dialog.showOpenDialog(ctx.getWin()!, {

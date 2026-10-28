@@ -85,3 +85,5 @@
 .chat-edit-form { display:grid; gap:6px; margin-top:8px; }
 .chat-edit-form textarea { border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); font:inherit; padding:7px 9px; resize:vertical; }
 .chat-edit-form button { justify-self:start; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg2); color:var(--text); cursor:pointer; font-size:12px; padding:4px 9px; }
+.chat-conversation-delete { flex:none; width:22px; height:22px; border-radius:5px; color:var(--text-dim); font-size:12px; line-height:1; }
+.chat-conversation-delete:hover { color:var(--danger); background:rgba(213,96,108,.12); }
