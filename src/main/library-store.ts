@@ -25,8 +25,8 @@ function* reconciliation(db: Database.Database, inventory: LibraryInventory): Ge
   const currentById=db.prepare('SELECT * FROM papers WHERE id=?')
   const currentByPath=db.prepare('SELECT * FROM papers WHERE path=?')
   const excludedNow=db.prepare('SELECT 1 FROM library_exclusions WHERE library_root=? AND path=?')
-  for(let offset=0;offset<inventory.entries.length;offset+=80)yield db.transaction(() => {
-    for (const entry of inventory.entries.slice(offset,offset+160)) {
+  for(let offset=0;offset<inventory.entries.length;offset+=20)yield db.transaction(() => {
+    for (const entry of inventory.entries.slice(offset,offset+20)) {
       const key = normalizePath(entry.path)
       seen.add(key)
       if (excluded.has(key)||excludedNow.get(root,key)) continue
@@ -79,8 +79,8 @@ function* reconciliation(db: Database.Database, inventory: LibraryInventory): Ge
   })
   if(inventory.complete) {
     const missing=[...old].filter(([key,row])=>!seen.has(key)&&!row.missing_at)
-    for(let offset=0;offset<missing.length;offset+=80)yield db.transaction(()=>{
-      for(const [key,row] of missing.slice(offset,offset+160)) {
+    for(let offset=0;offset<missing.length;offset+=20)yield db.transaction(()=>{
+      for(const [key,row] of missing.slice(offset,offset+20)) {
         const current=currentById.get(row.id) as Record<string,any>|undefined
         if(current&&normalizePath(current.path)===key&&current.source_stamp===row.source_stamp&&!current.missing_at){markMissing.run(row.id);result.missing++}
       }
