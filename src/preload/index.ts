@@ -35,6 +35,15 @@ const api = {
     ipcRenderer.on('zotero:file', h)
     return () => ipcRenderer.removeListener('zotero:file', h)
   },
+  // 开放获取原文修复（OpenAlex OA PDF）
+  oaRepairPreview: (paperIds?: number[]) => ipcRenderer.invoke('oa:repair-preview', paperIds),
+  oaRepairApply: (paperIds: number[]) => ipcRenderer.invoke('oa:repair-apply', paperIds),
+  oaRepairCancel: () => ipcRenderer.invoke('oa:repair-cancel'),
+  onOaRepairProgress: (cb: (p: { phase: 'preview' | 'apply'; done: number; total: number; current: string }) => void) => {
+    const h = (_e: unknown, p: { phase: 'preview' | 'apply'; done: number; total: number; current: string }) => cb(p)
+    ipcRenderer.on('oa-repair:progress', h)
+    return () => ipcRenderer.removeListener('oa-repair:progress', h)
+  },
   // 题录文件导入（RIS / EndNote / CNKI 导出）
   recordsPickParse: () => ipcRenderer.invoke('records:pick-parse'),
   recordsImport: (entries: unknown[], category: string) => ipcRenderer.invoke('records:import', entries, category),

@@ -6,6 +6,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { Paper } from './types'
 import { catLabel, statusMeta, withAlpha } from './LibraryPane'
 import PaperDetailPanel from './PaperDetailPanel'
+import OaRepairDialog from './OaRepairDialog'
 import * as Icon from './Icon'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
@@ -140,6 +141,8 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
   const [query,setQuery]=useState('')
   const [filter,setFilter]=useState('all')
   const [sourceFilter,setSourceFilter]=useState<'all'|'pdf'|'record'>('all')
+  const [oaRepairOpen,setOaRepairOpen]=useState(false)
+  const [oaRepairIds,setOaRepairIds]=useState<number[] | null>(null)
   const [zoteroRepairBusy,setZoteroRepairBusy]=useState(false)
   const [zoteroRepairMsg,setZoteroRepairMsg]=useState('')
   const [sort,setSort]=useState('recent')
@@ -209,7 +212,9 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
             {sourceOptions.map(([key,label])=><button key={key} className={sourceFilter===key?'on':''} aria-pressed={sourceFilter===key} onClick={()=>{setSourceFilter(key);setLimit(60)}}>{label}<span>{key==='all'?papers.length:papers.filter(p=>p.source_kind===key).length}</span></button>)}
           </span>
           <button className="btn ghost" disabled={zoteroRepairBusy} onClick={()=>void repairZotero()}>{zoteroRepairBusy?'正在精确匹配 Zotero 原文…':'修复 Zotero 原文'}</button>
+          <button className="btn ghost" onClick={()=>{setOaRepairIds(null);setOaRepairOpen(true)}}>探测开放获取原文</button>
           {zoteroRepairMsg&&<span className="ov-dim">{zoteroRepairMsg}</span>}
+          <OaRepairDialog open={oaRepairOpen} initialPaperIds={oaRepairIds} onClose={()=>setOaRepairOpen(false)} onPapersChanged={()=>void onPapersChanged?.()} />
           </div>}
         {papers.length>0&&arranged.length===0&&<div className="library-no-results"><Icon.Search size={24}/><h2>没有匹配的文献</h2><p>试试其他关键词，或清除阅读状态与来源筛选。</p><button className="btn ghost" onClick={()=>{setQuery('');setFilter('all');setSourceFilter('all')}}>清除筛选</button></div>}
         {papers.length === 0 && (
@@ -284,7 +289,7 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
         {arranged.length>limit&&<div className="library-load-more"><span>已显示 {Math.min(limit,arranged.length)} / {arranged.length} 篇</span><button className="btn ghost" onClick={()=>setLimit(n=>n+60)}>显示更多文献</button></div>}
       </div>
       {selected && (
-        <PaperDetailPanel
+        <PaperDetailPanel onOpenOaRepair={(id)=>{setOaRepairIds([id]);setOaRepairOpen(true)}}
           paper={selected}
           onClose={() => setSelectedId(null)}
           onOpen={(p) => {

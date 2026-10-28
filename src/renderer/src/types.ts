@@ -200,6 +200,51 @@ export interface ZoteroRepairApplyResult {
   outcomes: ZoteroRepairCandidate[]
 }
 
+export type OaRepairStatus = 'available' | 'not_available' | 'no_identifier' | 'no_match' | 'download_failed' | 'invalid_pdf' | 'error'
+
+export interface OaRepairCandidate {
+  paperId: number
+  slug: string
+  title: string
+  doi: string | null
+  status: OaRepairStatus
+  pdfUrl?: string
+  landingUrl?: string
+  sourceName?: string
+  license?: string | null
+  matchedBy?: 'doi' | 'title'
+  reason?: string
+}
+
+export interface OaRepairPreview {
+  total: number
+  counts: Record<OaRepairStatus, number>
+  candidates: OaRepairCandidate[]
+}
+
+export interface OaRepairOutcome extends OaRepairCandidate {
+  repaired: boolean
+  bytes?: number
+  operationId?: string
+  backupDir?: string
+  error?: string
+}
+
+export interface OaRepairApplyResult {
+  total: number
+  repaired: number
+  failed: number
+  skipped: number
+  outcomes: OaRepairOutcome[]
+}
+
+export interface OaRepairProgress {
+  phase: 'preview' | 'apply'
+  done: number
+  total: number
+  current: string
+}
+
 // 题录文件（RIS/EndNote/CNKI 导出）解析出的条目
 export interface RecordEntry {
   title: string
@@ -354,6 +399,10 @@ declare global {
       zoteroRepairPreview: (dataDir?: string) => Promise<ZoteroRepairPreview>
       zoteroRepairApply: (dataDir?: string, paperIds?: number[]) => Promise<ZoteroRepairApplyResult>
       onZoteroProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
+      oaRepairPreview: (paperIds?: number[]) => Promise<OaRepairPreview>
+      oaRepairApply: (paperIds: number[]) => Promise<OaRepairApplyResult>
+      oaRepairCancel: () => Promise<boolean>
+      onOaRepairProgress: (cb: (p: OaRepairProgress) => void) => () => void
       onZoteroFile: (cb: (o: ZoteroOutcome) => void) => () => void
       recordsPickParse: () => Promise<{ file: string; entries: RecordEntry[] } | null>
       recordsImport: (entries: RecordEntry[], category: string) => Promise<RecordOutcome[]>

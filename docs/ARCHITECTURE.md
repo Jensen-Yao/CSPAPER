@@ -38,7 +38,7 @@ Metadata, note and binary PDF writes pass through `runFileOperation()`:
 record before/after digests + backup -> replace files -> commit DB -> mark committed
 ```
 
-A failed commit marks the operation failed and leaves evidence. At startup, pending operations become `rolled_back`, `needs_review`, or `conflict`; startup code never assumes success. Zotero PDF repair uses deterministic operation IDs, exact Zotero keys and preserved pre-replacement backups.
+A failed commit marks the operation failed and leaves evidence. At startup, pending operations become `rolled_back`, `needs_review`, or `conflict`; startup code never assumes success. Zotero PDF repair uses deterministic operation IDs, exact Zotero keys and preserved pre-replacement backups. OpenAccess repair first queries OpenAlex in read-only mode, then downloads only user-selected public-HTTPS OA PDFs after redirect, size and PDF-header validation; replacement follows the same journaled operation path.
 
 ## Verification
 

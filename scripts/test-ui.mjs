@@ -195,6 +195,7 @@ try{
   check('record-only papers carry a visible source badge',(await page.locator('.source-badge.record').count())>=1)
   await page.getByRole('button',{name:'仅题录 1',exact:true}).click();await wait(100)
   check('source filter isolates record-only entries',(await page.locator('.pcard').count())===1)
+  check('library exposes OpenAccess repair entry',await page.getByRole('button',{name:'探测开放获取原文'}).count()>=1)
   await page.getByRole('button',{name:/全部来源/}).click();await wait(100)
   const libraryBefore=await page.locator('.library').first().evaluate(el=>el.getBoundingClientRect().width)
   const libraryHandle=page.locator('[data-resizer="library"]')

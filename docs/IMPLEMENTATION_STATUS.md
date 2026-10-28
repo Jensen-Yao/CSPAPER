@@ -37,6 +37,12 @@
 main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推送 GitHub，未创建 tag/release。若后续要发布正式版本，在当前 CI 绿色基线上创建 `v0.20.0` tag 即可触发 Windows/macOS/Android release workflow。
 
 
+## 持续迭代：题录开放获取修复（2026-10-29）
+
+- 新增文献库「探测开放获取原文」和单篇详情入口：先只读查询 OpenAlex，DOI 精确匹配，无 DOI 时标题相似度闸门兜底，明确区分可下载、无直链、缺标识和未匹配。
+- 用户勾选确认后才下载；请求强制公网 HTTPS、校验重定向终点、100MB 上限和 PDF 头，拒绝把网页或内网地址当作原文。
+- 替换题录页仍通过操作日志执行，保留原 PDF / Markdown 备份，成功后 `source_kind` 升级为 `pdf` 并触发索引重建。
+- 验证：typecheck 通过、核心回归 75/75（新增 OA 修复与取消用例）、生产构建通过、UI 回归 64/64（新增入口检查）、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

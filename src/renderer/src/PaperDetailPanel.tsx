@@ -15,6 +15,8 @@ interface Props {
   onSummarized?: (id: number, s: string) => void
   /** 面板内数据变更（状态切换等）后通知父级刷新列表 */
   onChanged?: () => void
+  /** 从单篇题录打开开放获取修复 */
+  onOpenOaRepair?: (paperId:number)=>void
   /** 嵌入侧栏标签页：去掉固定宽度与关闭/底部按钮 */
   embedded?: boolean
 }
@@ -27,7 +29,7 @@ interface PaperTag {
 }
 
 // 卡片详情栏：信息（含标签/状态）/ AI 洞察 / 摘要 / 引用 / 我的笔记 / 标注 / 附件
-export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized, onChanged, embedded }: Props): JSX.Element {
+export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized, onChanged, embedded, onOpenOaRepair }: Props): JSX.Element {
   const dlg = useDialog()
   const [detail, setDetail] = useState<PaperDetail | null>(null)
   const sourceKind=detail?.source_kind ?? paper.source_kind
@@ -596,6 +598,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                   <div className="pd-source-status">
                     <span className={`source-badge ${isRecord?'record':''}`}>{isRecord?'题录 · 无 PDF 全文':missingIndex?'PDF · 索引缺失':'PDF · 已入库'}</span>
                     <button className="cmp-mini" disabled={repairBusy} onClick={()=>void repairFromZotero()}>{repairBusy?'Zotero 修复中…':'从 Zotero 修复原文'}</button>
+                    <button className="cmp-mini" onClick={()=>onOpenOaRepair?.(paper.id)}>探测开放获取原文</button>
                     {paper.doi&&<button className="cmp-mini" onClick={()=>window.api.openExternal('https://doi.org/'+paper.doi)}>按 DOI 找原文</button>}
                     {!isRecord&&missingIndex&&<button className="cmp-mini" onClick={()=>void window.api.rebuildIndex()}>重建索引</button>}
                     {repairMsg&&<span className="pd-dim">{repairMsg}</span>}

@@ -25,6 +25,7 @@ import { extractPlanSteps, parseModelJsonObject, validatePlan } from '../src/mai
 import { buildContextSnapshot } from '../src/main/chat/context'
 import { explicitContextSources, retrieveSources } from '../src/main/chat/retrieval'
 import { applyZoteroRepairs } from '../src/main/zotero-repair'
+import { previewOaRepairs, applyOaRepairs, type OaRepairProgress } from '../src/main/oa-repair'
 import type { ZoteroPaper } from '../src/main/zotero'
 import { validateCitations, citationWarning } from '../src/main/chat/citations'
 import { z } from 'zod'
@@ -521,6 +522,61 @@ app.whenReady().then(async()=>{
     assert.equal(second.outcomes.find(item=>item.paperId===listed!.id)?.reason,'该原文版本已修复过，操作日志幂等拦截重复替换')
     store.scanLibrary(library)
     assert.equal(store.listPapers().find(item=>item.slug==='repair-one')?.source_kind,'pdf')
+  })
+  await test('OpenAccess repair safely discovers, validates and replaces record PDFs',async()=>{
+    const makeRecord=(slug:string,doi:string)=>{
+      const dir=path.join(library,'papers','inbox',slug)
+      fs.mkdirSync(dir,{recursive:true})
+      const pdf=path.join(dir,'paper.pdf'),md=path.join(dir,slug+'.md')
+      fs.writeFileSync(pdf,Buffer.from('%PDF-1.4 generated record '+slug))
+      fs.writeFileSync(md,`---\ntitle: "OA ${slug}"\nauthors: "OA Author"\nyear: 2026\nvenue: "OA Journal"\ndoi: "${doi}"\nsource_kind: record\n---\n\n# OA ${slug}\n`)
+      store.scanLibrary(library)
+      return {pdf,md,id:(store.getDb().prepare('SELECT id FROM papers WHERE path=?').get(pdf) as {id:number}).id}
+    }
+    const good=makeRecord('oa-good','10.0000/oa-good'),bad=makeRecord('oa-bad','10.0000/oa-bad')
+    const goodPdf=Buffer.concat([Buffer.from('%PDF-1.4 downloaded full text\n'),Buffer.alloc(1100,65)])
+    const badPdf=Buffer.concat([Buffer.from('<html>not a pdf'),Buffer.alloc(1100,120)])
+    const fetchImpl=(async(input:string|URL)=>{
+      const url=String(input)
+      if(url.includes('10.0000/oa-good'))return new Response(JSON.stringify({display_name:'OA good',best_oa_location:{pdf_url:'https://publisher.example/good.pdf',landing_page_url:'https://publisher.example/good',license:'cc-by',source:{display_name:'Public Repository'}}}),{headers:{'content-type':'application/json'}})
+      if(url.includes('10.0000/oa-bad'))return new Response(JSON.stringify({display_name:'OA bad',best_oa_location:{pdf_url:'https://publisher.example/bad.pdf'}}),{headers:{'content-type':'application/json'}})
+      if(url.endsWith('/good.pdf'))return new Response(goodPdf,{headers:{'content-type':'application/pdf','content-length':String(goodPdf.length)}})
+      if(url.endsWith('/bad.pdf'))return new Response(badPdf,{headers:{'content-type':'text/html','content-length':String(badPdf.length)}})
+      throw new Error('unexpected test URL '+url)
+    }) as typeof fetch
+    const progress:OaRepairProgress[]=[]
+    const preview=await previewOaRepairs({paperIds:[good.id,bad.id],fetchImpl,onProgress:p=>progress.push(p)})
+    assert.equal(preview.candidates.find(item=>item.paperId===good.id)?.status,'available')
+    assert.equal(preview.candidates.find(item=>item.paperId===bad.id)?.status,'available')
+    assert.ok(preview.candidates.every(item=>item.pdfUrl?.startsWith('https://')))
+    const beforeBad=fs.readFileSync(bad.pdf)
+    const applied=await applyOaRepairs({paperIds:[good.id,bad.id],fetchImpl})
+    const goodOutcome=applied.outcomes.find(item=>item.paperId===good.id),badOutcome=applied.outcomes.find(item=>item.paperId===bad.id)
+    assert.equal(goodOutcome?.repaired,true)
+    assert.equal(badOutcome?.repaired,false)
+    assert.equal(badOutcome?.status,'invalid_pdf')
+    assert.equal(fs.readFileSync(bad.pdf).equals(beforeBad),true)
+    assert.equal(fs.readFileSync(good.pdf).equals(goodPdf),true)
+    assert.equal(parseFrontmatter(fs.readFileSync(good.md,'utf8')).source_kind,'pdf')
+    assert.match(parseFrontmatter(fs.readFileSync(good.md,'utf8')).oa_pdf_url,/good\.pdf$/)
+    const journal=db.prepare('SELECT id,state,backup_dir FROM operation_journal WHERE kind=?').all('oa.repair_pdf') as Array<{id:string;state:string;backup_dir:string}>
+    assert.equal(journal.length,1);assert.equal(journal[0].state,'committed');assert.ok(fs.existsSync(journal[0].backup_dir))
+    const row=db.prepare('SELECT source_kind FROM active_papers WHERE id=?').get(good.id) as {source_kind:string}
+    assert.equal(row.source_kind,'pdf')
+    assert.ok(progress.some(item=>item.phase==='preview'&&item.done===2))
+  })
+  await test('OpenAccess preview cancellation aborts the active request',async()=>{
+    const controller=new AbortController()
+    const recordId=(db.prepare("SELECT id FROM active_papers WHERE source_kind='record' ORDER BY id LIMIT 1").get() as {id:number}).id
+    const fetchImpl=(async(_url:string|URL,init?:RequestInit)=>new Promise<Response>((_resolve,reject)=>{
+      const signal=init?.signal
+      const timer=setInterval(()=>{
+        if(signal?.aborted){clearInterval(timer);reject(signal.reason??new Error('cancelled'))}
+      },5)
+    })) as typeof fetch
+    const pending=previewOaRepairs({paperIds:[recordId],fetchImpl,signal:controller.signal})
+    controller.abort()
+    await assert.rejects(pending,/abort/i)
   })
   await test('PDF extraction respects cancellation and timeout',async()=>{
     const objects=[

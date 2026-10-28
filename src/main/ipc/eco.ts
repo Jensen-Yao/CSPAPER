@@ -6,6 +6,7 @@ import * as dbmod from '../db'
 import { buildIndex, isIndexRunning, indexNeedsRebuild } from '../ingest'
 import { detectZoteroDataDir, previewZoteroForUi, importFromZotero, type ZoteroImportItem } from '../zotero'
 import { previewZoteroRepairs, repairZoteroPdfs } from '../zotero-repair'
+import { previewOaRepairs, applyOaRepairs } from '../oa-repair'
 import { parseRecords, importRecords, type RecordEntry } from '../records'
 import { exportMobilePack, mergeMobileNotes } from '../mobilepack'
 import { bridgeStatus } from '../bridge'
@@ -29,6 +30,31 @@ export function registerEcoIpc(ctx: IpcCtx): void {
   ipcMain.handle('zotero:repair-preview', (_e, dataDir?: string) => previewZoteroRepairs(dataDir))
   ipcMain.handle('zotero:repair-apply', async (_e, dataDir?: string, paperIds?: number[]) => {
     const result=await repairZoteroPdfs(dataDir,paperIds?.map(Number).filter(Number.isInteger))
+    if(result.repaired>0&&indexNeedsRebuild()&&!isIndexRunning())void buildIndex(send).catch(error=>send('index:error',String(error)))
+    return result
+  })
+
+  // 开放获取原文修复：先只读探测 OpenAlex OA PDF，用户在 UI 确认后才下载替换。
+  let oaPreviewController:AbortController|null=null
+  ipcMain.handle('oa:repair-preview', async (_e,paperIds?:number[]) => {
+    oaPreviewController?.abort()
+    const controller=new AbortController()
+    oaPreviewController=controller
+    try {
+      return await previewOaRepairs({paperIds:paperIds?.map(Number).filter(Number.isInteger),signal:controller.signal,onProgress:p=>send('oa-repair:progress',p)})
+    } finally {
+      if(oaPreviewController===controller)oaPreviewController=null
+    }
+  })
+  ipcMain.handle('oa:repair-cancel', () => {
+    const active=oaPreviewController
+    oaPreviewController=null
+    active?.abort()
+    return !!active
+  })
+  ipcMain.handle('oa:repair-apply', async (_e,paperIds?:number[]) => {
+    const result=await applyOaRepairs({paperIds:paperIds?.map(Number).filter(Number.isInteger),onProgress:p=>send('oa-repair:progress',p)})
+    send('papers:changed',{ids:result.outcomes.filter(item=>item.repaired).map(item=>item.paperId)})
     if(result.repaired>0&&indexNeedsRebuild()&&!isIndexRunning())void buildIndex(send).catch(error=>send('index:error',String(error)))
     return result
   })

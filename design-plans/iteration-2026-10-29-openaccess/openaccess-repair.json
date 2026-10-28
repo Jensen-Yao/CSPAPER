@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-29",
+  "feature": "record-only OpenAccess PDF discovery and safe repair",
+  "scope": [
+    "OpenAlex DOI-first and title-gated discovery",
+    "read-only preview with per-item status",
+    "explicit user selection before download",
+    "public HTTPS and redirect validation",
+    "100MB limit and PDF header validation",
+    "journaled replacement with backups and index rebuild"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "75/75",
+    "build": "pass",
+    "ui": "64/64",
+    "rendererExceptions": 0
+  },
+  "coreCase": [
+    "valid OA PDF replaces generated record and upgrades source_kind",
+    "invalid downloaded content is rejected without changing the original record",
+    "operation journal records one committed repair with a backup directory",
+    "preview exposes progress and https-only candidate URLs",`n    "cancelling preview aborts the active network request"
+  ]
+}

@@ -2392,3 +2392,28 @@ img.brand-icon.brand-icon-lg { width: 44px; height: 44px; }
 img.brand-icon.wb-brand-mark { padding: 0; border: 0; background: transparent; box-shadow: none; }
 img.brand-icon.ws-logo-mark { padding: 0; border: 0; background: transparent; color: inherit; box-shadow: none; }
 .wizard-logo { width: auto; }
+
+/* ================= OpenAccess 原文修复：批量探测 / 确认下载 / 安全替换 ================= */
+.oa-repair-modal { width: 760px; max-width: 94vw; height: 620px; max-height: 86vh; }
+.oa-repair-body { display: flex; flex-direction: column; gap: 12px; }
+.oa-repair-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.oa-repair-summary span { border: 1px solid var(--border); border-radius: 6px; background: var(--bg3); color: var(--text-dim); font-size: 12px; padding: 5px 9px; }
+.oa-repair-summary b { color: var(--text); margin-right: 3px; }
+.oa-repair-list { display: flex; flex-direction: column; gap: 7px; }
+.oa-repair-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 9px 11px; }
+.oa-repair-row.disabled { opacity: 0.68; }
+.oa-repair-row input { width: 15px; height: 15px; accent-color: var(--accent); }
+.oa-repair-main { min-width: 0; }
+.oa-repair-main b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text); }
+.oa-repair-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+.oa-repair-status { flex: none; border-radius: 5px; font-size: 11px; padding: 3px 6px; background: var(--bg3); color: var(--text-dim); }
+.oa-repair-status.available { color: #1d7a43; background: rgba(122,158,126,.16); }
+.oa-repair-status.download_failed, .oa-repair-status.invalid_pdf, .oa-repair-status.error { color: var(--danger); background: rgba(213,96,108,.12); }
+.oa-repair-empty { display: grid; justify-items: center; gap: 8px; padding: 46px 20px; color: var(--text-dim); text-align: center; }
+.oa-repair-empty h3 { color: var(--text); font-size: 14px; }
+.oa-repair-empty p { max-width: 430px; font-size: 12px; line-height: 1.65; }
+.oa-repair-empty progress { width: 280px; accent-color: var(--accent); }
+.oa-repair-empty.compact { padding: 20px; font-size: 12px; }
+.oa-repair-result h3 { font-size: 14px; margin-bottom: 5px; }
+.oa-repair-result p { color: var(--text-dim); font-size: 12px; line-height: 1.65; margin-bottom: 10px; }
+.oa-repair-note { margin-right: auto; max-width: 400px; color: var(--text-dim); font-size: 11px; line-height: 1.5; text-align: left; }

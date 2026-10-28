@@ -68,6 +68,7 @@
 
 - 本地 Zotero SQLite 迁移：条目、分类、标签、笔记、PDF、标注与元数据。
 - 题录/原文状态显式区分；`从 Zotero 修复原文`按条目 key 精确匹配 storage 附件，替换前自动备份且操作幂等。
+- `探测开放获取原文`按 DOI / 标题查询 OpenAlex，先列出可下载 OA PDF，确认后才下载；下载限制公网 HTTPS、100MB 与 PDF 头校验，替换走操作日志。
 - 无 PDF 条目保留为题录并明确标注，拿到原文后替换 `paper.pdf` 即可升级为全文。
 - 内置 arXiv、DOI、IEEE、ScienceDirect、Springer、Wiley、PubMed、知网、万方等 13 个站点脚本。
 - OpenAlex 被引更新、DOI / arXiv / 链接在线添加、浏览器插件一键保存。
