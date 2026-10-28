@@ -27,7 +27,6 @@ out-smoke/
 audit*.log
 check-*.log
 debug-*.log
-ui-audit/
 
 # Android 本地构建产物与机器配置
 android-app/build/
