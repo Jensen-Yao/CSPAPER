@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { app } from 'electron'
 import { Worker } from 'node:worker_threads'
 import { READING_STATUSES } from '../shared/paper'
-import { collectLibrary, type LibraryEntry, type LibraryInventory } from './library-inventory'
+import { collectLibrary, type LibraryInventory } from './library-inventory'
 import { applyLibraryInventory, applyLibraryInventoryAsync } from './library-store'
 import { backupBeforeLibraryMigration, runMigrations } from './migrations'
 import { recoverOperations } from './operations/journal'
@@ -354,14 +354,15 @@ export function scanLibrary(libPath: string): import('./library-store').ScanResu
 }
 export interface ScanLibraryOptions { signal?:AbortSignal; onProgress?:(found:number,current:string)=>void }
 const pendingScans=new Map<string,Promise<import('./library-store').ScanResult>>()
+let dbApplyChain:Promise<void>=Promise.resolve()
 export function scanLibraryAsync(libPath:string,options:ScanLibraryOptions={}):Promise<import('./library-store').ScanResult> {
   const root=normalizePath(libPath),pending=pendingScans.get(root)
   if(pending) return pending
   options.signal?.throwIfAborted()
   const workerStarted=Date.now()
   const promise=new Promise<import('./library-store').ScanResult>((resolve,reject)=>{
-    const received:LibraryEntry[]=[]
-    const worker=new Worker(path.join(__dirname,'library-worker.js'),{workerData:{root:libPath,previous:scanStamps(libPath)}})
+    let releaseApply:()=>void=()=>{}
+    const worker=new Worker(path.join(__dirname,'library-worker.js'),{workerData:{root:libPath,previous:scanStamps(libPath),dbFile:path.join(app.getPath('userData'),'cspaper.db')}})
     let aborted=false
     const abort=():void=>{
       aborted=true
@@ -369,27 +370,32 @@ export function scanLibraryAsync(libPath:string,options:ScanLibraryOptions={}):P
       void worker.terminate()
     }
     options.signal?.addEventListener('abort',abort,{once:true})
-    worker.on('message',async(message:{batch?:boolean;entries?:LibraryEntry[];found?:number;progress?:boolean;current?:string;ok?:boolean;inventory?:LibraryInventory;error?:string})=>{
-      if(message.batch){
-        const entries=Array.isArray(message.entries)?message.entries:[]
-        received.push(...entries)
-        options.onProgress?.(message.found??received.length,entries.at(-1)?.path??'')
+    worker.on('message',(message:{batch?:boolean;ready?:boolean;found?:number;ok?:boolean;result?:import('./library-store').ScanResult;timing?:{workerMs:number;applyMs:number};error?:string})=>{
+      if(message.batch){options.onProgress?.(message.found??0,'');return}
+      if(message.ready){
+        // Discovery remains parallel; SQLite writers are serialized across roots.
+        dbApplyChain=dbApplyChain.then(()=>new Promise<void>(resolve=>{
+          releaseApply=resolve
+          worker.postMessage({apply:true})
+        }))
         return
       }
-      if(message.progress){options.onProgress?.(message.found??received.length,message.current??'');return}
-      options.signal?.removeEventListener('abort',abort)
-      try {
-        options.signal?.throwIfAborted()
-        if(!message.ok)throw new Error(message.error)
-        if(message.inventory?.cancelled)throw new DOMException('文献库扫描已取消','AbortError')
-        const workerMs=Date.now()-workerStarted,applyStarted=Date.now()
-        const result=await applyLibraryInventoryAsync(db,{...message.inventory!,entries:received})
-        resolve({...result,timing:{workerMs,applyMs:Date.now()-applyStarted}})
-      } catch(error){reject(error)}
+      if(message.ok){
+        releaseApply()
+        options.signal?.removeEventListener('abort',abort)
+        resolve({...message.result!,timing:message.timing})
+        return
+      }
+      if(!message.ok){
+        options.signal?.removeEventListener('abort',abort)
+        releaseApply()
+        reject(new Error(message.error??'文献库扫描失败'))
+      }
     })
-    worker.once('error',error=>{options.signal?.removeEventListener('abort',abort);if(aborted)return;reject(error instanceof Error?error:new Error(String(error)))})
+    worker.once('error',error=>{options.signal?.removeEventListener('abort',abort);releaseApply();if(aborted)return;reject(error instanceof Error?error:new Error(String(error)))})
     worker.once('exit',code=>{
       options.signal?.removeEventListener('abort',abort)
+      releaseApply()
       if(!aborted&&code!==0)reject(new Error('文献库扫描中断'))
     })
   })

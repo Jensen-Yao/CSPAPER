@@ -2,10 +2,10 @@
   "date": "2026-10-29T04:33:40+08:00",
   "library": {
     "n": 10000,
-    "scanMs": 5409.0,
-    "listMs": 73.6349,
-    "scanMaxTickGapMs": 34.9496,
-    "maxTickGapMs": 74.0628,
+    "scanMs": 4454.0,
+    "listMs": 86.4533,
+    "scanMaxTickGapMs": 32.9877,
+    "maxTickGapMs": 94.3332,
     "budgetMs": 100,
     "responsive": true
   },
@@ -18,5 +18,6 @@
     "events": 21
   },
   "check": "npm run check passed before the final CI hotfix; typecheck, 73/73 core tests and the final library benchmark passed after reducing reconciliation batches to 20 rows. Remote CI is the final gate.",
-  "streaming": "Library worker results are streamed in 20-entry batches; the terminal worker message carries completion metadata only."
+  "streaming": "Library worker results are streamed in 20-entry batches; the terminal worker message carries completion metadata only.",
+  "workerArchitecture": "Discovery and SQLite reconciliation both run in a worker. Different library writes are serialized by a main-process queue while discovery remains parallel."
 }

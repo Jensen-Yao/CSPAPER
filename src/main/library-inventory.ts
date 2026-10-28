@@ -25,8 +25,8 @@ export function collectLibrary(root: string, previous: Record<string, string> = 
   const emitEntries=(force=false):void=>{
     if(!options.onEntries)return
     const count=result.entries.length-emitted
-    if(count>=20||(force&&count>0)){
-      const batch=result.entries.slice(emitted,emitted+(count>=20?20:count))
+    if(count>=80||(force&&count>0)){
+      const batch=result.entries.slice(emitted,emitted+(count>=80?80:count))
       emitted+=batch.length
       options.onEntries(batch,emitted)
     }
