@@ -20,22 +20,22 @@ export const PROVIDER_GROUPS: Array<{ title: string; items: ProviderPreset[] }> 
   {
     title: '国内主流',
     items: [
-      { id: 'zhipu', name: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4.6', 'glm-4.5-air', 'glm-4.5'], logo: '智', color: '#3b5bfd' },
+      { id: 'zhipu', name: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-5.2', 'glm-5.1', 'glm-5'], logo: '智', color: '#3b5bfd' },
       { id: 'deepseek', name: 'DeepSeek', base: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'], logo: 'DS', color: '#4d6bfe' },
-      { id: 'qwen', name: '通义千问', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-turbo', 'qwen-max'], logo: '通', color: '#615ced' },
-      { id: 'moonshot', name: 'Kimi 月之暗面', base: 'https://api.moonshot.cn/v1', models: ['kimi-k2-0711-preview', 'moonshot-v1-8k'], logo: 'K', color: '#0d0d12' },
-      { id: 'siliconflow', name: '硅基流动', base: 'https://api.siliconflow.cn/v1', models: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-7B-Instruct'], logo: '硅', color: '#7c3aed' },
-      { id: 'volces', name: '火山方舟 · 豆包', base: 'https://ark.cn-beijing.volces.com/api/v3', models: ['doubao-seed-1-6-250615'], logo: '豆', color: '#db2b2b', note: '模型填控制台的推理接入点 ID' },
+      { id: 'qwen', name: '通义千问', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen3.5-plus', 'qwen3.7-max', 'qwen-plus'], logo: '通', color: '#615ced' },
+      { id: 'moonshot', name: 'Kimi 月之暗面', base: 'https://api.moonshot.cn/v1', models: ['kimi-k3', 'kimi-k2.5'], logo: 'K', color: '#0d0d12' },
+      { id: 'siliconflow', name: '硅基流动', base: 'https://api.siliconflow.cn/v1', models: ['deepseek-ai/DeepSeek-V4-Pro', 'deepseek-ai/DeepSeek-V4.1-Flash'], logo: '硅', color: '#7c3aed' },
+      { id: 'volces', name: '火山方舟 · 豆包', base: 'https://ark.cn-beijing.volces.com/api/v3', models: ['doubao-seed-1-8-251228'], logo: '豆', color: '#db2b2b', note: '模型填控制台的推理接入点 ID' },
       { id: 'stepfun', name: '阶跃星辰', base: 'https://api.stepfun.com/v1', models: ['step-2-16k'], logo: '阶', color: '#0057ff' },
-      { id: 'minimax', name: 'MiniMax', base: 'https://api.minimax.chat/v1', models: ['abab6.5s-chat'], logo: 'M', color: '#f23f5d' }
+      { id: 'minimax', name: 'MiniMax', base: 'https://api.minimax.io/v1', models: ['MiniMax-M2.5', 'MiniMax-M3.1-Flash'], logo: 'M', color: '#f23f5d' }
     ]
   },
   {
     title: '国际主流',
     items: [
-      { id: 'openai', name: 'OpenAI', base: 'https://api.openai.com/v1', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], logo: 'O', color: '#10a37f' },
+      { id: 'openai', name: 'OpenAI', base: 'https://api.openai.com/v1', models: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'], logo: 'O', color: '#10a37f' },
       { id: 'gemini', name: 'Google Gemini', base: 'https://generativelanguage.googleapis.com/v1beta/openai', models: ['gemini-2.5-flash', 'gemini-2.5-pro'], logo: 'G', color: '#1a73e8', note: '官方 OpenAI 兼容层' },
-      { id: 'xai', name: 'xAI Grok', base: 'https://api.x.ai/v1', models: ['grok-3-mini', 'grok-3'], logo: '𝕏', color: '#111111' },
+      { id: 'xai', name: 'xAI Grok', base: 'https://api.x.ai/v1', models: ['grok-4', 'grok-4-fast'], logo: '𝕏', color: '#111111' },
       { id: 'openrouter', name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', models: ['openai/gpt-4o-mini', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash'], logo: 'OR', color: '#6b7280', note: '一个 Key 用几百个模型，含 Claude' },
       { id: 'groq', name: 'Groq', base: 'https://api.groq.com/openai/v1', models: ['llama-3.3-70b-versatile'], logo: 'Gq', color: '#f55036' },
       { id: 'mistral', name: 'Mistral', base: 'https://api.mistral.ai/v1', models: ['mistral-large-latest'], logo: 'Mi', color: '#fa520f' },

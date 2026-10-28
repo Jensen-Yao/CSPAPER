@@ -73,6 +73,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
   const baseVwRef = useRef(0)
   const curPageRef = useRef(1)
   const [hls, setHls] = useState<Highlight[]>([])
+  const docRef = useRef<any>(null)
   const [zoom, setZoom] = useState(1)
   const [baseScale, setBaseScale] = useState(1)
   const [curPage, setCurPage] = useState(1)
@@ -174,6 +175,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
           void d.destroy()
           return
         }
+        docRef.current = d
         // 预取每页尺寸：未渲染页也能占出真实高度，页码跳转/滚动条才准确
         const metas: Array<{ w: number; h: number }> = []
         for (let n = 1; n <= d.numPages; n++) {
@@ -226,6 +228,8 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     })()
     return () => {
       cancelled = true
+      void docRef.current?.destroy().catch(() => {})
+      docRef.current = null
     }
   }, [active?.paper.id])
 
@@ -956,6 +960,7 @@ interface PageViewProps {
 
 function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, onAddSticky, registerRef, onPageText, onLayerReady }: PageViewProps): JSX.Element {
   const [edit, setEdit] = useState<{ id: number; cx: number; cy: number; color: string; comment: string } | null>(null)
+  const [vis, setVis] = useState(num <= 2)
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
@@ -963,11 +968,30 @@ function PageView({ doc, num, scale, dim, hls, onDeleteHl, onEditHl, onAddSticky
   const [visible, setVisible] = useState(num <= 2)
   const renderedFor = useRef(0)
 
+  // 离开视口清 canvas 位图与 textLayer DOM（长文档数百页位图常驻会吃光内存）；
+  // renderedFor 归零，重新进入视口时渲染 effect 自动重绘
+  useEffect(() => {
+    if (visible) return
+    try {
+      taskRef.current?.cancel()
+    } catch { /* 未在渲染 */ }
+    taskRef.current = null
+    if (renderedFor.current !== 0) {
+      renderedFor.current = 0
+      const cv = canvasRef.current
+      if (cv) {
+        cv.width = 0
+        cv.height = 0
+      }
+      if (textRef.current) textRef.current.innerHTML = ''
+    }
+  }, [visible])
+
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
     const io = new IntersectionObserver(
-      (entries) => entries.forEach((en) => en.isIntersecting && setVisible(true)),
+      (entries) => entries.forEach((en) => setVisible(en.isIntersecting)),
       { root: el.closest('.viewer-scroll'), rootMargin: '600px 0px' }
     )
     io.observe(el)

@@ -69,15 +69,13 @@ export default function ChatView({
     if (!p) return false
     const { name, args } = p
     if (name === 'model') {
-      void window.api.getSettings().then((s0) => {
-        const st = s0 as { models?: string[]; model?: string }
-        const all = st.models?.length ? st.models : st.model ? [st.model] : []
-        const hit = all.find((m) => m.toLowerCase().includes((args || '').toLowerCase()))
-        if (hit) {
-          void window.api.saveSettings({ model: hit })
-          flash('对话模型已切换：' + hit)
-        } else flash(all.length ? '可用模型：' + all.join('、') : '未配置模型')
-      })
+      // 走 App 的 changeModel（跨供应商 provider/apiBase 同步 + UI pill 同步），
+      // 此前直写 settings 导致下拉显示与实际模型脱节
+      const hit = models.find((m) => m.toLowerCase().includes((args || '').toLowerCase()))
+      if (hit) {
+        onChangeModel(hit)
+        flash('对话模型已切换：' + hit)
+      } else flash(models.length ? '可用模型：' + models.join('、') : '未配置模型')
       return true
     }
     if (name === 'deep') {

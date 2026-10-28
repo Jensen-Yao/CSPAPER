@@ -508,6 +508,36 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     if (!sets.length) return false
     vals.push(id)
     db.prepare(`UPDATE papers SET ${sets.join(', ')} WHERE id=?`).run(...vals)
+    // 同步写 md frontmatter：否则 4 分钟周期扫描用旧 frontmatter 无声回滚用户编辑
+    try {
+      const row = db.prepare('SELECT path, title, authors, year, venue, doi FROM papers WHERE id=?').get(id) as
+        | { path: string; title: string; authors: string; year: number | null; venue: string; doi: string | null }
+        | undefined
+      if (row) {
+        const dir = require('path').dirname(row.path)
+        const mdFile = require('fs').readdirSync(dir).find((f: string) => f.toLowerCase().endsWith('.md'))
+        if (mdFile) {
+          const mdPath = require('path').join(dir, mdFile)
+          let raw = require('fs').readFileSync(mdPath, 'utf8')
+          const q = (v: unknown): string => String(v ?? '').replace(/"/g, "'")
+          const setFm = (key: string, value: string): void => {
+            const re = new RegExp(`^(${key}:)[^
+]*`, 'm')
+            if (re.test(raw)) raw = raw.replace(re, `$1 "${value}"`)
+          }
+          setFm('title', row.title)
+          setFm('authors', row.authors)
+          setFm('year', String(row.year ?? 'null'))
+          setFm('venue', row.venue)
+          if (row.doi) {
+            const doiRe = /^doi:[^\n]*/m
+            if (doiRe.test(raw)) raw = raw.replace(doiRe, `doi: "${q(row.doi)}"`)
+            else raw = raw.replace(/^---\n/, `---\ndoi: "${q(row.doi)}"\n`)
+          }
+          require('fs').writeFileSync(mdPath, raw)
+        }
+      }
+    } catch { /* md 同步失败不阻断 DB 写入 */ }
     return true
   })
   // 保存的搜索（迁出 localStorage，随库迁移）
@@ -568,8 +598,10 @@ export function registerPapersIpc(ctx: IpcCtx): void {
     }
     return groups
   })
-  ipcMain.handle('papers:merge', (_e, keepId: number, dropIds: number[]) => {
+  ipcMain.handle('papers:merge', async (_e, keepId: number, dropIds: number[]) => {
     const db = dbmod.getDb()
+    // 事务前取 drop 的 path（事务内删行后查不到），事务后清指纹墓碑
+    const dropPaths = dropIds.map((d) => (db.prepare('SELECT path FROM papers WHERE id=?').get(d) as { path: string } | undefined)?.path).filter((x): x is string => !!x)
     const tx = db.transaction(() => {
       for (const drop of dropIds) {
         // 标签/集合挂接并集迁移（UPDATE 会撞复合主键，必须 INSERT OR IGNORE + DELETE）
@@ -587,6 +619,13 @@ export function registerPapersIpc(ctx: IpcCtx): void {
       }
     })
     tx()
+    // 事务外清指纹（事务内不能 await 动态 import）
+    try {
+      const { fingerprintFile } = await import('../import')
+      for (const p of dropPaths) {
+        try { db.prepare('DELETE FROM import_fp WHERE fp=?').run(fingerprintFile(p)) } catch { /* 单个失败继续 */ }
+      }
+    } catch { /* 模块加载失败忽略 */ }
     return true
   })
   // 独立笔记（库级，不挂某篇文献）

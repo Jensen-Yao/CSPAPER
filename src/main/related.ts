@@ -48,11 +48,11 @@ export function removeRelated(a: number, b: number): void {
 export function refreshAutoRelated(paperId: number, topN = 5): number {
   ensureTable()
   const db = getDb()
-  const me = db.prepare('SELECT id, title, abstract, summary FROM papers WHERE id=?').get(paperId) as
+  const me = db.prepare('SELECT id, title, abstract, summary FROM papers WHERE id=? AND deleted_at IS NULL').get(paperId) as
     | { id: number; title: string; abstract: string | null; summary: string | null }
     | undefined
   if (!me) return 0
-  const others = db.prepare('SELECT id, pvec FROM papers WHERE pvec IS NOT NULL AND id != ?').all(paperId) as Array<{
+  const others = db.prepare("SELECT id, pvec FROM papers WHERE pvec IS NOT NULL AND id != ? AND deleted_at IS NULL").all(paperId) as Array<{
     id: number
     pvec: Buffer
   }>

@@ -160,6 +160,16 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   const [workOpen, setWorkOpen] = useState(true)
   const [atBottom, setAtBottom] = useState(true)
   const [, setTick] = useState(0)
+  const taskRef = useRef<TaskFull | null>(null)
+  const setTaskBoth = (t: TaskFull | null): void => {
+    taskRef.current = t
+    setTask(t)
+  }
+  const setTaskFn = (fn: (cur: TaskFull | null) => TaskFull | null): void => {
+    const next = fn(taskRef.current)
+    taskRef.current = next
+    setTask(next)
+  }
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const autoScroll = useRef(true)
@@ -171,8 +181,8 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
   type ApiEvent = Parameters<Parameters<typeof window.api.onAgentEvent>[0]>[0]['event']
   const loadTask = (id: string, ev?: ApiEvent): void => {
     // 流式增量：同 sid 的 text 事件直接原地改本地状态（不重新拉全量，保证流式手感）
-    if (ev && ev.stream && ev.sid != null && task && task.id === id) {
-      setTask((cur) => {
+    if (ev && ev.stream && ev.sid != null && taskRef.current?.id === id) {
+      setTaskFn((cur) => {
         if (!cur) return cur
         const arr = [...cur.events] as AgentEvent[]
         const li = arr.length - 1
@@ -221,7 +231,7 @@ export default function WorkbenchView({ visible, papers, models, onOpenPaper, on
       refreshTasks()
       // 排队调度：任一任务终结且队列非空 → 自动启动下一个
       const fin = event && (event.kind === 'done' || event.kind === 'error' || event.kind === 'cancelled')
-      if (fin && queueRef.current.length > 0) {
+      if (fin && taskId === selId && queueRef.current.length > 0) {
         const next = queueRef.current[0]
         queueRef.current = queueRef.current.slice(1)
         setQueue(queueRef.current)

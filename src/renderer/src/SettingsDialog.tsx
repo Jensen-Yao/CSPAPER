@@ -295,7 +295,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
           model: active.models.includes(form.model) ? form.model : (active.models[0] ?? form.model)
         }
       : { provider: form.provider, apiBase: form.apiBase, apiKey: form.apiKey, model: form.model }
-    await onSave(form)
+    await onSave({ ...form, profiles })
     const r = await window.api.testLLM(over)
     if (r.ok) {
       const bal = r.balance ? `，余额 ${r.balance.currency === 'CNY' ? '¥' : r.balance.currency + ' '}${r.balance.amount}` : ''
@@ -307,14 +307,14 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
 
   const testEmbed = async (): Promise<void> => {
     setEmbedTest('测试中…')
-    await onSave(form)
+    await onSave({ ...form, profiles })
     const r = await window.api.testEmbed()
     setEmbedTest(r.ok ? `✓ 嵌入正常，向量维度 ${r.dim}` : `✗ ${r.error ?? '失败'}`)
   }
 
   const rebuild = async (): Promise<void> => {
     setBusy(true)
-    await onSave(form)
+    await onSave({ ...form, profiles })
     await window.api.rebuildIndex()
     setMsg('已清空索引并开始重建，可关闭本窗口')
     setBusy(false)
@@ -327,7 +327,11 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       profiles,
       ...(active ? { provider: active.provider, apiBase: active.apiBase, apiKey: active.apiKey, models: active.models } : {})
     })
-    onClose()
+    if (profileSaveTimer.current) {
+    clearTimeout(profileSaveTimer.current)
+    profileSaveTimer.current = null
+  }
+  onClose()
   }
   saveRef.current = save
   const closeAndSave = (): void => {

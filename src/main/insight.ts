@@ -74,7 +74,7 @@ export async function generateCells(
   send?: (ev: string, p: unknown) => void
 ): Promise<Record<string, CompareCell[]>> {
   const db = getDb()
-  const paper = db.prepare('SELECT id, slug, title, path FROM papers WHERE id=?').get(paperId) as
+  const paper = db.prepare('SELECT id, slug, title, path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as
     | { id: number; slug: string; title: string; path: string }
     | undefined
   if (!paper) throw new Error('论文不存在')
@@ -154,7 +154,7 @@ export function getExtract(paperId: number): PaperExtract | null {
  */
 export async function extractPaper(paperId: number): Promise<{ summary: string; extract: PaperExtract | null }> {
   const db = getDb()
-  const paper = db.prepare('SELECT id, title, path FROM papers WHERE id=?').get(paperId) as
+  const paper = db.prepare('SELECT id, title, path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as
     | { id: number; title: string; path: string }
     | undefined
   if (!paper) throw new Error('论文不存在')
@@ -347,7 +347,7 @@ export async function exportCompare(
   }
   const paperRows: Array<Record<string, string>> = []
   for (const pid of data.paperIds) {
-    const p = db.prepare('SELECT id, slug, title, authors, year, venue, category FROM papers WHERE id=?').get(pid) as
+    const p = db.prepare('SELECT id, slug, title, authors, year, venue, category FROM papers WHERE deleted_at IS NULL AND id=?').get(pid) as
       | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string }
       | undefined
     if (!p) continue
@@ -403,7 +403,7 @@ export async function synthesizePapers(
   const parts: string[] = []
   let done = 0
   for (const pid of ids) {
-    const row = db.prepare('SELECT id, title, authors, year, summary, path FROM papers WHERE id=?').get(pid) as
+    const row = db.prepare('SELECT id, title, authors, year, summary, path FROM papers WHERE deleted_at IS NULL AND id=?').get(pid) as
       | { id: number; title: string; authors: string; year: number | null; summary: string | null; path: string }
       | undefined
     if (!row) continue
@@ -491,7 +491,7 @@ ${out}
 // ---------- 我的笔记：存于文献 md 文件的「我的笔记」小节 ----------
 export function getMyNotesText(paperId: number): string {
   const db = getDb()
-  const row = db.prepare('SELECT path FROM papers WHERE id=?').get(paperId) as { path: string } | undefined
+  const row = db.prepare('SELECT path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as { path: string } | undefined
   if (!row) return ''
   try {
     const dir = path.dirname(row.path)
@@ -510,7 +510,7 @@ export function getMyNotesText(paperId: number): string {
 
 export function saveMyNotesText(paperId: number, text: string): boolean {
   const db = getDb()
-  const row = db.prepare('SELECT path FROM papers WHERE id=?').get(paperId) as { path: string } | undefined
+  const row = db.prepare('SELECT path FROM papers WHERE deleted_at IS NULL AND id=?').get(paperId) as { path: string } | undefined
   if (!row) return false
   const dir = path.dirname(row.path)
   try {
@@ -536,7 +536,7 @@ export function saveMyNotesText(paperId: number, text: string): boolean {
 export async function paperDetail(id: number): Promise<PaperDetail | null> {
   const db = getDb()
   const row = db
-    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path, doi, volume, issue, pages, publisher, language FROM papers WHERE id=?')
+    .prepare('SELECT id, slug, title, authors, year, venue, category, status, added_at, summary, path, doi, volume, issue, pages, publisher, language FROM papers WHERE deleted_at IS NULL AND id=?')
     .get(id) as
     | { id: number; slug: string; title: string; authors: string; year: number | null; venue: string; category: string; status: string; added_at: string; summary: string | null; path: string; doi: string | null; volume: string | null; issue: string | null; pages: string | null; publisher: string | null; language: string | null }
     | undefined
@@ -665,8 +665,8 @@ export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: 
   // 分类筛选：空 = 全库；指定分类只在该分类内构图（跨分类硬连不相关论文反而干扰）
   const rows = (
     category
-      ? db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers WHERE category=?').all(category)
-      : db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers').all()
+      ? db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
+      : db.prepare('SELECT id, title, authors, summary, category, year, path FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
   ) as Array<{ id: number; title: string; authors: string; summary: string | null; category: string; year: number | null; path: string }>
   const chunkStmt = db.prepare('SELECT text FROM chunks WHERE paper_id = ? LIMIT 40')
 
@@ -695,7 +695,7 @@ export function knowledgeGraph(category?: string): { nodes: GraphNode[]; edges: 
   // 无向量库自动退化为纯词法（与旧版一致）
   const pvecs = new Map<number, Float32Array>()
   try {
-    const pv = db.prepare('SELECT id, pvec FROM papers WHERE pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
+    const pv = db.prepare('SELECT id, pvec FROM papers WHERE deleted_at IS NULL AND pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
     for (const r of pv) {
       if (r.pvec && r.pvec.byteLength >= 8) pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
     }
@@ -808,8 +808,8 @@ export function keywordGraph(category?: string, topK = 48): { nodes: KwNode[]; e
   const db = getDb()
   const rows = (
     category
-      ? db.prepare('SELECT id, title, summary FROM papers WHERE category=?').all(category)
-      : db.prepare('SELECT id, title, summary FROM papers').all()
+      ? db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
+      : db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
   ) as Array<{ id: number; title: string; summary: string | null }>
   const freq = new Map<string, number>()
   const paperIds = new Map<string, number[]>()
@@ -858,8 +858,8 @@ export function authorGraph(category?: string, topK = 60): { nodes: AuNode[]; ed
   const db = getDb()
   const rows = (
     category
-      ? db.prepare('SELECT id, authors FROM papers WHERE category=?').all(category)
-      : db.prepare('SELECT id, authors FROM papers').all()
+      ? db.prepare('SELECT id, authors FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
+      : db.prepare('SELECT id, authors FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
   ) as Array<{ id: number; authors: string }>
   const freq = new Map<string, number>()
   const pair = new Map<string, number>()
@@ -902,8 +902,8 @@ export function topicClusters(category?: string): TopicCluster[] {
   const db = getDb()
   const rows = (
     category
-      ? db.prepare('SELECT id, title, summary FROM papers WHERE category=?').all(category)
-      : db.prepare('SELECT id, title, summary FROM papers').all()
+      ? db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND category=?').all(category)
+      : db.prepare('SELECT id, title, summary FROM papers WHERE deleted_at IS NULL AND deleted_at IS NULL').all()
   ) as Array<{ id: number; title: string; summary: string | null }>
   if (rows.length === 0) return []
   const kwOf = new Map<number, string[]>()
@@ -912,7 +912,7 @@ export function topicClusters(category?: string): TopicCluster[] {
   // ---- 优先语义聚类：papers.pvec K-means（k 自适应 ⌊√(n/2)⌋，限 2..12） ----
   const pvecs = new Map<number, Float32Array>()
   try {
-    const pv = db.prepare('SELECT id, pvec FROM papers WHERE pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
+    const pv = db.prepare('SELECT id, pvec FROM papers WHERE deleted_at IS NULL AND pvec IS NOT NULL').all() as Array<{ id: number; pvec: Buffer }>
     for (const r of pv) {
       if (r.pvec && r.pvec.byteLength >= 8) pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
     }

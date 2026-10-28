@@ -18,10 +18,10 @@ export const MODEL_CAPS_PRESETS: Preset[] = [
   { match: 'agnes-2.5-pro', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 1048576, maxOutput: 65536, inputs: ['text', 'image', 'video', 'pdf'], caps: ['json', 'system'] } },
   { match: 'agnes-2.5-flash', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 1048576, maxOutput: 65536, inputs: ['text', 'image', 'video', 'pdf'], caps: ['json', 'system'] } },
   // ---- OpenAI GPT-6（2026-09/10，Astra/Sol/Luna；reasoning effort low→max）----
-  { match: 'gpt-6-astra', caps: { reasoningLevels: ['low', 'medium', 'high', 'max'], context: 1000000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
-  { match: 'gpt-6-sol', caps: { reasoningLevels: ['none', 'low', 'medium', 'high', 'max'], context: 400000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
-  { match: 'gpt-6-luna', caps: { reasoningLevels: ['none', 'low', 'medium', 'high'], context: 400000, maxOutput: 65536, inputs: ['text', 'image'], caps: ['json', 'system'] } },
-  { match: 'gpt-6', caps: { reasoningLevels: ['low', 'medium', 'high', 'max'], context: 1000000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
+  { match: 'gpt-6-astra', caps: { reasoningLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'], context: 1000000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
+  { match: 'gpt-6-sol', caps: { reasoningLevels: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], context: 400000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
+  { match: 'gpt-6-luna', caps: { reasoningLevels: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], context: 400000, maxOutput: 65536, inputs: ['text', 'image'], caps: ['json', 'system'] } },
+  { match: 'gpt-6', caps: { reasoningLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'], context: 1000000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
   // ---- GPT-5.6（Sol/Terra/Luna；Responses API 六档）----
   { match: 'gpt-5.6', caps: { reasoningLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], context: 400000, maxOutput: 128000, inputs: ['text', 'image'], caps: ['json', 'system'] } },
   // ---- OpenAI 上一代（保留兜底）----
@@ -32,7 +32,7 @@ export const MODEL_CAPS_PRESETS: Preset[] = [
   { match: 'o4-mini', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 200000, maxOutput: 100000, inputs: ['text', 'image'], caps: ['json'] } },
   { match: 'o3', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 200000, maxOutput: 100000, inputs: ['text', 'image'], caps: ['json'] } },
   // ---- Anthropic（2026-02 Opus 4.6：1M beta + adaptive thinking / max effort）----
-  { match: 'claude-opus-4.6', caps: { reasoningLevels: ['low', 'medium', 'high', 'max'], context: 1000000, maxOutput: 128000, inputs: ['text', 'image', 'pdf'], caps: ['json', 'system'] } },
+  { match: 'claude-opus-4-6', caps: { reasoningLevels: ['low', 'medium', 'high', 'max'], context: 1000000, maxOutput: 128000, inputs: ['text', 'image', 'pdf'], caps: ['json', 'system'] } },
   { match: 'claude-opus-4', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 200000, maxOutput: 64000, inputs: ['text', 'image', 'pdf'], caps: ['json', 'system'] } },
   { match: 'claude-sonnet-4', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 200000, maxOutput: 64000, inputs: ['text', 'image', 'pdf'], caps: ['json', 'system'] } },
   { match: 'claude-haiku-4', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 200000, maxOutput: 64000, inputs: ['text', 'image', 'pdf'], caps: ['json', 'system'] } },
@@ -51,7 +51,7 @@ export const MODEL_CAPS_PRESETS: Preset[] = [
   { match: 'deepseek-reasoner', caps: { reasoningLevels: ['medium', 'max'], context: 128000, maxOutput: 64000, inputs: ['text'], caps: ['json'] } },
   { match: 'deepseek-chat', caps: { reasoningLevels: [], context: 128000, maxOutput: 8192, inputs: ['text'], caps: ['json'] } },
   // ---- 通义 3.5/3.8（2026：Plus 1M ctx）----
-  { match: 'qwen3.8', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 1000000, maxOutput: 65536, inputs: ['text', 'image'], caps: ['json', 'system'] } },
+  { match: 'qwen3.7', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 1000000, maxOutput: 65536, inputs: ['text', 'image'], caps: ['json', 'system'] } },
   { match: 'qwen-max', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 131072, maxOutput: 32768, inputs: ['text', 'image'], caps: ['json', 'system'] } },
   { match: 'qwen-plus', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 131072, maxOutput: 32768, inputs: ['text', 'image'], caps: ['json', 'system'] } },
   { match: 'qwen3.5', caps: { reasoningLevels: ['low', 'medium', 'high'], context: 1000000, maxOutput: 65536, inputs: ['text', 'image'], caps: ['json', 'system'] } },

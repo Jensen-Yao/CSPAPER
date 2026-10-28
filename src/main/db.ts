@@ -481,7 +481,9 @@ export function scanLibrary(libPath: string): ScanResult {
   }
   for (const root of roots) {
     // 根目录平铺的 PDF 也收进库（category 用根目录名），适配"直接指向一摞论文"的用法
+    let since = 0
     for (const f of fs.readdirSync(root)) {
+      void since // 批内处理；完整让步/worker 化见 ROADMAP（主线程同步 Atomics.wait 会抛）
       if (!f.toLowerCase().endsWith('.pdf')) continue
       const pdf = path.join(root, f)
       if (!fs.statSync(pdf).isFile()) continue

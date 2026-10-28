@@ -156,7 +156,7 @@ export async function buildIndex(send: (ev: string, payload: unknown) => void): 
     db.prepare("INSERT INTO meta(key,value) VALUES('embed_dim',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(dim))
     db.prepare("INSERT INTO meta(key,value) VALUES('chunk_v',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(CHUNK_VERSION))
 
-    const todo = db.prepare('SELECT id, path, slug, title, authors, venue FROM papers WHERE indexed=0 ORDER BY id').all() as Array<{
+    const todo = db.prepare('SELECT id, path, slug, title, authors, venue FROM papers WHERE indexed=0 AND deleted_at IS NULL ORDER BY id').all() as Array<{
       id: number
       path: string
       slug: string
@@ -224,7 +224,7 @@ export async function buildIndex(send: (ev: string, payload: unknown) => void): 
     const left = db
       .prepare(
         `SELECT id, path, slug, title, authors, venue FROM papers p
-         WHERE pvec IS NULL OR p.id NOT IN (SELECT rowid FROM papers_fts) ORDER BY id`
+         WHERE (pvec IS NULL OR p.id NOT IN (SELECT rowid FROM papers_fts)) AND p.deleted_at IS NULL ORDER BY id`
       )
       .all() as Array<{ id: number; path: string; slug: string; title: string; authors: string; venue: string }>
     for (let t = 0; t < left.length; t++) {
@@ -272,9 +272,9 @@ export interface RetrievedChunk {
 const hybridCache: { rows: Array<{ id: number; paper_id: number; page: number; vec: Buffer }> | null; maxId: number } = { rows: null, maxId: -1 }
 export async function hybridSearch(query: string, scopePaperId?: number, topK = 12, category?: string): Promise<RetrievedChunk[]> {
   const db = getDb()
-  let papers = db.prepare('SELECT id, slug, title FROM papers').all() as Array<{ id: number; slug: string; title: string }>
+  let papers = db.prepare('SELECT id, slug, title FROM papers WHERE deleted_at IS NULL').all() as Array<{ id: number; slug: string; title: string }>
   if (category) {
-    const allowed = new Set(db.prepare('SELECT id FROM papers WHERE category=?').all(category).map((r: any) => r.id))
+    const allowed = new Set(db.prepare('SELECT id FROM papers WHERE category=? AND deleted_at IS NULL').all(category).map((r: any) => r.id))
     papers = papers.filter((p) => allowed.has(p.id))
   }
   const paperById = new Map(papers.map((p) => [p.id, p]))
@@ -407,7 +407,7 @@ ${n.text}`
     /* 短查询/无命中忽略 */
   }
   const pvecs = new Map<number, Float32Array>()
-  for (const r of db.prepare('SELECT id, pvec FROM papers').all() as Array<{ id: number; pvec: Buffer | null }>) {
+  for (const r of db.prepare('SELECT id, pvec FROM papers WHERE deleted_at IS NULL').all() as Array<{ id: number; pvec: Buffer | null }>) {
     if (r.pvec && r.pvec.byteLength > 0 && paperById.has(r.id)) {
       pvecs.set(r.id, new Float32Array(r.pvec.buffer, r.pvec.byteOffset, r.pvec.byteLength / 4))
     }

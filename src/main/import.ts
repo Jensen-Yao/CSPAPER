@@ -21,7 +21,7 @@ export interface ImportOutcome {
 }
 
 // 内容指纹：首 256KB 哈希 + 文件大小（导入去重，避免同一 PDF 重复入库）
-function fingerprintFile(p: string): string {
+export function fingerprintFile(p: string): string {
   const fd = fs.openSync(p, 'r')
   try {
     const buf = Buffer.alloc(256 * 1024)
@@ -488,6 +488,10 @@ export async function deletePaper(paperId: number, opts?: { keepFiles?: boolean 
   const db = getDb()
   const p = db.prepare('SELECT id, path FROM papers WHERE id=?').get(paperId) as { id: number; path: string } | undefined
   if (!p) throw new Error('论文不存在（可能已被删除）')
+  // 清指纹墓碑：否则删除后重拖同一 PDF 会被 import_fp 判重、永远导不回来
+  try {
+    db.prepare('DELETE FROM import_fp WHERE fp=?').run(fingerprintFile(p.path))
+  } catch { /* 指纹失败不阻断删除 */ }
   if (!opts?.keepFiles) {
     const dir = path.dirname(p.path)
     try {

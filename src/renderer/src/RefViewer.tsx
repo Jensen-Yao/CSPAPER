@@ -81,6 +81,7 @@ function PageCanvas({ doc, num, scale, dim }: { doc: any; num: number; scale: nu
 // pinch 同信号）与 +/-/0 快捷键缩放，以视口中心为锚点保持阅读位置
 export default function RefViewer({ paper, page, snippet, probe, width, onClose }: Props): JSX.Element {
   const [doc, setDoc] = useState<any>(null)
+  const docRef = useRef<any>(null)
   const [err, setErr] = useState('')
   const [numPages, setNumPages] = useState(0)
   const [dims, setDims] = useState<Array<{ w: number; h: number }>>([])
@@ -112,7 +113,8 @@ export default function RefViewer({ paper, page, snippet, probe, width, onClose 
           void d.destroy()
           return
         }
-        const metas: Array<{ w: number; h: number }> = []
+        docRef.current = d
+const metas: Array<{ w: number; h: number }> = []
         for (let n = 1; n <= d.numPages; n++) {
           const pg = await d.getPage(n)
           const vp = pg.getViewport({ scale: 1 })
@@ -131,6 +133,8 @@ export default function RefViewer({ paper, page, snippet, probe, width, onClose 
     })()
     return () => {
       cancelled = true
+      void docRef.current?.destroy().catch(() => {})
+      docRef.current = null
     }
   }, [paper.id])
 

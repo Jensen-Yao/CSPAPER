@@ -78,10 +78,24 @@ export function registerEcoIpc(ctx: IpcCtx): void {
     const target = path.resolve(r.filePaths[0])
     if (path.resolve(cur).toLowerCase() === target.toLowerCase()) return null
     fs.mkdirSync(target, { recursive: true })
+    // WAL 库必须先 checkpoint 再拷：否则 db/-wal/-shm 三个文件时间点不一致，
+    // 迁移后的库可能丢最近事务甚至打不开
+    try {
+      dbmod.getDb().pragma('wal_checkpoint(TRUNCATE)')
+    } catch { /* checkpoint 失败仍尝试拷贝 */ }
     const skip = new Set(['Caches', 'GPUCache', 'Code Cache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'blob_storage', 'Crashpad'])
     for (const entry of fs.readdirSync(cur)) {
       if (skip.has(entry)) continue
-      fs.cpSync(path.join(cur, entry), path.join(target, entry), { recursive: true, force: false })
+      const from = path.join(cur, entry)
+      const to = path.join(target, entry)
+      // force:false 遇已有文件会中途抛错留半截拷贝：先清目标同名，失败时回滚删除本次写入
+      try {
+        fs.rmSync(to, { recursive: true, force: true })
+        fs.cpSync(from, to, { recursive: true, force: false })
+      } catch (err) {
+        try { fs.rmSync(to, { recursive: true, force: true }) } catch { /* 回滚失败忽略 */ }
+        throw new Error(`迁移「${entry}」失败：${String(err).slice(0, 120)}（目标目录已回滚，请重试）`)
+      }
     }
     fs.mkdirSync(LAUNCHER_DIR, { recursive: true })
     fs.writeFileSync(LAUNCHER_FILE, JSON.stringify({ dataDir: target }, null, 2))
@@ -112,16 +126,20 @@ import { apiStatus as zoteroApiStatus, verifyApi as zoteroVerifyApi, syncZotero,
 export function registerZoteroApiIpc(ctx: IpcCtx): void {
   ipcMain.handle('zotero:api-status', () => zoteroApiStatus())
   ipcMain.handle('zotero:api-verify', (_e, userId: string, apiKey: string) => zoteroVerifyApi(String(userId ?? '').trim(), String(apiKey ?? '').trim()))
+  ipcMain.handle('zotero:push-highlights', (_e, paperId: number) => pushHighlightsToZotero(paperId))
   ipcMain.handle('zotero:api-sync', (_e, mode: 'full' | 'incremental') => {
     void (async () => {
-      const r = await syncZotero({
-        mode,
-        onProgress: (p) => ctx.send('zotero:progress', p)
-      })
-  ipcMain.handle('zotero:push-highlights', (_e, paperId: number) => pushHighlightsToZotero(paperId))
-
-      if (r.ok) ctx.send('zotero:sync-done', { ok: true, imported: r.imported, skipped: r.skipped, failed: r.failed, fetched: r.fetched })
-      else ctx.send('zotero:sync-done', { ok: false, error: r.error })
+      try {
+        const r = await syncZotero({
+          mode,
+          onProgress: (p) => ctx.send('zotero:progress', p)
+        })
+        if (r.ok) ctx.send('zotero:sync-done', { ok: true, imported: r.imported, skipped: r.skipped, failed: r.failed, fetched: r.fetched })
+        else ctx.send('zotero:sync-done', { ok: false, error: r.error })
+      } catch (err) {
+        // 异步 IIFE 必须 catch：否则重复 handle/网络异常被吞，UI 的 sync-done 永不到达而卡死
+        ctx.send('zotero:sync-done', { ok: false, error: String(err).slice(0, 200) })
+      }
     })()
     return { ok: true }
   })

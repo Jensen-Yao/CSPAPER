@@ -97,6 +97,7 @@ export default function App(): JSX.Element {
   const [recordsOpen, setRecordsOpen] = useState(false)
   const [importSeq, setImportSeq] = useState(0)
   const [importBusy, setImportBusy] = useState(false)
+  const importBusyRef = useRef(false)
   const [chatReset, setChatReset] = useState(0)
   const [indexedCount, setIndexedCount] = useState({ papers: 0, indexed: 0, chunks: 0 })
   const [pendingJump, setPendingJump] = useState<{ slug: string; page: number; snippet?: string; probe?: string } | null>(null)
@@ -238,7 +239,7 @@ export default function App(): JSX.Element {
     // 主进程菜单触发的变更（右键移动/删除空分类）与导入入口
     const offChg = window.api.onPapersChanged(() => void refreshPapers())
     const offReq = window.api.onImportRequest(() => {
-      if (!importBusy) {
+      if (!importBusyRef.current) {
         setImportFiles([])
         setImportSeq((s) => s + 1)
       }
@@ -344,7 +345,7 @@ export default function App(): JSX.Element {
     (e: React.DragEvent) => {
       e.preventDefault()
       setFloatBar(null)
-      if (importBusy) return
+      if (importBusyRef.current) return
       const paths = [...e.dataTransfer.files]
         .map((f) => window.api.pathForFile(f))
         .filter(Boolean)
@@ -462,9 +463,14 @@ export default function App(): JSX.Element {
   const openCite = useCallback(
     (slug: string, page: number, snippet?: string, probe?: string) => {
       const p = papers.find((x) => x.slug === slug)
-      if (p) setRefView({ paper: p, page, snippet, probe })
+      if (p) {
+        setTopMode('paper')
+        // RefViewer 挂在对话容器内：不在 chat 模式时先切过去，否则跳转不可见
+        if (mode !== 'chat') setMode('chat')
+        setRefView({ paper: p, page, snippet, probe })
+      }
     },
-    [papers]
+    [papers, mode]
   )
   const changeModel = useCallback(
     (m: string) => {
@@ -680,9 +686,9 @@ export default function App(): JSX.Element {
       </div>
 
       <div className="body3">
-        {topMode === 'work' && (
+        <div className={topMode === 'work' ? '' : 'pane-hidden'} style={{ display: 'flex', flex: 1, minWidth: 0 }}>
           <WorkbenchView
-            visible
+            visible={topMode === 'work'}
             papers={papers}
             models={models}
             onOpenPaper={(p) => {
@@ -699,7 +705,7 @@ export default function App(): JSX.Element {
             }}
             onOpenSettings={() => setShowSettings(true)}
           />
-        )}
+        </div>
         {topMode === 'paper' && (
         <>
         {showLib && (
@@ -863,7 +869,7 @@ export default function App(): JSX.Element {
           </div>
           {/* 笔记中心：全库我的笔记 + 划词标注聚合（W3） */}
           <div className={`ov-host ${mode === 'notes' ? '' : 'pane-hidden'}`}>
-            <NotesView papers={papers} visible={mode === 'notes'} onOpenPaper={(id, page) => { const p = papers.find((x) => x.id === id); if (p) openPaper(p, page) }} onRefresh={refreshPapers} />
+            <NotesView papers={papers} visible={mode === 'notes'} onOpenPaper={(id, page) => { const p = papers.find((x) => x.id === id); if (p) { setTopMode('paper'); setMode('read'); openPaper(p, page) } }} onRefresh={refreshPapers} />
           </div>
           {/* 内置文献浏览器：站点快捷入口 + Connector 扩展 + 一键保存入库 */}
           <WebSearchView visible={mode === 'web'} />
@@ -914,7 +920,7 @@ export default function App(): JSX.Element {
           initialFiles={importFiles}
           initialCats={cats}
           hasApiKey={!!settings.apiKey}
-          onBusyChange={setImportBusy}
+          onBusyChange={(b) => { importBusyRef.current = b; setImportBusy(b) }}
           onClose={() => setImportFiles(null)}
           onFinished={(outcomes) => void importDone(outcomes)}
         />
