@@ -6,7 +6,8 @@ import { spawn } from 'node:child_process'
 import { chromium } from 'playwright-core'
 
 const root=process.cwd()
-const installer=path.join(root,'dist','CSPAPER Setup 0.19.3.exe')
+const {version}=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'))
+const installer=path.join(root,'dist',`CSPAPER Setup ${version}.exe`)
 if(!fs.existsSync(installer))throw new Error('installer missing: '+installer)
 const rootTemp=fs.mkdtempSync(path.join(os.tmpdir(),'cspaper-installer-test-'))
 const installDir=path.join(rootTemp,'app')
