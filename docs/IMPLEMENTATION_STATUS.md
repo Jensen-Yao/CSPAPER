@@ -18,9 +18,9 @@
 | 验证 | 当前结果 |
 |---|---|
 | `npm run typecheck` | 通过（含 tests 工程） |
-| `npm run test:core` | 73 / 73 |
+| `npm run test:core` | 75 / 75 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 63 / 63，无 renderer 异常 |
+| `npm run test:ui` | 64 / 64，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
