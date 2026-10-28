@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-29T05:11:45+08:00",
+  "headSha": "a11d2c710d5cc4e68d0e81d2ce06ff9dc16e1f31",
+  "ci": {
+    "runId": 40768788452,
+    "workflow": "CI",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      "verify",
+      "verify-installer"
+    ]
+  },
+  "pages": {
+    "runId": 40768787791,
+    "workflow": "pages-build-deployment",
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "notes": [
+    "The successful CI run included typecheck, 73 core tests, build, lifecycle, 63 UI tests, benchmarks, Windows packaging and installer install/upgrade/uninstall tests.",
+    "The local library worker hotfix was validated by this successful remote CI run."
+  ]
+}

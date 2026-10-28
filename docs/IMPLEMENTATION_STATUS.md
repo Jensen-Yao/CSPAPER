@@ -1,6 +1,6 @@
 # 当前实施状态（2026-10-29）
 
-**结论：原十四节 / A—G、用户后续 7 项缺陷和总体架构-功能-UI-对话要求的本地实现与 0.20.0 本地发布验证已闭环。** 下一步推送 GitHub；远端 CI 全绿后才创建 tag/release。完整逐项对照见 [PLAN_ACCEPTANCE.md](./PLAN_ACCEPTANCE.md)。
+**结论：原十四节 / A—G、用户后续 7 项缺陷和总体架构-功能-UI-对话要求已闭环；0.20.0 已推送 GitHub，远端 CI 与 GitHub Pages 均通过。**完整逐项对照见 [PLAN_ACCEPTANCE.md](./PLAN_ACCEPTANCE.md)。
 
 ## 本轮核心变化
 
@@ -29,15 +29,14 @@
 | `dist:win` | `CSPAPER Setup 0.20.0.exe` 生成成功，194,290,941 字节，SHA-256 `D4B01B048ADBFF001BB0C3F99EC8476F06BC214AAAD6B032611A36D2F6B39AAA` |
 | Installer | 首装、启动、升级、二次启动、卸载、残留检查通过 |
 | Packaged UI | `win-unpacked/CSPAPER.exe` 63/63 通过，无 renderer 异常 |
+| 远端 GitHub | main `a11d2c7` CI 通过（verify + verify-installer）；GitHub Pages 构建通过 |
 | 本地发布 | 完整 check、CSS/Pages 探针、真实模型、安装器、打包 UI 全部完成 |
 
-## 剩余发布流程
+## 发布状态
 
-1. 密钥/敏感文件扫描和 `git diff --check`。
-2. 提交并推送 main，等待 GitHub Actions CI。
-3. CI 全绿后创建 `v0.20.0` tag，由 release workflow 构建 Windows/macOS/Android 产物。
-4. 若远端 CI 或发布构建失败，保持 tag/release 阻塞并回滚修复。
+main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推送 GitHub，未创建 tag/release。若后续要发布正式版本，在当前 CI 绿色基线上创建 `v0.20.0` tag 即可触发 Windows/macOS/Android release workflow。
+
 
 ## 证据
 
-最新证据目录：`design-plans/execution-review-2026-10-29/`。最终 check / installer / real-model 完成后更新其中的 JSON 与哈希。
+最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

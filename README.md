@@ -137,6 +137,7 @@ Markdown + CSL + PDF    Operation Journal
 | Real model | ✅ Agnes 两个模型严格 JSON；三文献任务 7 个工具、3 篇笔记、1 张对比表 |
 | 10k library | ✅ list 86.45ms，最大事件循环间隔 94.33ms（低于 100ms 预算） |
 | CSS gate | ✅ 圆角 17 档、字号 14 档、important 5 |
+| GitHub CI / Pages | ✅ main `a11d2c7` CI 与 Pages 构建通过 |
 
 更多证据见 [`design-plans/execution-review-2026-10-29/`](./design-plans/execution-review-2026-10-29/)。架构、协议、迁移和当前边界见：
 
