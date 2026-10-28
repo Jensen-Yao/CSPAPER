@@ -4,6 +4,7 @@ import { NOTE_TEMPLATES } from './note-templates'
 import NotesMarkmapButton from './NotesMarkmapButton'
 import { catLabel } from './LibraryPane'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 interface Props {
   paper: Paper
@@ -25,11 +26,12 @@ interface PaperTag {
 
 // 卡片详情栏：信息（含标签/状态）/ AI 洞察 / 摘要 / 引用 / 我的笔记 / 标注 / 附件
 export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized, onChanged, embedded }: Props): JSX.Element {
+  const dlg = useDialog()
   const [detail, setDetail] = useState<PaperDetail | null>(null)
   // ---- 我的笔记（防抖自动保存） ----
   const [myNote, setMyNote] = useState('')
   const [noteBusy, setNoteBusy] = useState(false)
-  const [noteState, setNoteState] = useState<'idle' | 'pending' | 'saved'>('idle')
+  const [noteState, setNoteState] = useState<'idle' | 'pending' | 'saved' | 'failed'>('idle')
   const [savedAt, setSavedAt] = useState('')
   const [tplId, setTplId] = useState('')
   const savedRef = useRef('') // 最近一次已落库的内容（防抖期间跳过未变更文本）
@@ -56,7 +58,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     } catch {
       /* 无记忆用默认 */
     }
-    return { info: true, ai: true, deep: false, rel: true, abs: true, cite: false, mine: true, notes: false, files: false }
+    return { info: true, ai: true, deep: false, rel: true, abs: true, cite: false, similar: false, mine: true, notes: false, files: false }
   })
   const setOpenPersist = (next: Record<string, boolean>): void => {
     setOpen(next)
@@ -69,7 +71,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   const allOpen = Object.values(open).every(Boolean)
   const toggleAllSecs = (): void => {
     const next: Record<string, boolean> = {}
-    for (const k of ['info', 'ai', 'deep', 'rel', 'abs', 'cite', 'mine', 'notes', 'files']) next[k] = !allOpen
+    for (const k of ['info', 'ai', 'deep', 'rel', 'abs', 'cite', 'similar', 'mine', 'notes', 'files']) next[k] = !allOpen
     setOpenPersist(next)
   }
   const [sumBusy, setSumBusy] = useState(false)
@@ -228,9 +230,13 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         const n = new Date()
         setSavedAt(`${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`)
         setNoteState('saved')
+        window.dispatchEvent(new CustomEvent('cspaper:notes-changed'))
+      } else {
+        // 返回 false（md 缺失等）：不再卡「保存中」，可点击重试
+        setNoteState('failed')
       }
     } catch {
-      // 保存失败保持「保存中/待保存」状态，下一次输入会再次触发
+      setNoteState('failed')
     } finally {
       setNoteBusy(false)
     }
@@ -270,8 +276,10 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
       setAllTags((ls) => (ls.some((t) => t.id === row.id) ? ls : [...ls, row]))
       setTagInput('')
       setTagSugsOpen(false)
-    } catch {
-      // 建/挂标签失败：保留输入，便于重试
+      onChanged?.() // 侧栏计数/纵览筛选同步（此前不通知父级）
+      window.dispatchEvent(new CustomEvent('cspaper:tags-changed'))
+    } catch (e) {
+      dlg.toast(`添加标签失败：${String(e).replace(/^Error: /, '').slice(0, 80)}`, 'error')
     }
   }
 
@@ -279,8 +287,10 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     try {
       await window.api.paperTagRemove(paper.id, id)
       setTags((ts) => ts.filter((t) => t.id !== id))
-    } catch {
-      // 移除失败：保留原状
+      onChanged?.()
+      window.dispatchEvent(new CustomEvent('cspaper:tags-changed'))
+    } catch (e) {
+      dlg.toast(`移除标签失败：${String(e).replace(/^Error: /, '').slice(0, 80)}`, 'error')
     }
   }
 
@@ -391,7 +401,13 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
         const v = e.target.value.trim()
         if (v === val) return
         const patch: Record<string, string | number | null> = key === 'year' ? { year: parseInt(v) || null } : { [key]: v || null }
-        void window.api.updatePaperMeta(paper.id, patch).then(() => onChanged?.()).catch(() => {})
+        void window.api
+          .updatePaperMeta(paper.id, patch)
+          .then(() => onChanged?.())
+          .catch((e2) => {
+            dlg.toast(`保存失败：${String(e2).replace(/^Error: /, '').slice(0, 80)}`, 'error')
+            e.target.value = val // 回滚显示
+          })
       }}
     />
   )
@@ -770,8 +786,19 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                 />
                 <div className="pd-note-meta">
                   <span className={`pd-note-state ${noteState === 'saved' && !noteBusy ? 'ok' : ''}`}>
-                    {noteBusy || noteState === 'pending' ? '保存中…' : noteState === 'saved' ? `已保存 ${savedAt}` : '自动保存已开启'}
+                    {noteBusy || noteState === 'pending'
+                      ? '保存中…'
+                      : noteState === 'saved'
+                        ? `已保存 ${savedAt}`
+                        : noteState === 'failed'
+                          ? '保存失败'
+                          : '自动保存已开启'}
                   </span>
+                  {noteState === 'failed' && !noteBusy && (
+                    <button className="pd-deep-redo" onClick={() => void saveMine()}>
+                      重试
+                    </button>
+                  )}
                 </div>
               </div>,
               <span className="pd-note-count">{myNote.length} 字</span>

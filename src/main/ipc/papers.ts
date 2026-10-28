@@ -190,13 +190,21 @@ export function registerPapersIpc(ctx: IpcCtx): void {
         ]
       },
       {
-        label: '删除文献…',
+        label: '移入回收站…',
+        click: () => {
+          // v0.19：默认软删除（左栏回收站可恢复）；此前直接物理删除且 trash IPC 从未被调用
+          dbmod.getDb().prepare("UPDATE papers SET deleted_at=datetime('now','localtime') WHERE id=?").run(id)
+          send('papers:changed', { ids: [] })
+        }
+      },
+      {
+        label: '彻底删除…',
         click: () => {
           const ok = dialog.showMessageBoxSync(win, {
             type: 'warning',
-            title: '删除文献',
-            message: `删除《${p.title.slice(0, 80) || p.slug}》？`,
-            detail: '「移入废纸篓」同时删除磁盘文件（可从系统废纸篓找回）；「仅移出库」保留磁盘文件，文献从库中消失。',
+            title: '彻底删除文献',
+            message: `彻底删除《${p.title.slice(0, 80) || p.slug}》？`,
+            detail: '「移入废纸篓」同时删除磁盘文件（可从系统废纸篓找回）；「仅移出库」保留磁盘文件。此操作不可在应用内撤销。',
             buttons: ['移入废纸篓', '仅移出库（保留文件）', '取消'],
             defaultId: 0,
             cancelId: 2,
@@ -655,6 +663,10 @@ export function registerPapersIpc(ctx: IpcCtx): void {
   })
   ipcMain.handle('papers:restore', (_e, id: number) => {
     dbmod.getDb().prepare('UPDATE papers SET deleted_at=NULL WHERE id=?').run(id)
+    return true
+  })
+  ipcMain.handle('papers:purge', async (_e, id: number) => {
+    await deletePaper(id, { keepFiles: true })
     return true
   })
   ipcMain.handle('papers:trashed', () =>

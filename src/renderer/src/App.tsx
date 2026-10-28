@@ -240,6 +240,10 @@ export default function App(): JSX.Element {
     })
     // 主进程菜单触发的变更（右键移动/删除空分类）与导入入口
     const offChg = window.api.onPapersChanged(() => void refreshPapers())
+    const offIdxErr = window.api.onIndexError((err) => {
+      setIndexInfo(null)
+      dlg.toast(`索引失败：${err.slice(0, 120)}`, 'error')
+    })
     const offReq = window.api.onImportRequest(() => {
       if (!importBusyRef.current) {
         setImportFiles([])
@@ -261,6 +265,7 @@ export default function App(): JSX.Element {
       off()
       offImp()
       offChg()
+      offIdxErr()
       offReq()
       offNotice()
       clearInterval(timer)
@@ -564,7 +569,7 @@ export default function App(): JSX.Element {
         { label: '重建全库索引', action: () => void window.api.rebuildIndex() },
         { sep: true, label: '' },
         { label: '设置…', action: () => setShowSettings(true) },
-        { label: '退出', action: () => window.close() }
+        { label: '退出', action: () => void window.api.appQuit() }
       ] as MenuItem[]
     },
     {

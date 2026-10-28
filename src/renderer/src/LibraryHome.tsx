@@ -266,8 +266,12 @@ export default function LibraryHome({ papers, activeId, onOpen, onAddPapers, onO
   )
 }
 
-// 空库引导里直接选库文件夹（延迟 import 避免环依赖：App 已把该方法作为 prop 传入的场景）
+// 空库引导：选目录 → 保存设置 → 触发扫描 → 刷新列表（此前只 reload，
+// 选中路径从未保存，用户以为选错了反复重试）
 async function pickLibrary(): Promise<void> {
-  await window.api.pickLibrary()
+  const dir = await window.api.pickLibrary()
+  if (!dir) return // 取消不刷新
+  await window.api.saveSettings({ libraryPath: dir })
+  await window.api.scanLibrary()
   location.reload()
 }

@@ -68,20 +68,24 @@ export function setupWebSession(notify: (title: string, detail: string) => void)
 
 function registerIntegrateIpc(): void {
   // 内置浏览器「保存此页」：脚本抓取 → 题录入库（无 PDF 自动生成题录页）
-  ipcMain.handle('web:save-page', (_e, url: string, category?: string) => {
+  ipcMain.handle('web:save-page', async (_e, url: string, category?: string) => {
     const target = String(url ?? '').trim()
     if (!/^https?:\/\//i.test(target)) return { ok: false, error: '不是有效网址' }
     const doi = extractDoi(target)
     const script = matchScript(doi ? `https://doi.org/${doi}` : target)
     if (!script) return { ok: false, matched: false, error: '没有匹配的抓取脚本（可在设置 → 在线获取 查看脚本列表）' }
-    void (async () => {
+    // v0.19：等真实抓取/导入结果再返回（此前立即 {ok:true}，失败时界面仍显示已入库）
+    try {
       const r = await runWeb(script, doi ? `https://doi.org/${doi}` : target)
-      if (!r.ok) return
+      if (!r.ok) return { ok: false, matched: true, translator: script.name, error: r.error ?? '抓取失败' }
       const imp = await importTranslated({ csl: r.csl!, pdfPath: r.pdfPath, category, origin: target }, () => {})
-      if (imp.ok) dialog.showMessageBox({ message: '已保存到文献库', detail: `《${String((r.csl as { title?: string }).title ?? '').slice(0, 80)}》\n分类：${getSettings().libraryPath ? '见库内' : ''}（${script.name}）` })
-      else dialog.showMessageBox({ message: '保存失败', detail: imp.error ?? '' })
-    })()
-    return { ok: true, matched: true, translator: script.name }
+      if (imp.ok) {
+        return { ok: true, matched: true, translator: script.name, title: String((r.csl as { title?: string }).title ?? '').slice(0, 80) }
+      }
+      return { ok: false, matched: true, translator: script.name, error: imp.error ?? '导入失败' }
+    } catch (err) {
+      return { ok: false, matched: true, translator: script.name, error: String(err).slice(0, 160) }
+    }
   })
 
   // 打开扩展文件夹（引导装载到外部浏览器）：路径自动进剪贴板

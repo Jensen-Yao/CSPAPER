@@ -309,6 +309,7 @@ declare global {
       saveSettings: (patch: Partial<Settings>) => Promise<Settings>
       pickLibrary: () => Promise<string | null>
       scanLibrary: (libPath?: string) => Promise<{ added: number; updated: number; total: number; indexing: boolean }>
+      appQuit: () => Promise<boolean>
       listPapers: () => Promise<Paper[]>
       listCategories: () => Promise<string[]>
       setStatus: (id: number, status: string) => Promise<void>
@@ -352,6 +353,7 @@ declare global {
       searchesRemove: (id: number) => Promise<boolean>
       papersTrash: (id: number) => Promise<boolean>
       papersRestore: (id: number) => Promise<boolean>
+      papersPurge: (id: number) => Promise<boolean>
       papersTrashed: () => Promise<Array<{ id: number; title: string; deleted_at: string }>>
       collectionsList: () => Promise<Array<{ id: number; name: string; parent_id: number | null; n: number }>>
       collectionsCreate: (name: string, parentId?: number) => Promise<number>
@@ -398,6 +400,7 @@ declare global {
       onPapersRenameRequest: (cb: (p: { id: number; title: string }) => void) => () => void
       onCategoryCreateRequest: (cb: () => void) => () => void
       onMoveNewRequest: (cb: (p: { id: number; title: string }) => void) => () => void
+      onIndexError: (cb: (err: string) => void) => () => void
       onPapersChanged: (cb: () => void) => () => void
       onImportRequest: (cb: () => void) => () => void
       onImportFile: (cb: (o: ImportOutcome) => void) => () => void

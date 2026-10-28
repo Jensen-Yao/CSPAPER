@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CompareData, CompareTable, Paper } from './types'
 import { BASE_FIELDS, AI_DIMENSION_PRESETS } from './dimensions'
 import * as Icon from './Icon'
+import { useDialog } from './Dialog'
 
 interface Props {
   papers: Paper[]
@@ -22,6 +23,7 @@ const fieldVal = (f: string, p: Paper): string => {
 // AI 对比表格：多篇文献 × 多维度横向对比
 //  - 基础字段列直接提取（无需 AI）；分析维度由 AI 读原文提取要点并附页码出处
 export default function CompareView({ papers, onJump }: Props): JSX.Element {
+  const dlg = useDialog()
   const [tables, setTables] = useState<CompareTable[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
   const [genIds, setGenIds] = useState<Set<number>>(new Set())
@@ -61,7 +63,9 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
     if (!active) return
     const next = fn({ ...active.data, cells: { ...active.data.cells } })
     setTables((ts) => ts.map((t) => (t.id === active.id ? { ...t, data: next } : t)))
-    void window.api.compareSave(active.id, next).catch(() => {})
+    void window.api.compareSave(active.id, next).catch((e) => {
+      dlg.toast(`对比表保存失败：${String(e).replace(/^Error: /, '').slice(0, 90)}`, 'error')
+    })
   }
 
   const newTable = async (): Promise<void> => {

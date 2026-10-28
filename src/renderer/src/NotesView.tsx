@@ -114,7 +114,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingRef = useRef<{ id: number; text: string } | null>(null)
 
-  // papers 数量变化 → 缓存失效，并取消进行中的分批拉取
+  // papers 数量变化或笔记/标签变更 → 缓存失效（此前只按数量，改笔记后视图陈旧）
   useEffect(() => {
     if (lenRef.current !== papers.length) {
       lenRef.current = papers.length
@@ -122,6 +122,14 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
       runRef.current += 1
     }
   }, [papers.length])
+  useEffect(() => {
+    const h = (): void => {
+      cacheRef.current = new Map()
+      runRef.current += 1
+    }
+    window.addEventListener('cspaper:notes-changed', h)
+    return () => window.removeEventListener('cspaper:notes-changed', h)
+  }, [])
 
   // 分批加载前 limit 篇的笔记与标注（串行分批，逐批上屏）
   useEffect(() => {

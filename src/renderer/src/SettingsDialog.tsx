@@ -130,7 +130,10 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   const saveRef = useRef<() => Promise<void>>(async () => {})
   useEffect(() => {
     const h = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') void saveRef.current()
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      // 子浮层（picker 搜索/命令面板）打开时不关整个设置——只关子层自己的处理已 stopPropagation
+      if (showPicker) return
+      void saveRef.current()
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)

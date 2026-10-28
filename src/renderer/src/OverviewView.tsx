@@ -73,6 +73,15 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
       on = false
     }
   }, [papers])
+
+  // 标签变更（侧栏/详情面板）即时刷新筛选下拉
+  useEffect(() => {
+    const h = (): void => {
+      void window.api.tagsList().then(setTags).catch(() => {})
+    }
+    window.addEventListener('cspaper:tags-changed', h)
+    return () => window.removeEventListener('cspaper:tags-changed', h)
+  }, [])
   const tagColorMap = useMemo(() => new Map(tags.map((t) => [t.name, t.color])), [tags])
   const tagColor = (name: string): string => tagColorMap.get(name) ?? '#98a2ab'
   const [tagFilter, setTagFilter] = useState('')
@@ -412,13 +421,14 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
                   style={{ width: 120 }}
                   placeholder="批量打标签…"
                   onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return
+                    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
                     const tag = e.currentTarget.value.trim()
                     if (!tag) return
+                    const el = e.currentTarget // React 18 事件回收后 currentTarget 置空
                     void Promise.all([...checked].map((id) => window.api.paperTagAdd(id, tag))).then(() => {
                       setChecked(new Set())
                       onRefresh()
-                      e.currentTarget.value = ''
+                      el.value = ''
                     })
                   }}
                 />

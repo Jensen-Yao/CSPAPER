@@ -661,6 +661,20 @@ export default function LibraryPane({
                     >
                       恢复
                     </button>
+                    <button
+                      className="cmp-mini danger"
+                      title="彻底删除（不可恢复）"
+                      onClick={() => {
+                        void dlg.confirm({ title: `彻底删除《${t.title.slice(0, 40)}》？`, message: '将从数据库移除（磁盘文件保留）。不可恢复。', okText: '彻底删除', danger: true }).then((ok) => {
+                          if (!ok) return
+                          void window.api.papersPurge(t.id).then(() => {
+                            setTrashed((ts) => ts.filter((x) => x.id !== t.id))
+                          })
+                        })
+                      }}
+                    >
+                      彻底删除
+                    </button>
                   </div>
                 ))}
               </div>

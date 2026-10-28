@@ -5,6 +5,7 @@ const api = {
   saveSettings: (patch: unknown) => ipcRenderer.invoke('settings:save', patch),
   pickLibrary: () => ipcRenderer.invoke('library:pick'),
   scanLibrary: (libPath?: string) => ipcRenderer.invoke('library:scan', libPath),
+  appQuit: () => ipcRenderer.invoke('app:quit'),
   listPapers: () => ipcRenderer.invoke('papers:list'),
   listCategories: () => ipcRenderer.invoke('categories:list'),
   setStatus: (id: number, status: string) => ipcRenderer.invoke('papers:status', id, status),
@@ -77,6 +78,7 @@ const api = {
   searchesRemove: (id: number) => ipcRenderer.invoke('searches:remove', id),
   papersTrash: (id: number) => ipcRenderer.invoke('papers:trash', id),
   papersRestore: (id: number) => ipcRenderer.invoke('papers:restore', id),
+  papersPurge: (id: number) => ipcRenderer.invoke('papers:purge', id),
   papersTrashed: () => ipcRenderer.invoke('papers:trashed'),
   collectionsList: () => ipcRenderer.invoke('collections:list'),
   collectionsCreate: (name: string, parentId?: number) => ipcRenderer.invoke('collections:create', name, parentId),
@@ -147,6 +149,11 @@ const api = {
     const h = (_e: unknown, p: { id: number; title: string }) => cb(p)
     ipcRenderer.on('papers:move-new-request', h)
     return () => ipcRenderer.removeListener('papers:move-new-request', h)
+  },
+  onIndexError: (cb: (err: string) => void) => {
+    const l = (_e: unknown, err: string): void => cb(err)
+    ipcRenderer.on('index:error', l)
+    return () => ipcRenderer.removeListener('index:error', l)
   },
   onPapersChanged: (cb: () => void) => {
     const h = (): void => cb()
