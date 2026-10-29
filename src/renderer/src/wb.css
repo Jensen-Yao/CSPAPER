@@ -333,3 +333,5 @@ html[data-theme='dark'] .wb-task-status.running { background: rgba(111, 174, 130
   .wb-run-actions { justify-content: flex-start; }
   .wb-action { padding: 5px 8px; }
 }
+.wb-compose-actions { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.wb-compose-actions .wb-send { margin-left: 0; }

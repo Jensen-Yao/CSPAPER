@@ -20,7 +20,7 @@
 | `npm run typecheck` | 通过（含 tests 工程） |
 | `npm run test:core` | 78 / 78 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 76 / 76，无 renderer 异常 |
+| `npm run test:ui` | 79 / 79，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | `npm run test:mobile` | 5 / 5；测试夹具从 10.9 MB 降至 10.8 KB，翻译响应离线固定，无 renderer 错误 |
@@ -97,6 +97,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 超时在 act run 启动时读取当前设置，用户仍可随时手动停止。
 - 超时后持久化为 failed + retryable `run_timeout`，与中断恢复和重试协议兼容。
 - 验证：typecheck 通过、核心回归 78/78、生产构建通过、UI 回归 76/76、无 renderer 异常。
+
+## 持续迭代：运行中 Work 跟进输入（2026-10-29）
+
+- Work 运行中不再用 Stop 替换唯一操作按钮；发送和停止同时可用。
+- 运行中发送的跟进指令进入同一持久会话，由统一 Runtime 在当前 run 后串行排队执行。
+- 停止按钮仍直接作用于当前任务；旧兼容任务继续使用本地待发队列。
+- 验证：typecheck 通过、核心回归 78/78、生产构建通过、CSS gate 通过、UI 回归 79/79、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

@@ -746,16 +746,16 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
               <div className="wb-run-actions" aria-label="任务操作">
                 <button className="wb-action" title="复制本次结果或完整执行报告" onClick={copyReport}>
                   <Icon.Copy size={12} /> {copied?'已复制':'复制结果'}
-                </button>
+                    </button>
                 <button className="wb-action" title="导出 Markdown 任务报告" onClick={exportReport}>
                   <Icon.Save size={12} /> 导出 Markdown
-                </button>
+                    </button>
                 <button className="wb-action" title={wide?'恢复标准阅读宽度':'加宽任务正文，适合长表格和代码'} onClick={() => setWide((v) => !v)}>
                   <Icon.Expand size={12} /> {wide?'标准宽度':'宽屏阅读'}
-                </button>
+                    </button>
                 <button className="wb-action" title={interrupted?'从保存的工具结果继续执行':'聚焦输入框，继续当前任务'} onClick={() => void continueTask()}>
                   <Icon.Doc size={12} /> {interrupted?'中断续跑':'继续任务'}
-                </button>
+                    </button>
                 {running ? (
                   <button className="wb-mini danger" onClick={() => void cancelTask()}>
                     <Icon.Stop size={12} /> 停止任务
@@ -940,7 +940,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
             {!task.conversationId && !atBottom && (
               <button className="wb-jump" title="回到底部" onClick={scrollBottom}>
                 {<Icon.ArrowD />}
-              </button>
+                    </button>
             )}
 
           </div>
@@ -997,7 +997,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                   {c.args ? <span className="wb-slash-args">{'<' + c.args + '>'}</span> : null}
                   <span className="wb-slash-desc">{c.desc}</span>
                   <span className="wb-slash-group">{c.group}</span>
-                </button>
+                    </button>
               ))}
             </div>
           )}
@@ -1055,7 +1055,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
               <div className="wb-pop-wrap">
                 <button className={`wb-pill ${pop === 'tpl' ? 'on' : ''}`} title="任务模板" onClick={() => setPop(pop === 'tpl' ? '' : 'tpl')}>
                   {<Icon.Plus />}
-                </button>
+                    </button>
                 <button
                   className={`wb-pill ${pop === 'perm' ? 'on' : ''}`}
                   title="执行权限：完全访问 = 计划生成后自动执行；执行前确认 = 每次先确认计划"
@@ -1064,7 +1064,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                   {<Icon.Shield />}
                   {perm === 'auto' ? '完全访问' : '执行前确认'}
                   <span className="wb-pill-caret">▾</span>
-                </button>
+                    </button>
                 {pop === 'tpl' && (
                   <>
                     <div className="wb-pop-mask" onClick={() => setPop('')} />
@@ -1122,7 +1122,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                   <span className="wb-pill-dot">{<Icon.Dot />}</span>
                   {agentModel || models[0] || '未配置模型'}
                   <span className="wb-pill-caret">▾</span>
-                </button>
+                    </button>
                 {pop === 'model' && (
                   <>
                     <div className="wb-pop-mask" onClick={() => setPop('')} />
@@ -1159,7 +1159,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                   {<Icon.Sparkle />}
                   推理 {THINKINGS.find((x) => x.value === thinking)?.label ?? '默认'}
                   <span className="wb-pill-caret">▾</span>
-                </button>
+                    </button>
                 {pop === 'effort' && (
                   <>
                     <div className="wb-pop-mask" onClick={() => setPop('')} />
@@ -1199,15 +1199,16 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                   </>
                 )}
               </div>
-              {running ? (
-                <button className="wb-send stop" title="中止当前任务" onClick={() => void cancelTask()}>
-                  {<Icon.Stop />}
-                </button>
-              ) : (
-                <button className="wb-send" disabled={!goal.trim() || busy} title={running ? '排队执行' : '创建任务'} onClick={submit}>
-                  {<Icon.Up />}
-                </button>
-              )}
+                <div className="wb-compose-actions">
+                  {running && (
+                    <button className="wb-send stop" title="停止当前任务" aria-label="停止当前任务" onClick={() => void cancelTask()}>
+                      {<Icon.Stop />}
+                    </button>
+                  )}
+                  <button className="wb-send" disabled={!goal.trim() || busy} title={running ? '排队跟进当前任务' : '创建任务'} aria-label={running ? '排队跟进当前任务' : '创建任务'} onClick={submit}>
+                    {<Icon.Up />}
+                    </button>
+              </div>
             </div>
             {err && <div className="wb-err">{err}</div>}
           </div>
@@ -1315,10 +1316,10 @@ function AutoPane(): JSX.Element {
               <span style={{ flex: 1 }} />
               <button className="wb-mini" onClick={() => void window.api.agentAutoToggle(r.id, !r.enabled).then(refresh)}>
                 {r.enabled ? '停用' : '启用'}
-              </button>
+                    </button>
               <button className="wb-mini danger" onClick={() => void window.api.agentAutoRemove(r.id).then(refresh)}>
                 ✕
-              </button>
+                    </button>
             </div>
             <div className="wb-card-body ellipsis-2">{r.goal}</div>
             <div className="wb-dim">每 {r.interval_minutes} 分钟 · 上次：{r.last_run_at ?? '未运行'}{r.last_result ? ` · ${r.last_result}` : ''}</div>

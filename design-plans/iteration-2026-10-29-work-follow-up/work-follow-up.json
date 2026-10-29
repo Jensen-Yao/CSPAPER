@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-29",
+  "feature": "Work follow-up submission while a run is active",
+  "problem": "the composer placeholder said follow-up input would queue, but the only button while running was Stop, so users could not submit the follow-up at all",
+  "fix": [
+    "show Send and Stop simultaneously while a Work run is active",
+    "Send submits a follow-up turn to the same persistent conversation",
+    "the unified runtime serializes the new run behind the active run in the same conversation",
+    "Stop remains independently available for the active task",
+    "legacy tasks retain the local queue path"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "78/78",
+    "build": "pass",
+    "cssGate": "pass",
+    "ui": "79/79",
+    "rendererExceptions": 0
+  },
+  "uiCases": [
+    "both Send and Stop controls remain enabled while an act run is executing",
+    "a follow-up submitted during a slow run persists as a queued run",
+    "the queued follow-up executes after the active run completes",
+    "both runs finish successfully through the unified runtime"
+  ]
+}

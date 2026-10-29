@@ -96,6 +96,14 @@ const server=http.createServer((req,res)=>{
       }
       chunk({content:'统一翻译完成。[1]'},'stop');res.end();return
     }
+    if(sys.includes('科研任务规划器')&&userText.includes('SLOW-WORK-FOLLOW-UP')) {
+      let count=0
+      const timer=setInterval(()=>{
+        count++;chunk({content:'…'})
+        if(count>=10){clearInterval(timer);chunk({content:JSON.stringify({steps:[{id:'slow-search',tool:'library.search',args:{query:'resilience methods',limit:1},purpose:'慢任务检索',risk:'read'}]})},'stop');res.end('data: [DONE]\n\n')}
+      },500)
+      return
+    }
     if(sys.includes('科研任务规划器')&&userText.includes('生成综述')) {
       chunk({content:JSON.stringify({steps:[{id:'retry-synthesis',tool:'synthesis.create',args:{paperIds:[firstId]},purpose:'重试仍然不足的综述',risk:'reversible_write'}]})},'stop')
       res.end();return
@@ -495,14 +503,41 @@ try{
   await page.locator('.top-switch button').filter({hasText:'Paper'}).click();await wait(100)
   await page.locator('.top-switch button').filter({hasText:'Work'}).click();await wait(300)
   await page.locator('.wb-compose-input').fill('统一运行时执行真实工具并保存笔记')
-  await page.locator('.wb-send').click()
+  await page.locator('.wb-send:not(.stop)').click()
   const unifiedTurn=await waitForTurn('统一运行时执行真实工具并保存笔记')
   check('work composer launches the unified act runtime',unifiedTurn.run.run.status==='completed'&&unifiedTurn.run.events.some(event=>event.type==='tool.completed'))
   check('unified act tool writes a real platform note',(await page.evaluate(id=>window.api.myNotesGet(id),firstId)).includes('UNIFIED-ACT-VERIFIED'))
+  await page.locator('.wb-compose-input').fill('SLOW-WORK-FOLLOW-UP：验证运行中继续输入会排队')
+  await page.locator('.wb-send[title="创建任务"]').click()
+  await page.waitForSelector('.wb-send[title="停止当前任务"]',{timeout:10000})
+  await page.locator('.wb-compose-input').fill('SLOW-WORK-FOLLOW-UP：运行期间追加第二条任务')
+  check('running Work composer keeps both send and stop actions',await page.locator('.wb-send[title="排队跟进当前任务"]').isEnabled()&&await page.locator('.wb-send[title="停止当前任务"]').isEnabled())
+  await page.locator('.wb-send[title="排队跟进当前任务"]').click()
+  const queuedWhileRunning=await page.waitForFunction(async()=>{
+    const page=await window.api.chat.listConversations({limit:20})
+    const conversation=page.items.find(item=>item.title.includes('SLOW-WORK-FOLLOW-UP'))
+    if(!conversation)return false
+    const loaded=await window.api.chat.loadMessages({conversationId:conversation.id,limit:20})
+    const runIds=loaded.items.filter(message=>message.runId).map(message=>message.runId)
+    const runs=await Promise.all(runIds.map(runId=>window.api.chat.getRun(runId)))
+    return runs.length>=2&&runs.some(item=>item.run?.status==='queued')&&runs.some(item=>['preparing','generating','executing_tools'].includes(item.run?.status??''))
+  },null,{timeout:8000,polling:100})
+  check('follow-up submitted while running persists as a queued run',!!queuedWhileRunning)
+  await page.waitForFunction(async()=>{
+    const page=await window.api.chat.listConversations({limit:20})
+    const conversation=page.items.find(item=>item.title.includes('SLOW-WORK-FOLLOW-UP'))
+    if(!conversation)return false
+    const loaded=await window.api.chat.loadMessages({conversationId:conversation.id,limit:20})
+    const runIds=loaded.items.filter(message=>message.runId).map(message=>message.runId)
+    if(runIds.length<2)return false
+    const runs=await Promise.all(runIds.map(runId=>window.api.chat.getRun(runId)))
+    return runs.every(item=>item.run?.status==='completed')
+  },null,{timeout:30000,polling:250})
+  check('queued Work follow-up executes after the active run completes',true)
   await page.locator('.wb-pill[title^="执行权限"]').click();await wait(100)
   await page.locator('.wb-pop button').filter({hasText:'执行前确认'}).click();await wait(100)
   await page.locator('.wb-compose-input').fill('统一审批流暂停写入并等待确认')
-  await page.locator('.wb-send').click()
+  await page.locator('.wb-send:not(.stop)').click()
   await page.waitForSelector('text=需要确认',{timeout:60000})
   const waitingTurn=await waitForTurn('统一审批流暂停写入并等待确认',['awaiting_approval'])
   const approval=waitingTurn.run.events.find(event=>event.type==='approval.required')
@@ -516,7 +551,7 @@ try{
   for(let i=0;i<3;i++)await page.locator('.wb-composer .chat-context-list button').nth(i).click()
   await page.locator('.wb-composer .chat-context-pop footer button.primary').click();await wait(100)
   await page.locator('.wb-compose-input').fill('最终验收三篇文献：生成对比表并保存笔记')
-  await page.locator('.wb-send').click()
+  await page.locator('.wb-send:not(.stop)').click()
   const acceptance=await waitForTurn('最终验收三篇文献：生成对比表并保存笔记')
   const selectedIds=acceptance.run.context.refs.filter(ref=>ref.kind==='paper').map(ref=>ref.paperId)
   check('final research flow binds three selected papers',acceptance.run.run.status==='completed'&&selectedIds.length===3)
