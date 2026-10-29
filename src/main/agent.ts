@@ -33,7 +33,7 @@ function saveTask(task:AgentTask):void {
   getDb().prepare(`INSERT INTO agent_tasks(id,goal,status,plan,events,answer,created_at,conversation_id,run_id)
     VALUES(?,?,?,?,?,?,datetime('now'),?,?)
     ON CONFLICT(id) DO UPDATE SET status=excluded.status,plan=excluded.plan,events=excluded.events,answer=excluded.answer,conversation_id=excluded.conversation_id,run_id=excluded.run_id`)
-    .run(task.id,task.goal,task.status,JSON.stringify(task.plan.slice(-50)),JSON.stringify(task.events.slice(-240)),task.answer,task.conversationId??null,task.runId??null)
+    .run(task.id,task.goal,task.status,JSON.stringify(task.plan),JSON.stringify(task.events.slice(-240)),task.answer,task.conversationId??null,task.runId??null)
 }
 function emit(task:AgentTask,event:Omit<AgentEvent,'t'>):void {
   const full={t:Date.now(),...event};task.events.push(full);saveTask(task)
@@ -69,7 +69,7 @@ export async function planTask(goal:string):Promise<AgentTask> {
       {role:'user',content:goal}
     ],{endpoint:modelSettings(settings,model)}))raw+=delta
     const parsed=JSON.parse(raw.replace(/^```json\\s*|```\\s*$/g,'').trim()) as {steps?:PlanStep[]}
-    task.plan=(parsed.steps??[]).filter(step=>step&&step.tool).slice(0,12)
+    task.plan=(parsed.steps??[]).filter(step=>step&&step.tool)
     if(!task.plan.length)throw new Error('empty plan')
   }catch(error) {
     task.status='error';task.events.push({t:Date.now(),kind:'error',text:'计划解析失败：'+String(error).slice(0,200)})

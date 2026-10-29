@@ -14,6 +14,25 @@ async function until(predicate:()=>boolean):Promise<void> {
   while(!predicate()){assert.ok(Date.now()<deadline,'condition timed out');await new Promise(resolve=>setTimeout(resolve,5))}
 }
 export async function testChatRuntime(test:Test,db:Database.Database,root:string):Promise<void> {
+  await test('plan-only turns do not call tools and follow-up planning sees the reviewed plan and goal',async()=>{
+    const repo=new ChatRepository(db),bus=new ChatEventBus(repo),workspace=repo.ensureWorkspace(root+'/plan-only-tests'),conversation=repo.createConversation({workspaceId:workspace.id,mode:'act'})
+    const registry=new ToolRegistry();let writes=0
+    registry.register({definition:{name:'test.write',version:1,title:'write',description:'write',risk:'reversible_write',defaultPermission:'auto',inputSchema:{type:'object'},canCancel:true},schema:z.object({}),execute:async()=>{writes++;return {status:'success',summary:'saved',sources:[],artifacts:[],changes:[],durationMs:0}}})
+    const seen:string[]=[]
+    const provider:ChatProvider={async *stream(messages){seen.push(JSON.stringify(messages));if(messages[0].content.includes('科研任务规划器'))yield JSON.stringify({steps:[{id:'write',tool:'test.write',args:{},purpose:'保存结果',risk:'reversible_write'}]});else yield '任务已执行'}}
+    const runtime=new ChatRuntime(repo,provider,bus,1,undefined,registry,'auto')
+    const model={bindingId:'p:m',profileId:'p',provider:'mock',model:'m',capabilities:['text' as const],reasoning:'default' as const}
+    const context={conversationId:conversation.id,runId:'pending',refs:[],researchGoal:'研究长期韧性',budget:{totalChars:100,usedChars:0,reservedForOutput:0},diagnostics:[],createdAt:new Date().toISOString()}
+    const plan=runtime.submitTurn({conversationId:conversation.id,clientMessageId:'plan-only',text:'先规划',mode:'act',modelBinding:model,context:{...context,promptKind:'plan',permission:'readonly'}})
+    await runtime.idle()
+    assert.equal(writes,0);assert.equal(repo.getRun(plan.run.id)?.status,'completed')
+    assert.equal(repo.listToolCalls(plan.run.id).length,0)
+    assert.ok(repo.getMessage(plan.assistantMessage.id)?.parts.some(part=>part.type==='text'&&part.text.includes('未执行以上工具')))
+    const follow=runtime.submitTurn({conversationId:conversation.id,clientMessageId:'plan-follow',parentMessageId:plan.assistantMessage.id,text:'执行上面的计划',mode:'act',modelBinding:model,context:{...context,promptKind:'ask',permission:'auto'}})
+    await runtime.idle()
+    assert.equal(repo.getRun(follow.run.id)?.status,'completed');assert.equal(writes,1)
+    assert.ok(seen[1].includes('研究长期韧性'));assert.ok(seen[1].includes('先规划'));assert.ok(seen[1].includes('保存结果'))
+  })
   await test('resuming an interrupted plan reuses committed tools and executes only the remaining writes',async()=>{
     const repo=new ChatRepository(db),bus=new ChatEventBus(repo),workspace=repo.ensureWorkspace(root+'/resume-tests'),conversation=repo.createConversation({workspaceId:workspace.id})
     const registry=new ToolRegistry(),writes:number[]=[]

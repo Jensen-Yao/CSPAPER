@@ -1,7 +1,7 @@
 // Skills 系统（v0.10，对标 ZCode/Claude Code 技能与 DeepSeek Harness 插件技能层）：
 // 每个技能 = 目录下 SKILL.md（YAML frontmatter：name/description + markdown 正文 = 执行说明）。
 // 内置技能随 app 发布（resources/skills/），用户技能放数据目录 skills/（热扫描）。
-// agent 通过 use_skill 工具按需加载技能正文，按说明书组合工具完成研究流程。
+// 用户选择技能后，将技能正文快照纳入该轮 Work 规划上下文。
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
@@ -84,4 +84,22 @@ export function skillDir(): string {
 // 按名称取技能正文（use_skill 工具调用）
 export function skillBody(name: string): SkillInfo | null {
   return listSkills().find((s) => s.name === name || s.name.toLowerCase() === name.toLowerCase()) ?? null
+}
+
+/** Resolve explicitly selected skills into the immutable snapshot for one run. */
+export function snapshotSkills(selections:Array<{name:string;source:'builtin'|'user'}>,available:SkillInfo[]):Array<{name:string;source:'builtin'|'user';body:string}> {
+  const seen=new Set<string>()
+  let size=0
+  return selections.map(selection=>{
+    const key=`${selection.source}:${selection.name}`
+    if(seen.has(key))throw new Error(`技能重复选择：${selection.name}`)
+    seen.add(key)
+    const matches=available.filter(skill=>skill.name===selection.name&&skill.source===selection.source)
+    if(matches.length!==1)throw new Error(matches.length?`技能名称重复，请调整技能名称：${selection.name}`:`所选技能不存在，请刷新列表：${selection.name}`)
+    const body=matches[0].body
+    if(!body)throw new Error(`技能内容为空：${selection.name}`)
+    size+=body.length
+    if(size>50000)throw new Error('所选技能内容超过 50000 字符，请减少技能数量')
+    return {name:selection.name,source:selection.source,body}
+  })
 }

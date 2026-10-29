@@ -7,6 +7,8 @@ import { migrationChecksum as cursorChecksum, migrationVersion as cursorVersion,
 import { migrationChecksum as interruptedChecksum, migrationVersion as interruptedVersion, migrationName as interruptedName, up as interruptedUp } from './006-interrupted-runs'
 import { migrationChecksum as activeOrderChecksum, migrationVersion as activeOrderVersion, migrationName as activeOrderName, up as activeOrderUp } from './007-active-library-order'
 import { migrationChecksum as sourceKindChecksum, migrationVersion as sourceKindVersion, migrationName as sourceKindName, up as sourceKindUp } from './008-paper-source-kind'
+import { migrationChecksum as calendarChecksum, migrationVersion as calendarVersion, migrationName as calendarName, up as calendarUp } from './009-research-calendar'
+import { migrationChecksum as workbenchChecksum, migrationVersion as workbenchVersion, migrationName as workbenchName, up as workbenchUp } from './010-workbench-calendar-focus'
 
 interface AppliedMigration { version: number; name: string; checksum: string | null; applied_at: string }
 
@@ -18,11 +20,13 @@ const migrations: Array<{version:number;name:string;checksum:string;up:(db:Datab
   { version: cursorVersion, name: cursorName, checksum: cursorChecksum, up: cursorUp },
   { version: interruptedVersion, name: interruptedName, checksum: interruptedChecksum, up: interruptedUp },
   { version: activeOrderVersion, name: activeOrderName, checksum: activeOrderChecksum, up: activeOrderUp },
-  { version: sourceKindVersion, name: sourceKindName, checksum: sourceKindChecksum, up: sourceKindUp }
+  { version: sourceKindVersion, name: sourceKindName, checksum: sourceKindChecksum, up: sourceKindUp },
+  { version: calendarVersion, name: calendarName, checksum: calendarChecksum, up: calendarUp },
+  { version: workbenchVersion, name: workbenchName, checksum: workbenchChecksum, up: workbenchUp }
 ]
 
 /** Apply each schema migration exactly once. Failures roll back only that migration. */
-export function runMigrations(db: Database.Database): void {
+export function runMigrations(db:Database.Database):void {
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations(
     version INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -51,6 +55,6 @@ export function runMigrations(db: Database.Database): void {
   }
 }
 
-export function appliedMigrations(db: Database.Database): AppliedMigration[] {
+export function appliedMigrations(db:Database.Database):AppliedMigration[] {
   return db.prepare('SELECT version,name,checksum,applied_at FROM schema_migrations ORDER BY version').all() as AppliedMigration[]
 }

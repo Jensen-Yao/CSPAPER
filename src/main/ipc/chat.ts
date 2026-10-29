@@ -15,6 +15,7 @@ import { registerCollectionTools } from '../tools/collection'
 import { collectionPapers } from '../collection-service'
 import { callMcpTool, listMcpTools } from '../mcp'
 import { snapshotModelBinding } from '../model-config'
+import { invalidateSkills, listSkills, snapshotSkills } from '../skills'
 import { idSchema, createConversationRequestSchema, listConversationsRequestSchema, loadMessagesRequestSchema, submitTurnRequestSchema, cancelRunRequestSchema, approveToolRequestSchema, subscribeRequestSchema, retryTurnRequestSchema, editAndResubmitRequestSchema } from '../../shared/chat-ipc'
 import type { IpcCtx } from './context'
 
@@ -97,7 +98,10 @@ export function registerChatIpc(ctx:IpcCtx):void {
     const request=parse(submitTurnRequestSchema,input)
     const conversation=repository.getConversation(request.conversationId)
     if(!conversation||conversation.workspaceId!==activeWorkspaceId()) throw new Error('会话不属于当前工作区')
-    const context=buildContextSnapshot({conversationId:request.conversationId,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:request.permission,promptKind:request.promptKind})
+    if(request.skills?.length && request.mode!=='act')throw new Error('技能只能用于 Work 任务')
+    if(request.skills?.length)invalidateSkills()
+    const skills=request.skills?.length?snapshotSkills(request.skills,listSkills()):undefined
+    const context=buildContextSnapshot({conversationId:request.conversationId,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:request.permission,promptKind:request.promptKind,researchGoal:request.mode==='act'?getSettings().agentGoal:undefined,skills})
     const modelBinding=snapshotModelBinding(getSettings(),request.modelBindingId,request.reasoning,request.mode)
     return runtime.submitTurn({conversationId:request.conversationId,clientMessageId:request.clientMessageId,parentMessageId:request.parentMessageId??null,text:request.text,context,modelBinding,mode:request.mode})
   })
@@ -115,7 +119,7 @@ export function registerChatIpc(ctx:IpcCtx):void {
   ipcMain.handle('chat:retry',(_e,input:unknown)=>{
     const request=parse(retryTurnRequestSchema,input),details=repository.getRunDetails(request.runId)
     if(!details||repository.getConversation(details.run.conversationId)?.workspaceId!==activeWorkspaceId())throw new Error('运行不属于当前工作区')
-    const context=request.reuseContext?details.context:buildContextSnapshot({conversationId:details.run.conversationId,runId:'pending',workspaceId:activeWorkspaceId(),refs:details.context.refs,permission:details.context.permission})
+    const context=request.reuseContext?details.context:buildContextSnapshot({conversationId:details.run.conversationId,runId:'pending',workspaceId:activeWorkspaceId(),refs:details.context.refs,permission:details.context.permission,promptKind:details.context.promptKind,researchGoal:details.context.researchGoal,skills:details.context.skills})
     return runtime.retryTurn(request.runId,request.reuseContext,context)
   })
   ipcMain.handle('chat:edit-and-resubmit',(_e,input:unknown)=>{
@@ -124,7 +128,7 @@ export function registerChatIpc(ctx:IpcCtx):void {
     const message=repository.getMessage(request.messageId)
     if(!message||message.conversationId!==conversation.id||message.role!=='user')throw new Error('只能编辑用户消息')
     const originalRun=repository.getRunForUserMessage(conversation.id,message.id),original=originalRun?repository.getRunDetails(originalRun.id):null
-    const context=buildContextSnapshot({conversationId:conversation.id,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:original?.context.permission})
+    const context=buildContextSnapshot({conversationId:conversation.id,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:original?.context.permission,promptKind:original?.context.promptKind,researchGoal:original?.context.researchGoal,skills:original?.context.skills})
     return runtime.editAndResubmit({conversationId:conversation.id,messageId:message.id,text:request.text,context,modelBinding:original?.modelBinding})
   })
 }

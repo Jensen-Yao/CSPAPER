@@ -32,10 +32,11 @@ export const submitTurnRequestSchema = z.object({
   parentMessageId: idSchema.nullish(),
   text: z.string().trim().min(1).max(100000),
   context: z.array(contextRefSchema).max(100).default([]),
+  skills:z.array(z.object({name:z.string().trim().min(1).max(200),source:z.enum(['builtin','user'])}).strict()).max(8).optional(),
   modelBindingId:z.string().min(1).max(2048),
   reasoning:z.string().min(1).max(40).default('default'),
   mode: conversationModeSchema.default('ask'),
-  promptKind: z.enum(['ask','translation']).default('ask'),
+  promptKind: z.enum(['ask','translation','plan']).default('ask'),
   permission:z.enum(['auto','confirm','readonly']).default('auto')
 }).strict()
 

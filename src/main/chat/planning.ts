@@ -12,7 +12,7 @@ export type PlanStepRecord = z.infer<typeof planStepSchema>
 export interface PlanToolPolicy { name:string;version:number;risk:PlanStepRecord['risk'];maxCallsPerRun?:number }
 
 export function validatePlan(plan:unknown,tools:PlanToolPolicy[]):{ok:true;steps:PlanStepRecord[]}|{ok:false;errors:string[]} {
-  const parsed=z.array(planStepSchema).max(50).safeParse(plan)
+  const parsed=z.array(planStepSchema).safeParse(plan)
   if(!parsed.success) return {ok:false,errors:parsed.error.issues.map(issue=>`${issue.path.join('.')}: ${issue.message}`)}
   const errors:string[]=[],counts=new Map<string,number>()
   for(const [index,step] of parsed.data.entries()) {

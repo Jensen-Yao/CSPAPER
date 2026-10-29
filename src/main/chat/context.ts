@@ -10,7 +10,7 @@ export const DEFAULT_OUTPUT_RESERVED_CHARS=16000
 function fail(code:string,message:string){return {level:'error' as const,code,message}}
 
 /** Validate refs against current workspace objects and snapshot the bounded context used by a run. */
-export function buildContextSnapshot(input:{conversationId:string;runId:string;workspaceId:string;refs:ContextRef[];totalChars?:number;reservedForOutput?:number;permission?:ContextSnapshot['permission'];promptKind?:ContextSnapshot['promptKind']}):ContextSnapshot {
+export function buildContextSnapshot(input:{conversationId:string;runId:string;workspaceId:string;refs:ContextRef[];totalChars?:number;reservedForOutput?:number;permission?:ContextSnapshot['permission'];promptKind?:ContextSnapshot['promptKind'];researchGoal?:string;skills?:ContextSnapshot['skills']}):ContextSnapshot {
   const workspace=getWorkspace(getDb(),input.workspaceId)
   const diagnostics:ContextSnapshot['diagnostics']=[]
   if(!workspace) throw new Error('工作区不存在')
@@ -42,9 +42,10 @@ export function buildContextSnapshot(input:{conversationId:string;runId:string;w
       used+=ref.snippet.length;refs.push(ref)
     }
   }
+  used+=(input.skills??[]).reduce((sum,skill)=>sum+skill.body.length,0)
   const total=input.totalChars??DEFAULT_CONTEXT_CHARS,reserved=input.reservedForOutput??DEFAULT_OUTPUT_RESERVED_CHARS
   if(used>total-reserved) diagnostics.push({level:'warning',code:'context_truncated',message:'上下文超过预算，需要检索而非全文塞入'})
-  return {permission:input.permission,promptKind:input.promptKind,conversationId:input.conversationId,runId:input.runId,refs,budget:{totalChars:total,usedChars:used,reservedForOutput:Math.min(reserved,total)},diagnostics,createdAt:new Date().toISOString()}
+  return {permission:input.permission,promptKind:input.promptKind,researchGoal:input.researchGoal?.trim().slice(0,4000)||undefined,skills:input.skills,conversationId:input.conversationId,runId:input.runId,refs,budget:{totalChars:total,usedChars:used,reservedForOutput:Math.min(reserved,total)},diagnostics,createdAt:new Date().toISOString()}
 }
 
 export function documentVersion(pdfPath:string):string {

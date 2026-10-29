@@ -52,7 +52,7 @@
   height: 28px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 99px;
+  border-radius: 999px;
   padding: 0 12px;
   color: var(--text);
   outline: none;
@@ -116,7 +116,7 @@
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-dim);
-  border-radius: 99px;
+  border-radius: 999px;
   padding: 2.5px 11px;
   font-size: 11px;
   cursor: pointer;
@@ -183,7 +183,7 @@ html[data-theme='dark'] .ws-frame { background: var(--bg); }
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border-lit);
-  border-radius: 99px;
+  border-radius: 999px;
   box-shadow: var(--shadow);
   padding: 6px 16px;
   font-size: 12px;

@@ -60,6 +60,7 @@ export const Search = svg(
 )
 export const X = svg(<path d="M3.8 3.8l8.4 8.4M12.2 3.8 3.8 12.2" />)
 export const Check = svg(<path d="M3 8.6 6.4 12 13 4.4" />)
+export const Calendar = svg(<><rect x="2.3" y="3.4" width="11.4" height="10.4" rx="1.5" /><path d="M5.2 2v2.8M10.8 2v2.8M2.5 6.5h11" /></>)
 export const Copy = svg(
   <>
     <rect x="5.5" y="5.5" width="8" height="8" rx="1.4" />

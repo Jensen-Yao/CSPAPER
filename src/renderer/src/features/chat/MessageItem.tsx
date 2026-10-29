@@ -27,9 +27,10 @@ export default memo(function MessageItem({message,sources: fallback=[],details,r
   const userRun=Object.values(runs??{}).find(item=>item.run?.userMessageId===message.id)
   const errors=message.parts.filter(part=>part.type==='error')
   return <article className={`msg ${message.role}`} data-message-id={message.id}>
-    <div className="who">{message.role==='user'?'你':'CSPAPER'}<span>{message.status==='cancelled'?'已停止':message.status==='failed'?'失败':message.status==='partial'?'部分完成':''}</span></div>
+    <div className="who">{message.role==='user'?'你':'CSPAPER'}<span>{details?.run?.status==='queued'?'排队中':message.status==='cancelled'?'已停止':message.status==='failed'?'失败':message.status==='partial'?'部分完成':''}</span></div>
     <div className="bubble"><MarkdownContent text={text} sources={sources} onCitation={source=>jump(source.slug,source.page,source.snippet,text,source)} /></div>
-    {errors.map((part,index)=><div className="chat-message-error" key={index} role="status">{part.type==='error'?part.message:''}</div>)}
+    {errors.map((part,index)=><div className={`chat-message-error ${part.type==='error'&&part.code==='retrieval_empty'?'warning':''}`} key={index} role="status">{part.type==='error'?part.message:''}</div>)}
+    {details?.run?.status==='queued'&&<div className="chat-message-actions"><button type="button" onClick={()=>void window.api.chat.cancelRun(details.run!.id).catch(error=>setActionError(String(error)))}>取消排队</button></div>}
     {message.role==='assistant'&&sources.length>0&&<details className="chat-evidence"><summary>参考来源 · {sources.length}</summary><div className="chat-sources">{sources.map((source,index)=><div className="chat-source-card" key={ordered[index]?.id??source.n}>
       {ordered[index]?<SourcePopover source={ordered[index]}/>:<b>{source.title}</b>}
       {source.versionChanged&&<span className="source-badge record small" title="来源保存时的文档版本与当前文件不同，定位可能漂移">版本变化</span>}<button type="button" onClick={()=>jump(source.slug,source.page,source.snippet,text,source)}>打开原文 [{source.n}] · 第 {source.page} 页</button>

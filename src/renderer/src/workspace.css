@@ -106,7 +106,7 @@ button.pcard-title { text-align: left; border: 0; background: none; padding: 0; 
 .ws-logo-mark, .ws-search-go { border-radius: var(--radius-sm); }
 .ws-site-chip { min-height: 28px; }
 .app-recovery { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 18px; min-height: 100dvh; max-width: 600px; margin: auto; padding: 32px; }
-.app-recovery h1 { font-size: 22px; }
+.app-recovery h1 { font-size: 20px; }
 .app-recovery pre { white-space: pre-wrap; user-select: text; }
 .dlg-mask:has(dialog) { display: contents; }
 dialog.dlg { margin: auto; color: var(--text); max-height: calc(100dvh - 48px); }

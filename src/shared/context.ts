@@ -79,10 +79,12 @@ export const contextBudgetSchema = z.object({
 })
 export type ContextBudget = z.infer<typeof contextBudgetSchema>
 
-export type PromptKind='ask'|'translation'
+export type PromptKind='ask'|'translation'|'plan'
 export interface ContextSnapshot {
   permission?:'auto'|'confirm'|'readonly'
   promptKind?:PromptKind
+  researchGoal?:string
+  skills?:Array<{name:string;source:'builtin'|'user';body:string}>
   conversationId: string
   runId: string
   refs: ContextRef[]

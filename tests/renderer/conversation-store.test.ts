@@ -1,10 +1,24 @@
 import assert from 'node:assert/strict'
 import type { ChatApi, ConversationSnapshot } from '../../src/shared/chat-api'
-import type { Conversation, RunEvent } from '../../src/shared/chat'
-import { ConversationStore } from '../../src/renderer/src/features/chat/conversation-store'
+import type { Conversation, Message, Run, RunEvent } from '../../src/shared/chat'
+import type { RunDetails } from '../../src/shared/chat-api'
+import { ConversationStore, selectConversationRun } from '../../src/renderer/src/features/chat/conversation-store'
 import type { Test } from '../main/chat-events.test'
 
 export async function testConversationStore(test:Test):Promise<void> {
+  await test('active Work run takes precedence over queued follow-ups and approval remains actionable',async()=>{
+    const now=new Date().toISOString()
+    const run=(id:string,status:Run['status']):Run=>({id,conversationId:'c',mode:'act',userMessageId:'u-'+id,assistantMessageId:'m-'+id,status,error:null,createdAt:now,startedAt:now,finishedAt:null})
+    const messages:Message[]=['first','next'].map(id=>({id:'m-'+id,conversationId:'c',parentId:null,clientMessageId:null,role:'assistant',parts:[],status:'streaming',runId:id,createdAt:now,updatedAt:now}))
+    const runs:Record<string,RunDetails>={first:{run:run('first','generating')} as RunDetails,next:{run:run('next','queued')} as RunDetails}
+    assert.equal(selectConversationRun(messages,runs)?.id,'first')
+    runs.first={run:run('first','awaiting_approval')} as RunDetails
+    assert.equal(selectConversationRun(messages,runs)?.id,'first')
+    runs.first={run:run('first','cancelled')} as RunDetails
+    assert.equal(selectConversationRun(messages,runs)?.id,'next')
+    runs.next={run:run('next','completed')} as RunDetails
+    assert.equal(selectConversationRun(messages,runs)?.id,'next')
+  })
   await test('shared conversation store switches listeners, deduplicates deltas and closes snapshot races',async()=>{
     const now=new Date().toISOString()
     const conversations:Conversation[]=['a','b'].map(id=>({id,workspaceId:'w',title:id,mode:'ask',entry:'global',activeLeafMessageId:'message-'+id,createdAt:now,updatedAt:now,archivedAt:null}))

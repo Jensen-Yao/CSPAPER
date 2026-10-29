@@ -9,9 +9,9 @@ export interface SlashCmd {
 }
 
 export const SLASH_CMDS: SlashCmd[] = [
-  { name: 'plan', args: '目标', desc: '以「执行前确认」模式发起任务：先出计划，确认后执行', group: '任务' },
+  { name: 'plan', args: '目标', desc: '只生成可审阅的任务计划，不执行工具', group: '任务' },
   { name: 'auto', args: '目标', desc: '以「完全访问」模式发起任务：计划生成后自动执行', group: '任务' },
-  { name: 'goal', args: '长期目标', desc: '设定研究长期目标：后续所有任务都会围绕该目标执行', group: '任务' },
+  { name: 'goal', args: '长期目标', desc: '设置后续 Work 任务的长期研究背景；无参数清除', group: '任务' },
   { name: 'tpl', args: '模板名', desc: '套用任务模板（主题调研 / 精读论文 / 多文对比 / 睡眠日报 / 深度调研）', group: '任务' },
   { name: 'new', desc: '开始新任务（清空当前选择）', group: '任务' },
   { name: 'model', args: '关键词', desc: '切换智能体模型（支持模糊匹配，如 /model glm）', group: '模型' },

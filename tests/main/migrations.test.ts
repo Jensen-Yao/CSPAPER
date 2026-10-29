@@ -34,7 +34,7 @@ export async function testMigrations(test:Test):Promise<void> {
       db.exec('CREATE TABLE papers(id INTEGER PRIMARY KEY,slug TEXT,title TEXT,year INTEGER,category TEXT,library_root TEXT,deleted_at TEXT,missing_at TEXT)')
       runMigrations(db)
       const applied=db.prepare('SELECT version,checksum FROM schema_migrations ORDER BY version').all() as Array<{version:number;checksum:string|null}>
-      assert.equal(applied.length,8)
+      assert.equal(applied.length,10)
       assert.ok(applied.every(row=>/^[a-f0-9]{64}$/.test(row.checksum??'')))
       db.prepare('UPDATE schema_migrations SET checksum=? WHERE version=?').run('tampered',1)
       assert.throws(()=>runMigrations(db),/迁移 1 与已应用版本不一致/)
@@ -64,7 +64,7 @@ export async function testMigrations(test:Test):Promise<void> {
         status TEXT NOT NULL CHECK(status IN ('queued','preparing','running','awaiting_approval','partial','completed','failed','cancelled'))
       )`)
       runMigrations(db)
-      assert.equal((db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as {n:number}).n,8)
+      assert.equal((db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as {n:number}).n,10)
     } finally{db.close()}
   })
   await test('interrupted-state migration preserves every dependent record with foreign keys enabled',()=>{

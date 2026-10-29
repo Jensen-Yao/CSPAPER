@@ -235,14 +235,26 @@ export default function LibraryPane({
     setTrashOpen(true)
     void window.api.papersTrashed().then(setTrashed).catch(() => setTrashed([]))
   }
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // 分类默认全部展开：科研浏览先看到“有哪些文献”，再按需收起。
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pl.category-collapsed') ?? '[]') as unknown
+      return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : [])
+    } catch { return new Set() }
+  })
+  useEffect(() => {
+    localStorage.setItem('pl.category-collapsed', JSON.stringify([...collapsed]))
+  }, [collapsed])
   const toggle = (c: string): void =>
-    setExpanded((s) => {
-      const n = new Set(s)
-      if (n.has(c)) n.delete(c)
-      else n.add(c)
-      return n
+    setCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(c)) next.delete(c)
+      else next.add(c)
+      return next
     })
+  const allCollapsed = tree.length > 0 && tree.every(([category]) => collapsed.has(category))
+  const setAllCategories = (next: boolean): void =>
+    setCollapsed(next ? new Set(tree.map(([category]) => category)) : new Set())
 
   const kw = q.trim().toLowerCase()
   const match = (p: Paper): boolean => !kw || p.title.toLowerCase().includes(kw) || p.authors.toLowerCase().includes(kw) || p.slug.includes(kw)
@@ -373,29 +385,44 @@ export default function LibraryPane({
     <div
       key={p.id}
       className={`paper-item ${p.id === activeId ? 'active' : ''}`}
+      role="button"
+      tabIndex={0}
       draggable
+      aria-label={`${p.title}，${p.source_kind === 'record' ? '题录' : 'PDF 原文'}，${statusMeta(p.status).label}`}
       onDragStart={(e) => onRowDragStart(e, p)}
       onClick={() => (snippet ? onOpenHit?.(p, snippet) : onOpen(p))}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          if (snippet) onOpenHit?.(p, snippet)
+          else onOpen(p)
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
         window.api.paperMenu(p.id, e.clientX, e.clientY)
       }}
-      title="拖到分类上可移动；右键更多操作"
+      title="拖到分类上可移动；Enter 打开；右键更多操作"
     >
       <div className="t">{p.title}</div>
       <div className="m">
-        {p.source_kind==='record'&&<span className="source-badge record small" title="Zotero 题录条目：尚未导入 PDF 全文">题录</span>}
-        <span
-          className="status-dot"
-          style={{ background: statusMeta(p.status).color }}
+        <span className={`paper-kind ${p.source_kind === 'record' ? 'record' : 'pdf'}`} title={p.source_kind === 'record' ? 'Zotero 题录条目：尚未导入 PDF 全文' : 'PDF 全文'}>{p.source_kind === 'record' ? '题录' : 'PDF'}</span>
+        <button
+          type="button"
+          className="paper-status"
+          style={{ color: statusMeta(p.status).color, borderColor: withAlpha(statusMeta(p.status).color, 0.28), background: withAlpha(statusMeta(p.status).color, 0.10) }}
           title={`${statusMeta(p.status).label}（点击切换）`}
+          aria-label={`阅读状态：${statusMeta(p.status).label}，点击切换`}
           onClick={(e) => {
             e.stopPropagation()
             onCycleStatus(p)
           }}
-        />
-        <span>{p.year ?? '—'}</span>
+        >
+          <i style={{ background: statusMeta(p.status).color }} />
+          {statusMeta(p.status).label}
+        </button>
+        <span className="paper-year">{p.year ?? '—'}</span>
         {extra ?? <span className="cat">{catLabel(p.category)}</span>}
       </div>
       {snippet && (
@@ -449,6 +476,14 @@ export default function LibraryPane({
               </button>
             </div>
             <span style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="lib-tree-fold"
+              onClick={() => setAllCategories(!allCollapsed)}
+              disabled={tree.length === 0}
+            >
+              {allCollapsed ? '全部展开' : '全部收起'}
+            </button>
             <button className="lib-newcat" title="新建分类" onClick={() => { setNewCat({}); setNewCatVal('') }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
                 <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -522,8 +557,11 @@ export default function LibraryPane({
           ) : (
             tree.map(([c, list]) => (
               <div key={c}>
-                <div
+                <button
+                  type="button"
                   className={`cat-item ${dragCat === c ? 'drop-on' : ''}`}
+                  aria-expanded={!collapsed.has(c)}
+                  aria-label={`${catLabel(c)}，${list.length} 篇文献`}
                   onClick={() => toggle(c)}
                   onContextMenu={(e) => {
                     e.preventDefault()
@@ -541,25 +579,11 @@ export default function LibraryPane({
                   onDrop={(e) => onCatDrop(e, c)}
                   title="点击展开 / 收起；右键重命名、导出；拖文献到此移动"
                 >
-                  <svg
-                    className={`chev ${expanded.has(c) ? 'open' : ''}`}
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
-                  <span className="ellipsis" style={{ flex: 1 }}>
-                    {catLabel(c)}
-                  </span>
-                  <span className="cat-count">{list.length}</span>
-                </div>
-                {expanded.has(c) && (
+                  <span aria-hidden className={`cat-chevron ${collapsed.has(c) ? '' : 'open'}`}><Icon.ChevronR size={13} /></span>
+                  <span className="ellipsis cat-title">{catLabel(c)}</span>
+                  <span className="cat-count">{list.length}{collapsed.has(c) ? '' : ' 篇'}</span>
+                </button>
+                {!collapsed.has(c) && (
                   <div className="tree-papers">
                     {list.map((p) => paperRow(p))}
                     {list.length === 0 && <div className="tree-empty">空分类，右键可删除；拖文献进来或导入时 AI 归类</div>}

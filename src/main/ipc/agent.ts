@@ -12,6 +12,9 @@ import type { PlanStepRecord } from '../chat/planning'
 import { snapshotModelBinding } from '../model-config'
 import { getDb, getSettings } from '../db'
 import { getChatServices } from './chat'
+import { ResearchCalendar } from '../research-calendar'
+import { ResearchFocus } from '../research-focus'
+import { ensureWorkspace } from '../workspaces'
 import type { IpcCtx } from './context'
 
 const LEGACY_TOOL_MAP:Record<string,{tool:string;map:(step:PlanStep,goal:string)=>Record<string,unknown>}>={
@@ -43,6 +46,9 @@ function legacyStatus(status:string|undefined|null):AgentTask['status']|null {
 }
 
 export function registerAgentIpc(ctx: IpcCtx): void {
+  const calendar=new ResearchCalendar(getDb())
+  const focus=new ResearchFocus(getDb())
+  const workspaceId=()=>ensureWorkspace(getDb(),getSettings().libraryPath).id
   const chat=getChatServices()
   if(chat)chat.bus.subscribe({listener:event=>{
     if(event.type!=='run.status_changed'&&event.type!=='run.completed')return
@@ -125,6 +131,11 @@ export function registerAgentIpc(ctx: IpcCtx): void {
     toggleSchedule(Number(id), enabled)
     return true
   })
+  ipcMain.handle('calendar:list',(_e,start:string,end:string)=>calendar.list(workspaceId(),start,end))
+  ipcMain.handle('calendar:save',(_e,input:unknown,id?:number)=>calendar.save(workspaceId(),input as import('../../shared/calendar').CalendarInput,id))
+  ipcMain.handle('calendar:remove',(_e,id:number)=>calendar.remove(workspaceId(),id))
+  ipcMain.handle('focus:log',(_e,input:unknown)=>focus.log(workspaceId(),input as import('../../shared/calendar').FocusLogInput))
+  ipcMain.handle('focus:summary',(_e,date:string)=>focus.summary(workspaceId(),date))
 }
 
 let schedulerStarted = false

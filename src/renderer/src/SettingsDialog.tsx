@@ -1017,19 +1017,6 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 </select>
                 <div className="section-title">执行护栏</div>
                 <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-                  <span style={{ fontSize: 12.5 }}>单任务最大步数</span>
-                  <input
-                    className="set-input"
-                    style={{ width: 90 }}
-                    value={String(form.agentMaxSteps ?? 24)}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value.replace(/\D/g, ''), 10)
-                      set({ agentMaxSteps: Math.max(4, Math.min(60, isNaN(v) ? 24 : v)) })
-                    }}
-                  />
-                  <span className="hint">步数越多越彻底，也越耗时耗 token</span>
-                </div>
-                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: 12.5 }}>单任务超时（分钟）</span>
                   <input
                     className="set-input"

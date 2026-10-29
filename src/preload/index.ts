@@ -382,6 +382,11 @@ const api = {
   agentAutoCreate: (name: string, goal: string, minutes: number) => ipcRenderer.invoke('agent:auto-create', name, goal, minutes),
   agentAutoRemove: (id: number) => ipcRenderer.invoke('agent:auto-remove', id),
   agentAutoToggle: (id: number, enabled: boolean) => ipcRenderer.invoke('agent:auto-toggle', id, enabled),
+  calendarList: (start: string, end: string) => ipcRenderer.invoke('calendar:list', start, end),
+  calendarSave: (input: unknown, id?: number) => ipcRenderer.invoke('calendar:save', input, id),
+  calendarRemove: (id: number) => ipcRenderer.invoke('calendar:remove', id),
+    focusLog: (input: import('../shared/calendar').FocusLogInput) => ipcRenderer.invoke('focus:log', input),
+    focusSummary: (date: string) => ipcRenderer.invoke('focus:summary', date),
 
   // ---------- 内置浏览器 + 一键安装（v0.7） ----------
   webSavePage: (url: string, category?: string) => ipcRenderer.invoke('web:save-page', url, category),

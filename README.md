@@ -6,14 +6,14 @@
 
 ### 面向中文科研场景的本地 AI 文献工作台
 
-**PDF 精读 · 可溯源问答 · 科研 Agent · 多文献对比 · Zotero 迁移 · 知识网络**
+**PDF 精读 · 可溯源问答 · 科研 Agent · 科研日历 · 阅读专注 · 多文献对比 · Zotero 迁移 · 知识网络**
 
 [![Release](https://img.shields.io/github/v/release/Jensen-Yao/CSPAPER?style=flat-square&label=Release&color=a6093d)](https://github.com/Jensen-Yao/CSPAPER/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/Jensen-Yao/CSPAPER/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Jensen-Yao/CSPAPER/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/Jensen-Yao/CSPAPER?style=flat-square&color=1558c0)](LICENSE)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Android-本地优先-2b2b2b?style=flat-square)](https://jensen-yao.github.io/CSPAPER/)
 
-[![CSPAPER 0.20](docs/screenshots/home.png)](https://jensen-yao.github.io/CSPAPER/)
+[![CSPAPER 0.21](docs/screenshots/home.png)](https://jensen-yao.github.io/CSPAPER/)
 
 **[🌐 官网 / GitHub Pages](https://jensen-yao.github.io/CSPAPER/)** ·
 **[🎮 在线演示](https://jensen-yao.github.io/CSPAPER/demo.html)** ·
@@ -24,15 +24,17 @@
 
 ---
 
-## 0.20：从“功能堆叠”到可审计的科研工作台
+## 0.21：从可审计 Agent 到完整科研工作台
 
-这一版把最核心的科研链路打通为**一个持久化运行引擎**：阅读侧栏、全屏对话、Work Agent、自动化任务和翻译都进入同一套会话、工具、审批、恢复与来源体系。模型回答不再只是聊天文本，而是能落到具体论文、页码、选区、笔记、Web 来源和对比产物。Work 深度任务拥有独立超时设置，默认 10 分钟、可调 1–60 分钟；普通问答仍保持 3 分钟保护。
+这一版把最核心的科研链路打通为**一个持久化运行引擎**：阅读侧栏、全屏对话、Work Agent、自动化任务和翻译都进入同一套会话、工具、审批、恢复与来源体系。模型回答不再只是聊天文本，而是能落到具体论文、页码、选区、笔记、Web 来源和对比产物。Work 现在同时提供今日科研台、科研日历和真实阅读专注汇总；PDF 内有读文献专属番茄钟、短/长休息、喝水与活动提醒。
 
 | 关键能力 | 现在的行为 |
 |---|---|
 | **可溯源对话** | 回答引用绑定到持久 Source；点击角标跳回论文页并高亮精确文本。代码、公式与已有链接不会被误判成引用。 |
 | **题录 / 原文状态** | Zotero 无 PDF 条目明确显示“题录 · 无原文”，不会伪装成全文；显式提问时使用元数据 Source，禁止推断全文结论。 |
 | **科研 Agent** | Work 支持计划确认、工具审批、失败修订、重试分支、产物入库与崩溃后恢复；运行中可继续发送跟进指令并持久排队。 |
+| **科研工作台** | 今日页汇总当天安排、临近截止、最近会话、可继续阅读 PDF 与真实专注数据；科研日历提供月 / 周 / 日 / 议程、具体时间和重复日程。 |
+| **阅读专注** | PDF 内提供阅读 / 短休 / 长休番茄钟，喝水与活动提醒独立计时；离开阅读自动暂停，专注流水按工作区隔离并进入今日汇总。 |
 | **多文献对比** | 三篇文献可精确绑定 ID 生成对比表，并把局限追加到对应笔记，重启后可继续追问。 |
 | **模型能力档案** | 思考等级跟随当前模型的 `reasoningLevels`，支持 `none / minimal / xhigh / max` 与自定义档位，不再固定四档。 |
 | **知识网络** | 相似网络、关键词共现、作者合作图支持鼠标滚轮缩放、空白拖拽平移与一键复位。 |
@@ -42,7 +44,7 @@
 
 ### 📖 阅读与写作
 
-- **PDF 阅读**：多标签、缩略图、目录、页内查找、阅读进度、续读记忆、触控板缩放。
+- **PDF 阅读**：多标签、缩略图、目录、页内查找、阅读进度、续读记忆、触控板缩放、读文献番茄钟与喝水/活动提醒。
 - **划词工具**：高亮、批注、术语翻译、解释、把精确选区加入统一对话。
 - **全文翻译**：当前页逐段中英对照，支持跟随翻页；未配置 Key 时仍可使用免费通道。
 - **笔记中心**：论文笔记、划词标注、独立笔记、模板、Markdown 导出、思维导图。
@@ -58,7 +60,7 @@
 
 ### ⚡ Work 科研 Agent
 
-给一个研究目标，CSPAPER 可以检索文献、读取指定页、生成对比表、追加笔记、整理综述、执行平台写入。所有高风险动作都有明确权限边界；工具调用、计划修订和执行结果持久化，可审计、可恢复。Work 会话支持永久删除：运行中的任务必须先停止；删除会清理消息、运行、事件、来源与产物记录，但保留已写入文献库的真实笔记、对比表和文献。
+给一个研究目标，CSPAPER 可以检索文献、读取指定页、生成对比表、追加笔记、整理综述、执行平台写入。所有高风险动作都有明确权限边界；工具调用、计划修订和执行结果持久化，可审计、可恢复。Work 左侧的“今日”汇总真实日程、截止、会话、PDF 与专注数据，“科研日历”提供月 / 周 / 日 / 议程视图和重复安排。Work 会话支持永久删除：运行中的任务必须先停止；删除会清理消息、运行、事件、来源与产物记录，但保留已写入文献库的真实笔记、对比表和文献。
 
 ```text
 目标 → 模型计划 → 用户确认/修改 → 工具执行 → 来源与产物 → 会话/笔记/对比表
@@ -130,18 +132,18 @@ Markdown + CSL + PDF    Operation Journal
 | 检查 | 结果 |
 |---|---|
 | Typecheck | ✅ 通过 |
-| Core regression | ✅ 78 / 78 |
-| UI regression | ✅ 79 / 79，无 renderer 异常 |
+| Core regression | ✅ 83 / 83 |
+| UI regression | ✅ 98 / 98，无 renderer 异常 |
 | Packaged app UI | ✅ 63 / 63 |
 | Lifecycle / crash | ✅ 单实例、窗口清理、操作崩溃、托盘恢复 |
-| Installer 0.20.0 | ✅ 首装、启动、升级、卸载、残留检查；安装包 SHA-256 `D4B01B048ADBFF001BB0C3F99EC8476F06BC214AAAD6B032611A36D2F6B39AAA` |
+| Installer baseline | ✅ 0.20.0 首装、启动、升级、卸载、残留检查；0.21.0 安装包由推送后的 CI / Release 工作流构建 |
 | Real model | ✅ Agnes 两个模型严格 JSON；三文献任务 7 个工具、3 篇笔记、1 张对比表 |
 | 10k library | ✅ list 86.45ms，最大事件循环间隔 94.33ms（低于 100ms 预算） |
-| CSS gate | ✅ 圆角 17 档、字号 14 档、important 5 |
+| CSS gate | ✅ 圆角 18 档、字号 14 档、important 5 |
 | Mobile Web | ✅ 5 / 5，内存生成 cspack，离线翻译桩，无 renderer 错误 |
 | GitHub CI / Pages | ✅ main `a11d2c7` CI 与 Pages 构建通过 |
 
-更多证据见 [`design-plans/execution-review-2026-10-29/`](./design-plans/execution-review-2026-10-29/)。架构、协议、迁移和当前边界见：
+更多证据见 [`design-plans/work-upgrade-2026-10-29/`](./design-plans/work-upgrade-2026-10-29/) 与 [`design-plans/execution-review-2026-10-29/`](./design-plans/execution-review-2026-10-29/)。架构、协议、迁移和当前边界见：
 
 - [ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 - [CHAT_PROTOCOL.md](./docs/CHAT_PROTOCOL.md)

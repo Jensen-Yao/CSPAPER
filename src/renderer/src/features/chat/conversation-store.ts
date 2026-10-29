@@ -25,6 +25,14 @@ export interface ConversationStoreState {
 }
 export const EMPTY_VIEW: ConversationView = { conversation: null, messages: [], runs: {}, run: null, cursor: 0, hasMore: false, loading: false, error: '' }
 
+/** Prefer the running or approval-blocked turn over newer queued turns. */
+export function selectConversationRun(messages: Message[], runs: Record<string, RunDetails>): Run | null {
+  const ordered = messages.flatMap(message => message.runId && runs[message.runId]?.run ? [runs[message.runId].run!] : [])
+  return ordered.find(run => !isTerminalRunStatus(run.status) && run.status !== 'queued')
+    ?? ordered.find(run => run.status === 'queued')
+    ?? ordered.at(-1) ?? null
+}
+
 /** Shared snapshots and event ownership; components keep only their presentation state. */
 export class ConversationStore {
   private state: ConversationStoreState = { workspaceId: null, activeId: null, conversations: [], views: {}, includeArchived: false, nextCursor: null, error: '', loading: true }
@@ -111,8 +119,7 @@ export class ConversationStore {
       const boundary = first ? previous?.messages.findIndex(item => item.id === first.id) ?? -1 : -1
       const history = boundary > 0 ? previous.messages.slice(0,boundary) : []
       const runs = { ...previous?.runs, ...Object.fromEntries(snapshot.runs.filter(item => item.run).map(item => [item.run!.id,item])) }
-      const latest = snapshot.items.slice().reverse().find(message => message.runId)
-      const run = latest?.runId ? runs[latest.runId]?.run ?? null : null
+      const run = selectConversationRun(snapshot.items, runs)
       this.updateView(id,{ conversation: snapshot.conversation, messages: [...history,...snapshot.items], runs, run, cursor: snapshot.eventCursor, hasMore: history.length ? previous.hasMore : snapshot.hasMore, loading: false, error: '' })
     }).catch(error => this.fail(id,error)).finally(() => {
       this.loading.delete(id)
@@ -140,7 +147,8 @@ export class ConversationStore {
       const result = await this.api.submitTurn(input)
       const current = this.state.views[input.conversationId] ?? EMPTY_VIEW
       const messages = [...new Map([...current.messages,result.userMessage,result.assistantMessage].map(item=>[item.id,item])).values()]
-      this.updateView(input.conversationId,{ messages, run: result.run, error: '' })
+      const active = current.run && !isTerminalRunStatus(current.run.status) && current.run.status !== 'queued' ? current.run : result.run
+      this.updateView(input.conversationId,{ messages, run: active, error: '' })
       await this.reload(input.conversationId)
       await this.refreshConversations()
       return result
@@ -170,9 +178,12 @@ export class ConversationStore {
         return { ...message, parts, status:'streaming' }
       })
     }
-    if(event.type==='run.status_changed' && view.run?.id===event.runId && payload.status)patch.run={...view.run,status:payload.status}
     const details = view.runs[event.runId]
-    if(details)patch.runs={...view.runs,[event.runId]:{...details,events:[...details.events,event]}}
+    if(details) {
+      const run = event.type==='run.status_changed' && payload.status && details.run ? {...details.run,status:payload.status} : details.run
+      patch.runs={...view.runs,[event.runId]:{...details,run,events:[...(details.events??[]),event]}}
+      patch.run=selectConversationRun(patch.messages??view.messages,patch.runs)
+    }
     this.updateView(id,patch)
     if(['run.completed','message.completed','message.reset','run.resumed','approval.required','source.added','artifact.created'].includes(event.type))void this.reload(id)
   }

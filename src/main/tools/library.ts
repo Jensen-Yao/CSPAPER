@@ -33,7 +33,7 @@ export function registerLibraryTools(registry:ToolRegistry):void {
     execute:async(ctx,args)=>{
       const sources=await retrieveSources({query:args.query,workspaceId:ctx.workspaceId,paperIds:args.paperIds,paperId:args.paperId,limit:args.limit,runId:ctx.runId,signal:ctx.signal})
       for(const source of sources) ctx.repository.addSource(source)
-      return ok(sources.map((source,index)=>({n:index+1,title:source.title,page:source.locator.page,snippet:source.snippet.slice(0,300),sourceId:source.id})),`检索到 ${sources.length} 个来源`,{sources})
+      return ok(sources.map((source,index)=>({n:index+1,title:source.title,page:source.locator.page,snippet:source.snippet.slice(0,300),sourceId:source.id})),sources.length?`检索到 ${sources.length} 个来源`:'未检索到来源：可更换关键词、缩小范围或重建索引',{sources})
     }
   })
   registry.register({

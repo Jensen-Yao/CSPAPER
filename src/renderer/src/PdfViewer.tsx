@@ -6,6 +6,7 @@ import type { Highlight } from './types'
 import { locateSnippet, locateByKeywords, flashHit } from './locate'
 import * as Icon from './Icon'
 import { useDialog } from './Dialog'
+import ReadingFocus from './ReadingFocus'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -751,6 +752,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
         <span className="slug" title={active.paper.title}>
           <b>{active.paper.title}</b>
         </span>
+        <ReadingFocus paperId={active.paper.id} paperTitle={active.paper.title} visible={visible} />
         <span style={{ flex: 1 }} />
         <div className="seg" title="页面导航">
           <button onClick={() => goToPage(1)} disabled={curPage <= 1} title="首页">

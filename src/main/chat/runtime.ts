@@ -187,6 +187,10 @@ export class ChatRuntime {
     if(!steps){
       this.repository.updateRunStatus(runId,'preparing')
       const prompt=plannerPrompt(question,JSON.stringify(contextSnapshot.refs),menu,JSON.stringify(policies))
+      if(contextSnapshot.researchGoal)prompt[prompt.length-1].content+=`\n长期研究背景（仅供本轮规划参考，不代表已完成或授权额外操作）：${contextSnapshot.researchGoal}`
+      if(contextSnapshot.skills?.length)prompt[prompt.length-1].content+=`\n用户选择的技能说明（遵循适用内容；工具名称若已过时，以可用工具列表为准）：\n${contextSnapshot.skills.map(skill=>`【${skill.name}】\n${skill.body}`).join('\n\n')}`
+      const history=this.historyFor(this.repository.getRun(runId)!.userMessageId)
+      prompt.splice(1,0,...history)
       const raw=await this.collect(prompt,model,controller.signal)
       let parsed:unknown
       try{parsed=parseModelJsonObject(raw)}catch(error){throw new Error(`${String(error)}；模型原始输出开头：${raw.slice(0,160).replace(/\s+/g,' ')}`)}
@@ -196,6 +200,10 @@ export class ChatRuntime {
       if(!plan.ok)throw new Error('计划校验失败：'+plan.errors.join('；'))
       steps=plan.steps
       this.events.appendAndPublish(runId,'plan.created',{steps:plan.steps})
+    }
+    if(contextSnapshot.promptKind==='plan') {
+      const lines=steps.map((step,index)=>`${index+1}. ${step.purpose}（${step.tool}；${step.risk==='read'?'读取':step.risk==='reversible_write'?'可撤销写入':step.risk==='batch_write'?'批量写入':step.risk==='external_effect'?'外部操作':'高风险操作'}）`)
+      return {text:`## 任务计划\n\n${lines.join('\n')||'没有可执行的工具步骤。'}\n\n当前仅生成计划，未执行以上工具。你可以提出修改，或明确要求继续执行。`,partial:false}
     }
     this.repository.updateRunStatus(runId,'executing_tools')
     const observations:Array<{step:PlanStepRecord;result?:ToolResult;error?:string}>=[]
@@ -213,7 +221,9 @@ export class ChatRuntime {
         partial=true;observations.push({step,error:output.error?.message??'工具失败'})
         if(revision===existingRevision){
           this.repository.updateRunStatus(runId,'preparing')
-          const revisionRaw=await this.collect(plannerPrompt(question,JSON.stringify(steps.slice(index)),JSON.stringify(observations),JSON.stringify(this.toolRegistry.list()),true),model,controller.signal)
+          const revisionPrompt=plannerPrompt(question,JSON.stringify(steps.slice(index)),JSON.stringify(observations),JSON.stringify(this.toolRegistry.list()),true)
+          if(contextSnapshot.skills?.length)revisionPrompt[revisionPrompt.length-1].content+=`\n所选技能说明：${JSON.stringify(contextSnapshot.skills)}`
+          const revisionRaw=await this.collect(revisionPrompt,model,controller.signal)
           let revisionParsed:unknown
           try{revisionParsed=parseModelJsonObject(revisionRaw)}catch(error){throw new Error(`工具失败后的修订计划不是有效 JSON：${String(error)}`)}
           const revised=validatePlan((revisionParsed as {steps?:unknown}).steps,policies)
@@ -233,7 +243,7 @@ export class ChatRuntime {
     }
     const finalRaw=await this.collect([
       {role:'system',content:'你是科研执行代理。基于工具结果输出最终报告；明确已完成、真实产物、失败步骤和后续建议。不得虚构执行成功。'},
-      {role:'user',content:JSON.stringify({goal:question,tools:this.toolRegistry.list(),observations})}
+      {role:'user',content:JSON.stringify({goal:question,skills:contextSnapshot.skills,tools:this.toolRegistry.list(),observations})}
     ],model,controller.signal)
     return {text:finalRaw,partial}
   }
@@ -286,6 +296,9 @@ export class ChatRuntime {
       if(!savedSources.length)for(const source of sources) this.repository.addSource(source)
       if(sources.length)this.repository.updateMessage(details.run.assistantMessageId,{parts:[{type:'sources',sourceIds:sources.map(source=>source.id)}]})
       if(sources.length)this.events.appendAndPublish(runId,'source.added',{sources:sources.map(source=>source.id)})
+      if(details.run.mode==='ask'&&details.context.promptKind!=='translation'&&!sources.length&&!details.context.refs.length) {
+        this.repository.updateMessage(details.run.assistantMessageId,{parts:[{type:'error',code:'retrieval_empty',message:'未检索到可引用来源。可更换更具体的关键词、在上下文选择器添加论文或集合；若索引未完成，请先重建索引。'}]})
+      }
       let text=''
       const actResult=details.run.mode==='act'
         ?await this.executeAct(runId,question,details.context,workspaceId,details.modelBinding,controller,resumption?.plan,0,details.context.permission??this.permission,resumption?.approvedCallId,resumption?.revision??0)
@@ -328,6 +341,10 @@ export class ChatRuntime {
 
   private promptWithHistory(question:string,userMessageId:string,context:ContextSnapshot,sources:Source[]):Parameters<ChatProvider['stream']>[0] {
     const prompt=context.promptKind==='translation'?translationPrompt(question):askPrompt(question,context,sources)
+    return [prompt[0],...this.historyFor(userMessageId),...prompt.slice(1)]
+  }
+
+  private historyFor(userMessageId:string):SimplePromptMessage[] {
     const history=this.repository.messageAncestors(userMessageId,40).filter(message=>message.id!==userMessageId&&(message.role==='user'||message.role==='assistant'))
     let chars=0
     const budgeted=history.slice().reverse().flatMap(message=>{
@@ -335,7 +352,7 @@ export class ChatRuntime {
       if(!content||chars+content.length>24000)return []
       chars+=content.length;return [{role:message.role as 'user'|'assistant',content}]
     }).reverse()
-    return [prompt[0],...budgeted,...prompt.slice(1)]
+    return budgeted
   }
 
   private finishCancelled(runId:string,reason:string,assistantMessageId?:string):void {

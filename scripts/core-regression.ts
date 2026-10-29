@@ -23,6 +23,9 @@ import { ChatRuntime } from '../src/main/chat/runtime'
 import { ChatEventBus } from '../src/main/chat/events'
 import { extractPlanSteps, parseModelJsonObject, validatePlan } from '../src/main/chat/planning'
 import { buildContextSnapshot } from '../src/main/chat/context'
+import { snapshotSkills, type SkillInfo } from '../src/main/skills'
+import { ResearchCalendar } from '../src/main/research-calendar'
+import { ResearchFocus } from '../src/main/research-focus'
 import { explicitContextSources, retrieveSources } from '../src/main/chat/retrieval'
 import { applyZoteroRepairs } from '../src/main/zotero-repair'
 import { previewOaRepairs, applyOaRepairs, type OaRepairProgress } from '../src/main/oa-repair'
@@ -338,11 +341,43 @@ app.whenReady().then(async()=>{
     await scan;assert.equal(responsive,true)
   })
   await test('tracked migrations apply exactly once across repeated initialization',()=>{
-    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8])
+    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10])
     store.initDb()
-    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8])
+    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10])
     for(const table of ['workspaces','conversations','chat_messages','chat_runs','chat_run_events','chat_tool_calls','chat_sources','chat_artifacts','operation_journal'])
       assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table),table)
+  })
+  await test('research calendar persists valid dates and isolates workspace operations',()=>{
+    const repo=new ChatRepository(db),calendar=new ResearchCalendar(db)
+    const a=repo.ensureWorkspace(path.join(root,'calendar-a')),b=repo.ensureWorkspace(path.join(root,'calendar-b'))
+    const conversation=repo.createConversation({workspaceId:a.id,title:'日程关联'})
+    const item=calendar.save(a.id,{title:'论文投稿',date:'2028-02-29',startTime:'09:00',endTime:'10:00',kind:'deadline',notes:'准备摘要',completed:false,conversationId:conversation.id,recurrence:'weekly',recurrenceUntil:'2028-03-14'})
+    assert.equal(item.startTime,'09:00')
+    const repeated=calendar.list(a.id,'2028-03-01','2028-03-31')
+    assert.deepEqual(repeated.map(row=>row.occurrenceDate),['2028-03-07','2028-03-14'])
+    assert.equal(calendar.list(b.id,'2028-02-01','2028-02-29').length,0)
+    assert.throws(()=>calendar.save(a.id,{title:'无效日期',date:'2027-02-29',kind:'task',notes:'',completed:false,conversationId:null}))
+    assert.throws(()=>calendar.save(a.id,{title:'无效时间',date:'2028-02-29',startTime:'10:00',endTime:'09:00',kind:'task',notes:'',completed:false,conversationId:null}))
+    assert.throws(()=>calendar.save(b.id,{title:'跨库',date:'2028-02-29',kind:'task',notes:'',completed:false,conversationId:conversation.id}))
+    assert.throws(()=>calendar.save(b.id,{title:'越权修改',date:'2028-02-29',kind:'task',notes:'',completed:false,conversationId:null},item.id))
+    assert.equal(calendar.remove(b.id,item.id),false)
+    const updated=calendar.save(a.id,{title:item.title,date:item.date,kind:item.kind,notes:item.notes,completed:true,conversationId:item.conversationId},item.id)
+    assert.equal(updated.completed,true)
+    assert.equal(new ResearchCalendar(db).list(a.id,'2028-02-01','2028-02-29')[0].completed,true)
+    assert.equal(calendar.remove(a.id,item.id),true)
+  })
+  await test('reading focus records phases and summarizes the active workspace',()=>{
+    const repo=new ChatRepository(db),focus=new ResearchFocus(db)
+    const a=repo.ensureWorkspace(library),b=repo.ensureWorkspace(path.join(root,'focus-b'))
+    const start=Date.now()-25*60*1000,end=new Date().toISOString(),startedAt=new Date(start).toISOString()
+    const summary=focus.log(a.id,{paperId:one.id,phase:'reading',seconds:25*60,startedAt,endedAt:end})
+    assert.equal(summary.readingSeconds,25*60);assert.equal(summary.cycles,1)
+    const rest=focus.log(a.id,{paperId:one.id,phase:'short_break',seconds:5*60,startedAt:new Date(Date.now()-5*60*1000).toISOString(),endedAt:end})
+    assert.equal(rest.breakSeconds,5*60)
+    const other=focus.summary(b.id,new Date().toISOString().slice(0,10))
+    assert.equal(other.readingSeconds,0);assert.equal(other.cycles,0)
+    assert.throws(()=>focus.log(b.id,{paperId:one.id,phase:'reading',seconds:60,startedAt,endedAt:end}))
+    assert.throws(()=>focus.log(a.id,{paperId:999999,phase:'reading',seconds:60,startedAt,endedAt:end}))
   })
   await test('persistent conversations isolate workspaces and survive repository reload',()=>{
     const repo=new ChatRepository(db),workspace=repo.ensureWorkspace(library,'Regression Library')
@@ -422,8 +457,8 @@ app.whenReady().then(async()=>{
     runtime.submitTurn(make(a.id,'runtime-a'))
     runtime.submitTurn(make(b.id,'runtime-b'))
     await runtime.idle()
-    assert.ok(repo.loadMessages({conversationId:a.id}).items[1].parts[0].text.includes('运行 A'))
-    assert.ok(repo.loadMessages({conversationId:b.id}).items[1].parts[0].text.includes('运行 A'))
+    assert.ok(repo.loadMessages({conversationId:a.id}).items[1].parts.some((part:any)=>part.type==='text'&&part.text.includes('运行 A')))
+    assert.ok(repo.loadMessages({conversationId:b.id}).items[1].parts.some((part:any)=>part.type==='text'&&part.text.includes('运行 A')))
     assert.ok(seenA.includes('message.delta'));assert.ok(seenB.includes('message.delta'))
     const again=runtime.submitTurn(make(a.id,'runtime-a'))
     assert.equal(again.reused,true);await runtime.idle()
@@ -515,6 +550,16 @@ app.whenReady().then(async()=>{
     assert.equal(validatePlan([{id:'1',tool:'paper.read',args:{},purpose:'读取',risk:'read'}],tools).ok,true)
     const invalid=validatePlan([{id:'1',tool:'unknown',args:{},purpose:'未知',risk:'read'},{id:'2',tool:'paper.delete',args:{},purpose:'删除',risk:'read'}],tools)
     assert.equal(invalid.ok,false)
+    assert.equal(validatePlan(Array.from({length:75},(_,index)=>({id:String(index),tool:'paper.read',args:{},purpose:'读取',risk:'read'})),[{name:'paper.read',version:1,risk:'read'}]).ok,true)
+  })
+  await test('selected skills snapshot exact content and reject ambiguous or missing selections',()=>{
+    const available:SkillInfo[]=[{name:'审阅',description:'审阅流程',source:'builtin',file:'builtin',body:'原始流程'}]
+    const selected=snapshotSkills([{name:'审阅',source:'builtin'}],available)
+    available[0].body='修改后的流程'
+    assert.equal(selected[0].body,'原始流程')
+    assert.throws(()=>snapshotSkills([{name:'缺失',source:'user'}],available),/不存在/)
+    assert.throws(()=>snapshotSkills([{name:'审阅',source:'builtin'},{name:'审阅',source:'builtin'}],available),/重复选择/)
+    assert.throws(()=>snapshotSkills([{name:'审阅',source:'builtin'}],[...available,{...available[0],file:'other'}]),/名称重复/)
   })
   await test('context snapshots enforce workspace objects and budget diagnostics',()=>{
     const repo=new ChatRepository(db),workspace=repo.ensureWorkspace(library)

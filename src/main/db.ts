@@ -83,6 +83,7 @@ export interface Settings {
   agentTimeoutMinutes?: number
   agentGoal?: string
   imageModel?: string
+  readingFocus?: import('../shared/calendar').ReadingFocusSettings
 }
 
 // 默认文献库：跟随平台放到「文档」目录（开发态 app 未 ready 前不能调 getPath，惰性求值）
@@ -114,7 +115,8 @@ const DEFAULTS: Settings = {
   zoteroAutoSync: false,
   agentModel: '',
   agentMaxSteps: 24,
-  agentTimeoutMinutes: 10
+  agentTimeoutMinutes: 10,
+  readingFocus: { focusMinutes:25, shortBreakMinutes:5, longBreakMinutes:15, waterMinutes:30, activityMinutes:45, notify:true }
 }
 
 let db: Database.Database

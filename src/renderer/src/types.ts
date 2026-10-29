@@ -73,6 +73,7 @@ export interface Settings {
   agentTimeoutMinutes?: number
   agentGoal?: string
   imageModel?: string
+  readingFocus?: import('../../shared/calendar').ReadingFocusSettings
 }
 
 // 标签（W1）
@@ -564,6 +565,11 @@ declare global {
       agentAutoCreate: (name: string, goal: string, minutes: number) => Promise<unknown>
       agentAutoRemove: (id: number) => Promise<boolean>
       agentAutoToggle: (id: number, enabled: boolean) => Promise<boolean>
+      calendarList: (start: string, end: string) => Promise<import('../../shared/calendar').CalendarEvent[]>
+      calendarSave: (input: import('../../shared/calendar').CalendarInput, id?: number) => Promise<import('../../shared/calendar').CalendarEvent>
+      calendarRemove: (id: number) => Promise<boolean>
+      focusLog: (input: import('../../shared/calendar').FocusLogInput) => Promise<import('../../shared/calendar').FocusSummary>
+      focusSummary: (date: string) => Promise<import('../../shared/calendar').FocusSummary>
       onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; sid?: number; stream?: boolean; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } }; replace?: boolean }) => void) => () => void
       // ---------- 知识体系 + 统计扩展（v0.7） ----------
       graphKeywords: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number; papers: number[] }>; edges: Array<{ a: string; b: string; w: number }> }>

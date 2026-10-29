@@ -242,7 +242,7 @@
 }
 .wb-mini:hover { color: var(--text); border-color: var(--text-dim); }
 .wb-mini.danger:hover { color: var(--danger); border-color: var(--danger); }
-.wb-chip { border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 12px; border-radius: 99px; padding: 4px 12px; cursor: pointer; font-family: inherit; }
+.wb-chip { border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 12px; border-radius: 999px; padding: 4px 12px; cursor: pointer; font-family: inherit; }
 .wb-chip:hover { color: var(--text); }
 .wb-run {
   border: 0; background: var(--text); color: var(--bg); font-size: 13px; font-weight: 600;
@@ -284,7 +284,7 @@
 .wb-hero-goal {
   margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--accent); border: 1px solid var(--accent-soft, var(--border));
-  border-radius: 99px; padding: 4px 12px; background: var(--bg2, transparent);
+  border-radius: 999px; padding: 4px 12px; background: var(--bg2, transparent);
 }
 
 /* ---------- v0.16.7 产物汇总 chips ---------- */
@@ -335,3 +335,112 @@ html[data-theme='dark'] .wb-task-status.running { background: rgba(111, 174, 130
 }
 .wb-compose-actions { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .wb-compose-actions .wb-send { margin-left: 0; }
+.wb-skill-pop { min-width: 260px; }
+.wb-skill-wrap > .wb-pill[aria-expanded='true'] { position: relative; z-index: 10; }
+.wb-skill-pop-head { padding: 8px 10px; font-size: 12px; font-weight: 600; }
+.wb-skill-pop-head span { display: block; color: var(--text-dim); font-size: 11px; font-weight: 400; margin-top: 3px; }
+.wb-skill-chip { cursor: pointer; }
+.wb-card > .wb-mini { margin-top: 10px; }
+
+/* 科研日历 */
+.research-calendar { width: 100%; max-width: 1200px; margin: 0 auto; color: var(--text); }
+.research-calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 20px; }
+.research-calendar-heading h1 { margin: 0; font-size: 20px; font-weight: 650; }
+.research-calendar-heading p, .research-calendar-foot { margin: 5px 0 0; color: var(--text-dim); font-size: 12px; }
+.research-calendar-heading .wb-run { display: inline-flex; align-items: center; gap: 6px; }
+.research-calendar-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 340px); gap: 20px; align-items: start; }
+.research-calendar-month, .research-calendar-detail { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 16px; }
+.research-calendar-nav, .research-calendar-nav > div, .research-calendar-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.research-calendar-nav strong { font-size: 14px; }
+.research-calendar-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 3px; }
+.research-calendar-week { padding: 14px 0 6px; color: var(--text-dim); font-size: 11px; text-align: center; }
+.research-calendar-day { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; min-height: 64px; padding: 7px; color: var(--text); background: var(--bg2); border: 1px solid transparent; border-radius: 6px; cursor: pointer; font: inherit; text-align: left; }
+.research-calendar-day:hover { border-color: var(--border-lit); }
+.research-calendar-day.selected { border-color: var(--accent); background: var(--accent-soft); }
+.research-calendar-day.outside { opacity: .42; }
+.research-calendar-day span { font-size: 12px; font-weight: 600; }
+.research-calendar-day small, .research-calendar-day i { font-size: 11px; font-style: normal; color: var(--text-dim); }
+.research-calendar-day i { color: var(--accent); margin-top: auto; }
+.research-calendar-foot { line-height: 1.6; margin-top: 12px; }
+.research-calendar-detail-head { margin-bottom: 14px; }
+.research-calendar-detail-head small, .research-calendar-event small { color: var(--text-dim); font-size: 11px; }
+.research-calendar-detail-head h2 { margin: 2px 0 0; font-size: 14px; }
+.research-calendar-empty { margin: 22px 0; font-size: 12px; color: var(--text-dim); }
+.research-calendar-event { border-top: 1px solid var(--border); padding: 12px 0; }
+.research-calendar-event-head { display: flex; align-items: flex-start; gap: 9px; }
+.research-calendar-event-head strong, .research-calendar-event-head small { display: block; }
+.research-calendar-event-head strong { margin-top: 2px; font-size: 13px; overflow-wrap: anywhere; }
+.research-calendar-event-head strong.done { text-decoration: line-through; color: var(--text-dim); }
+.research-calendar-check { flex: none; width: 20px; height: 20px; border: 1px solid var(--border-lit); border-radius: 6px; color: var(--accent); background: var(--bg); cursor: pointer; }
+.research-calendar-check.done { background: var(--accent-soft); }
+.research-calendar-event p { margin: 8px 0 0 29px; color: var(--text-dim); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.research-calendar-event-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0 25px; }
+.research-calendar-event-actions button { border: 0; border-radius: 6px; background: transparent; color: var(--text-dim); padding: 5px; cursor: pointer; font-size: 11px; }
+.research-calendar-event-actions button:hover { color: var(--text); background: var(--bg2); }
+.research-calendar-form { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
+.research-calendar-form h3 { margin: 0; font-size: 13px; }
+.research-calendar-form label { display: grid; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.research-calendar-form input, .research-calendar-form select, .research-calendar-form textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--text); background: var(--bg2); font: inherit; }
+.research-calendar-form textarea { resize: vertical; }
+.research-calendar-form > div { display: flex; gap: 8px; }
+@media (max-width: 1050px) { .research-calendar-layout { grid-template-columns: 1fr; } .research-calendar-day { min-height: 50px; } }
+
+/* Work：让对话内容、任务状态和输入区形成清晰的阅读层次。 */
+.wb-side { background: var(--bg2); }
+.wb-brand { padding: 18px 18px 16px; }
+.wb-nav { gap: 3px; padding-inline: 12px; }
+.wb-nav-item { min-height: 36px; border-radius: 8px; }
+.wb-history { padding-inline: 12px; }
+.wb-group { padding: 14px 8px 7px; letter-spacing: .02em; }
+.wb-hist { min-height: 36px; color: var(--text); border-radius: 8px; }
+.wb-hist-row { border-radius: 8px; }
+.wb-row-action { min-width: 28px; min-height: 28px; }
+.wb-run-head { min-height: 58px; padding: 10px 22px; border-bottom: 1px solid var(--border); }
+.wb-run-goal { max-width: none; color: var(--text); font-size: 13px; }
+.wb-goal-context { display: flex; align-items: center; gap: 8px; flex: none; min-width: 0; padding: 8px 24px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 12px; }
+.wb-goal-context strong { color: var(--text); font-weight: 500; }
+.wb-goal-context small { flex: none; color: var(--text-dim); }
+.wb-action { min-height: 30px; border-radius: 8px; }
+.wb-hero { top: 27%; }
+.wb-hero-text { font-family: inherit; font-size: 24px; font-weight: 650; letter-spacing: 0; }
+.wb-hero-sub { max-width: 480px; margin: 12px auto 0; line-height: 1.7; }
+.wb-composer { padding: 12px 24px 20px; }
+.wb-compose-card { width: min(820px, 100%); box-sizing: border-box; padding: 14px 14px 10px; background: var(--bg2); border-radius: 14px; box-shadow: 0 4px 18px rgba(0,0,0,.04); }
+.wb-compose-card:focus-within { border-color: var(--border-lit); box-shadow: 0 4px 20px rgba(0,0,0,.06); }
+.wb-compose-input, .wb-compose-input:focus-visible { display: block; box-sizing: border-box; min-height: 48px; max-height: 200px; padding: 2px 3px; border: 0; outline: 0; box-shadow: none; }
+.wb-compose-bar { gap: 6px; margin-top: 10px; }
+.wb-pill { min-height: 30px; border-radius: 8px; }
+.wb-send { width: 34px; height: 34px; border-radius: 10px; }
+.wb-host button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-workspace-task .chat-message-scroll { padding: 24px 24px 30px; }
+.chat-workspace-task .chat-message-items > div { padding-bottom: 30px; }
+.chat-workspace-task .msg.user .who { color: var(--text); font-weight: 600; }
+.chat-workspace-task .msg.assistant .who { color: var(--accent); font-weight: 650; }
+@media (max-width: 900px) { .wb-composer { padding: 10px 14px 14px; } .wb-run-head { padding: 10px 14px; } }
+@media (prefers-reduced-motion: reduce) { .wb-hist-dot.running, .wb-spin, .wb-spin-inline { animation: none; } }
+/* 今日科研台：真实数据汇总，不替代日历与阅读器。 */
+.wb-today { max-width: 1160px; }
+.wb-today-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 18px; }
+.wb-today-head small { display: block; color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
+.wb-today-head h1 { margin: 3px 0 0; font-size: 20px; font-weight: 650; }
+.wb-today-head > div:last-child { display: flex; align-items: center; gap: 8px; }
+.wb-today-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
+.wb-today-metrics div { padding: 13px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.wb-today-metrics small { display: block; color: var(--text-dim); font-size: 11px; }
+.wb-today-metrics strong { display: block; margin-top: 5px; color: var(--text); font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; }
+.wb-today-metrics em { margin-left: 4px; color: var(--text-dim); font-family: inherit; font-size: 11px; font-style: normal; }
+.wb-today-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.wb-today-card { min-width: 0; padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.wb-today-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.wb-today-card h2 { margin: 0; font-size: 13px; font-weight: 650; }
+.wb-today-card header button,.wb-today-card article > button { border: 0; border-radius: 6px; background: transparent; color: var(--accent2); cursor: pointer; font: inherit; font-size: 11px; padding: 4px 6px; }
+.wb-today-card header button:hover,.wb-today-card article > button:hover { background: var(--bg2); }
+.wb-today-card header span { color: var(--text-dim); font-size: 11px; }
+.wb-today-card article { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 8px; padding: 9px 0; border-top: 1px solid var(--border); }
+.wb-today-card article:first-of-type { border-top: 0; }
+.wb-today-card article small { color: var(--text-dim); font-size: 11px; }
+.wb-today-card article strong { min-width: 0; color: var(--text); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.wb-today-card article.done strong { color: var(--text-dim); text-decoration: line-through; }
+.wb-today-foot { margin-top: 14px; line-height: 1.7; }
+@media (max-width: 1000px) { .wb-today-grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .wb-today-metrics { grid-template-columns: 1fr; } .wb-today-head { align-items: flex-start; flex-direction: column; } }

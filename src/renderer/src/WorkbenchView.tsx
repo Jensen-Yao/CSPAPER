@@ -14,12 +14,15 @@ import ContextPicker from './features/chat/ContextPicker'
 import TaskChatWorkspace from './features/chat/TaskChatWorkspace'
 import { conversationStore } from './features/chat/conversation-store'
 import { useDialog } from './Dialog'
+import CalendarPane from './CalendarPane'
+import type { CalendarEvent, FocusSummary } from '../../shared/calendar'
 
 interface PlanStep {
   tool: string
   args: Record<string, unknown>
   purpose: string
 }
+type SkillChoice = {name:string;description:string;source:'builtin'|'user'}
 interface AgentEvent {
   t: number
   kind: 'plan' | 'step' | 'text' | 'artifact' | 'done' | 'partial' | 'error' | 'cancelled' | 'status' | 'approval'
@@ -78,7 +81,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   cancelled: { label: '已中止', cls: 'error' }
 }
 
-// 推理强度（模型思考等级，与对话一致）；工具步数上限在 设置→智能体 单独调
+// 推理强度（模型思考等级，与对话一致）
 const THINKINGS: Array<{ label: string; value: 'default' | 'low' | 'medium' | 'high' }> = [
   { label: '默认', value: 'default' },
   { label: '低', value: 'low' },
@@ -86,6 +89,7 @@ const THINKINGS: Array<{ label: string; value: 'default' | 'low' | 'medium' | 'h
   { label: '高', value: 'high' }
 ]
 
+const localDayText=(date:Date):string=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
 const TOOL_LABEL: Record<string, string> = {
   search_papers: '联网检索', search_library: '库内检索', import_paper: '导入文献', read_paper: '阅读全文',
   ask_paper: '文献问答', write_note: '写笔记', make_synthesis: '写综述', compare_papers: '对比',
@@ -150,16 +154,25 @@ function workedMsOf(task: TaskFull, now: number): number {
 }
 
 export default function WorkbenchView({ visible, papers, models, profiles, onOpenPaper, onOpenCompare, onOpenNotes, onOpenSettings }: Props): JSX.Element | null {
-  const [nav, setNav] = useState<'tasks' | 'skills' | 'auto' | 'mcp'>('tasks')
+  const [nav, setNav] = useState<'today' | 'tasks' | 'skills' | 'auto' | 'mcp' | 'calendar'>('today')
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [selId, setSelId] = useState<string | null>(null)
   const [task, setTask] = useState<TaskFull | null>(null)
   const chatStore=conversationStore(),chatState=useSyncExternalStore(chatStore.subscribe,chatStore.getSnapshot)
   const dialog=useDialog()
   const chatConversations=useMemo(()=>chatState.conversations.filter(conversation=>conversation.mode==='act'),[chatState.conversations])
-  const [chatQueue, setChatQueue] = useState<string[]>([])
+  const queuedChatRuns=useMemo(()=>{
+    if(!task?.conversationId)return []
+    const view=chatState.views[task.conversationId]
+    return Object.values(view?.runs??{}).filter(details=>details.run?.status==='queued').map(details=>{
+      const message=view?.messages.find(item=>item.id===details.run!.userMessageId)
+      const text=message?.parts.filter(part=>part.type==='text').map(part=>part.type==='text'?part.text:'').join('')||'排队任务'
+      return {id:details.run!.id,text}
+    })
+  },[chatState.views[task?.conversationId??''],task?.conversationId])
   const [selectedPaperIds,setSelectedPaperIds]=useState<number[]>([])
-  const chatQueueRef = useRef<string[]>([])
+  const [skills,setSkills]=useState<SkillChoice[]>([])
+  const [selectedSkills,setSelectedSkills]=useState<Array<Pick<SkillChoice,'name'|'source'>>>([])
   const [goal, setGoal] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -172,9 +185,10 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   const [thinking, setThinking] = useState<string>('default')
   const [levels, setLevels] = useState<string[]>([])
   const [agentModel, setAgentModel] = useState<string>('')
-  const [pop, setPop] = useState<'' | 'tpl' | 'model' | 'effort' | 'perm'>('')
+  const [pop, setPop] = useState<'' | 'tpl' | 'model' | 'effort' | 'perm' | 'skill'>('')
   const [slashSel, setSlashSel] = useState(0)
   const [goalLong, setGoalLong] = useState('')
+  const goalSaveRef = useRef<Promise<unknown>>(Promise.resolve())
   const [notice, setNotice] = useState('')
   const [copied, setCopied] = useState(false)
   const [wide, setWide] = useState(false)
@@ -203,14 +217,21 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   const refreshChatConversations=():void=>{
     void chatStore.refreshConversations().catch(()=>{})
   }
+  const refreshSkills=():void=>{void window.api.agentSkills().then(setSkills).catch(error=>setErr(`技能加载失败：${String(error)}`))}
+  const toggleSkill=(skill:Pick<SkillChoice,'name'|'source'>):void=>{
+    const exists=selectedSkills.some(item=>item.name===skill.name&&item.source===skill.source)
+    if(!exists&&selectedSkills.length>=8){setErr('一次最多选择 8 个技能');return}
+    setErr('')
+    setSelectedSkills(current=>exists?current.filter(item=>item.name!==skill.name||item.source!==skill.source):[...current,{name:skill.name,source:skill.source}])
+  }
   const messageText=(message:Message):string=>message.parts.filter(part=>part.type==='text').map(part=>part.type==='text'?part.text:'').join('')
   const mapRunStatus=(status:string):TaskSummary['status']=>status==='completed'?'done':status==='failed'||status==='interrupted'?'error':status==='queued'||status==='preparing'||status==='generating'||status==='executing_tools'||status==='awaiting_approval'?(status==='awaiting_approval'?'awaiting-confirm':'running'):status as TaskSummary['status']
   const applyChatTask=(conversationId:string):void=>{
     const view=chatStore.getSnapshot().views[conversationId],conversation=view?.conversation
     if(!conversation)return
     const loaded={items:view.messages}
-    const assistant=loaded.items.filter((message:Message)=>message.runId).at(-1) as Message|undefined
-    const runId=assistant?.runId
+    const runId=view.run?.id
+    const assistant=loaded.items.find((message:Message)=>message.runId===runId) as Message|undefined
     const bundle=runId?view.runs[runId]:null
     const events:(AgentEvent&{t:number})[]=(bundle?.events??[] as RunEvent[]).map((event:RunEvent)=>({
       t:new Date(event.createdAt).getTime(),
@@ -260,6 +281,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   useEffect(() => {
     if(!visible)return
     refreshChatConversations()
+    refreshSkills()
   },[visible])
   useEffect(()=>{if(visible&&selId&&chatState.views[selId])applyChatTask(selId)},[visible,selId,chatState.views[selId??'']])
 
@@ -268,7 +290,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
     void window.api
       .getSettings()
       .then((s) => {
-        const st = s as { agentModel?: string; agentMaxSteps?: number; agentGoal?: string; thinkingLevel?: string; model?: string; profiles?: Array<{ models: string[]; modelCaps?: Record<string, { reasoningLevels: string[] }> }> }
+        const st = s as { agentModel?: string; agentGoal?: string; thinkingLevel?: string; model?: string; profiles?: Array<{ models: string[]; modelCaps?: Record<string, { reasoningLevels: string[] }> }> }
         if (st.agentModel) setAgentModel(st.agentModel)
         if (st.thinkingLevel && st.thinkingLevel !== 'off') setThinking(st.thinkingLevel)
         // 所选模型自带的推理等级档（如 gpt-5: low/high/max）——有则 pill 直接展示这些词
@@ -276,7 +298,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
         const pf = (st.profiles ?? []).find((x) => x.models.includes(cur))
         const preset = cur ? presetCaps(cur) : undefined
         setLevels(pf?.modelCaps?.[cur]?.reasoningLevels ?? preset?.reasoningLevels ?? [])
-        if (st.agentGoal) setGoalLong(st.agentGoal)
+        setGoalLong(st.agentGoal ?? '')
       })
       .catch(() => {})
   }, [visible])
@@ -329,15 +351,16 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
     return () => window.removeEventListener('keydown', h)
   }, [visible])
 
-  const launch = (g: string): void => {
+  const launch = (g: string, options?: {planOnly?: boolean; permission?: 'auto' | 'confirm'}): void => {
     void (async()=>{
       setBusy(true);setErr('')
       try {
+        await goalSaveRef.current
         const activeProfile=profiles.find(profile=>profile.models.includes(agentModel||models[0]||''))
         const workspace=await window.api.chat.workspace()
         const conversation=(task?.conversationId?await window.api.chat.getConversation(task.conversationId):null)??await window.api.chat.createConversation({title:g.slice(0,120),mode:'act',entry:'work'})
         const model=agentModel||models[0]||''
-        const submitted=await chatStore.send({conversationId:conversation.id,clientMessageId:'work-'+crypto.randomUUID(),parentMessageId:conversation.activeLeafMessageId,text:g,context:selectedPaperIds.map(paperId=>({kind:'paper' as const,workspaceId:workspace.workspaceId,paperId})),mode:'act',promptKind:'ask',permission:perm==='auto'?'auto':'confirm',modelBindingId:`${activeProfile?.id??'profile-1'}:${model}`,reasoning:thinking==='low'||thinking==='medium'||thinking==='high'?thinking:'default'})
+        const submitted=await chatStore.send({conversationId:conversation.id,clientMessageId:'work-'+crypto.randomUUID(),parentMessageId:conversation.activeLeafMessageId,text:g,context:selectedPaperIds.map(paperId=>({kind:'paper' as const,workspaceId:workspace.workspaceId,paperId})),skills:selectedSkills,mode:'act',promptKind:options?.planOnly?'plan':'ask',permission:options?.planOnly?'readonly':options?.permission??perm,modelBindingId:`${activeProfile?.id??'profile-1'}:${model}`,reasoning:thinking})
         setNav('tasks');await loadChatTask(conversation.id);refreshChatConversations()
         if(!submitted?.run?.id)setErr('统一任务启动失败')
       } catch(error){setErr(String(error).slice(0,160))}
@@ -361,23 +384,22 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
         flash('用法：/' + name + ' 目标描述（如 /plan 调研固态电池热管理）')
         return true
       }
-      setPerm(name === 'auto' ? 'auto' : 'confirm')
-      localStorage.setItem('wb.perm', name === 'auto' ? 'auto' : 'confirm')
+      if(name==='auto') { setPerm('auto'); localStorage.setItem('wb.perm','auto') }
       setGoal('')
-      launch(args)
+      launch(args,name==='plan'?{planOnly:true}:{permission:'auto'})
       return true
     }
     if (name === 'goal') {
       if (!args) {
         // 无参清除目标
-        void window.api.saveSettings({ agentGoal: '' })
+        goalSaveRef.current=window.api.saveSettings({ agentGoal: '' })
+        void goalSaveRef.current.then(()=>flash('已清除研究目标')).catch(error=>{setGoalLong(goalLong);setErr(`目标保存失败：${String(error)}`)})
         setGoalLong('')
-        flash('已清除长期目标')
         return true
       }
-      void window.api.saveSettings({ agentGoal: args })
+      goalSaveRef.current=window.api.saveSettings({ agentGoal: args })
+      void goalSaveRef.current.then(()=>flash('研究目标已保存，并会作为后续 Work 任务的背景')).catch(error=>{setGoalLong(goalLong);setErr(`目标保存失败：${String(error)}`)})
       setGoalLong(args)
-      flash('长期目标已设定：' + args.slice(0, 60) + '（/goal 无参清除）')
       setGoal('')
       return true
     }
@@ -401,7 +423,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
       }
       setThinking(lv)
       void window.api.saveSettings({ thinkingLevel: lv })
-      flash(`推理强度：${lv}（模型思考等级，工具步数在 设置→智能体）`)
+      flash(`推理强度：${lv}（模型思考等级）`)
       setGoal('')
       return true
     }
@@ -521,7 +543,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
       .catch(error => flash(`复制失败：${String(error).slice(0,90)}`))
   }
   const removeConversation = async (id: string): Promise<void> => {
-    if (task?.conversationId === id && task.status === 'running') {
+    if (task?.conversationId === id && (task.status === 'running' || task.status === 'awaiting-confirm')) {
       flash('任务仍在执行，请先停止再删除会话')
       return
     }
@@ -596,7 +618,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   }, [tasks, filter])
   const progress = useMemo(() => (task ? planProgress(task.plan, task.events) : []), [task])
   const doneCount = progress.filter((p) => p.done).length
-  const running = task?.status === 'running'
+  const running = task?.status === 'running' || (!!task?.conversationId && task.status === 'awaiting-confirm')
   const worked = task ? workedMsOf(task, Date.now()) : 0
   const currentRun=task?.conversationId?chatState.views[task.conversationId]?.run??null:null
   const interrupted=currentRun?.status==='interrupted'
@@ -641,6 +663,9 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
             <span className="wb-nav-icon">{<Icon.Search />}</span>
             <span className="wb-nav-label">搜索</span>
           </button>
+          <button className={`wb-nav-item ${nav === 'today' ? 'on' : ''}`} onClick={() => setNav('today')}>
+            <span className="wb-nav-icon"><Icon.Calendar /></span><span className="wb-nav-label">今日</span>
+          </button>
           <button className={`wb-nav-item ${nav === 'auto' ? 'on' : ''}`} onClick={() => setNav('auto')}>
             <span className="wb-nav-icon">{<Icon.Clock />}</span>
             <span className="wb-nav-label">自动化</span>
@@ -648,6 +673,9 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
           <button className={`wb-nav-item ${nav === 'skills' ? 'on' : ''}`} onClick={() => setNav('skills')}>
             <span className="wb-nav-icon">{<Icon.Target />}</span>
             <span className="wb-nav-label">技能</span>
+          </button>
+          <button className={`wb-nav-item ${nav === 'calendar' ? 'on' : ''}`} onClick={() => setNav('calendar')}>
+            <span className="wb-nav-icon"><Icon.Calendar /></span><span className="wb-nav-label">科研日历</span>
           </button>
           <button className={`wb-nav-item ${nav === 'mcp' ? 'on' : ''}`} onClick={() => setNav('mcp')}>
             <span className="wb-nav-icon">{<Icon.Grid />}</span>
@@ -667,13 +695,13 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
         )}
         <div className="wb-side-sep" />
         <div className="wb-history">
-          {nav==='tasks'&&chatConversations.length>0&&(
+          {nav==='tasks'&&chatConversations.some(conversation=>conversation.title.toLowerCase().includes(filter.trim().toLowerCase()))&&(
             <div>
-              <div className="wb-group">统一会话</div>
-              {chatConversations.map(conversation=>(
+              <div className="wb-group">最近任务</div>
+              {chatConversations.filter(conversation=>conversation.title.toLowerCase().includes(filter.trim().toLowerCase())).map(conversation=>(
                 <div key={conversation.id} className={`wb-hist-row ${selId===conversation.id?'on':''}`} data-conversation-id={conversation.id}>
                   <button className="wb-hist" title={conversation.title} onClick={()=>void loadChatTask(conversation.id)}>
-                    <span className="wb-hist-dot running" />
+                    {chatState.views[conversation.id]?.run && !['completed','failed','partial','cancelled','interrupted'].includes(chatState.views[conversation.id].run!.status) && <span className={`wb-hist-dot ${chatState.views[conversation.id].run!.status==='awaiting_approval'?'awaiting-confirm':'running'}`} />}
                     <span className="wb-hist-goal ellipsis">{conversation.title||'科研任务'}</span>
                     <span className="wb-hist-time">{relTime(conversation.createdAt)}</span>
                   </button>
@@ -708,7 +736,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                 ))}
               </div>
             ))}
-          {nav === 'tasks' && grouped.length === 0 && <div className="wb-dim" style={{ padding: '8px 10px' }}>{filter ? '没有匹配的任务' : '还没有任务，从「新建任务」开始'}</div>}
+          {nav === 'tasks' && grouped.length === 0 && !chatConversations.some(conversation=>conversation.title.toLowerCase().includes(filter.trim().toLowerCase())) && <div className="wb-dim" style={{ padding: '8px 10px' }}>{filter ? '没有匹配的任务' : '还没有任务，从「新建任务」开始'}</div>}
         </div>
         <div className="wb-side-foot">
           <div className="wb-user">
@@ -727,9 +755,11 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
       <div className="wb-center">
         {nav !== 'tasks' ? (
           <div className="wb-pane-full">
-            {nav === 'skills' && <SkillsPane />}
+            {nav === 'skills' && <SkillsPane skills={skills} selected={selectedSkills} onToggle={toggleSkill} onRefresh={refreshSkills} onUse={()=>{setNav('tasks');setTimeout(()=>inputRef.current?.focus(),30)}} />}
             {nav === 'auto' && <AutoPane />}
             {nav === 'mcp' && <McpPane />}
+            {nav === 'today' && <TodayPane papers={papers} conversations={chatConversations.map(conversation=>({id:conversation.id,title:conversation.title,updatedAt:conversation.updatedAt}))} onOpenPaper={onOpenPaper} onOpenCalendar={()=>setNav('calendar')} onNewTask={()=>{setNav('tasks');setSelId(null);setTask(null);setTimeout(()=>inputRef.current?.focus(),30)}} onStartTask={item=>{setNav('tasks');if(item.conversationId)void loadChatTask(item.conversationId);else{setSelId(null);setTask(null)}setGoal(`请协助处理这条科研日程：${item.title}。日期：${item.occurrenceDate}。${item.notes?' 补充说明：'+item.notes:''}`);setTimeout(()=>inputRef.current?.focus(),30)}} />}
+            {nav === 'calendar' && <CalendarPane conversationId={task?.conversationId??null} onOpenConversation={id=>{setNav('tasks');void loadChatTask(id)}} onStartTask={item=>{setNav('tasks');if(item.conversationId)void loadChatTask(item.conversationId);else{setSelId(null);setTask(null)}setGoal(`请协助处理这条科研日程：${item.title}。日期：${item.date}。${item.notes?' 补充说明：'+item.notes:''}`);setTimeout(()=>inputRef.current?.focus(),30)}}/>}
           </div>
         ) : task ? (
           <div className={`wb-run-view ${wide ? 'wide' : ''}`}>
@@ -788,6 +818,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                 </div>
               )
             })()}
+            {goalLong && <div className="wb-goal-context" title={goalLong}><Icon.Target size={14}/><span>研究目标</span><strong className="ellipsis">{goalLong}</strong><small>作为任务背景</small></div>}
             {task.conversationId ? <TaskChatWorkspace conversationId={task.conversationId}/> : <div
               className="wb-scroll"
               ref={scrollRef}
@@ -949,31 +980,36 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
             <div className="wb-hero">
               <div className="wb-hero-text">今天要研究什么？</div>
               <div className="wb-hero-sub">库内 {papers.length} 篇文献 · 描述目标，智能体自动检索、精读、写综述</div>
-              {goalLong && <div className="wb-hero-goal"><Icon.Target size={12} /> 长期目标：{goalLong}</div>}
+              {goalLong && <div className="wb-hero-goal"><Icon.Target size={12} /> 研究目标（作为任务背景）：{goalLong}</div>}
             </div>
           </div>
         )}
 
         {/* ---------- 底部合成器（ZCode 式） ---------- */}
         <div className={`wb-composer ${nav !== 'tasks' ? 'ws-hidden' : ''}`}>
-          {queue.length > 0 && (
+          {(queue.length > 0 || queuedChatRuns.length > 0) && (
             <div className="wb-queue">
-              {[...chatQueue, ...queue].map((g, i) => (
-                <div key={i} className="wb-queue-item" title={g}>
+              {[...queue.map(text=>({id:null as string|null,text})),...queuedChatRuns].map((item,i)=>
+                <div key={item.id??`local-${i}-${item.text}`} className="wb-queue-item" title={item.text}>
                   <i className="wb-spin-inline" />
-                  <span className="ellipsis">排队：{g}</span>
+                  <span className="ellipsis">排队：{item.text}</span>
                   <button
                     className="wb-icon-btn"
-                    title="移除"
+                    title="取消排队"
+                    aria-label="取消排队"
                     onClick={() => {
-                      if(i<chatQueueRef.current.length){chatQueueRef.current=chatQueueRef.current.filter((_,j)=>j!==i);setChatQueue(chatQueueRef.current)}
-                      else{const oldIndex=i-chatQueueRef.current.length;queueRef.current=queueRef.current.filter((_,j)=>j!==oldIndex);setQueue(queueRef.current)}
+                      if(item.id) {
+                        void window.api.chat.cancelRun(item.id,'用户取消排队').then(()=>loadChatTask(task!.conversationId!)).catch(error=>setErr(String(error)))
+                        return
+                      }
+                      queueRef.current=queueRef.current.filter((_,j)=>j!==i)
+                      setQueue(queueRef.current)
                     }}
                   >
                     ✕
                   </button>
                 </div>
-              ))}
+              )}
             </div>
           )}
           {notice && <div className="wb-notice">{notice}</div>}
@@ -1007,7 +1043,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
               className="wb-compose-input"
               value={goal}
               rows={2}
-              placeholder={running ? '任务执行中，输入内容将排队在本任务完成后执行' : '给科研智能体一个目标… 输入 / 查看命令（/plan 确认后执行 · /goal 设长期目标 · /deep 调深度）'}
+              placeholder={running ? '输入后续要求，将在当前任务结束后执行…' : '描述你的研究任务…'}
               onChange={(e) => {
                 setGoal(e.target.value)
                 if (e.target.value.startsWith('/')) setSlashSel(0)
@@ -1052,13 +1088,23 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
             />
             <div className="wb-compose-bar">
               <ContextPicker papers={papers} selected={selectedPaperIds} onChange={setSelectedPaperIds}/>
+              <div className="wb-pop-wrap wb-skill-wrap">
+                <button type="button" className={`wb-pill ${pop==='skill'||selectedSkills.length?'on':''}`} title="选择本次任务使用的技能" aria-expanded={pop==='skill'} onClick={()=>{if(pop!=='skill')refreshSkills();setPop(pop==='skill'?'':'skill')}}><Icon.Target size={13}/> 技能{selectedSkills.length?` · ${selectedSkills.length}`:''}<span className="wb-pill-caret">▾</span></button>
+                {pop==='skill'&&<><div className="wb-pop-mask" onClick={()=>setPop('')}/><div className="wb-pop wb-skill-pop">
+                  <div className="wb-skill-pop-head">选择任务技能 <span>正文会加入本次任务</span></div>
+                  {skills.length===0&&<div className="wb-dim">暂无可用技能，可在技能面板打开目录添加。</div>}
+                  {skills.map(skill=><button type="button" key={`${skill.source}:${skill.name}`} className="wb-pop-item" aria-pressed={selectedSkills.some(item=>item.name===skill.name&&item.source===skill.source)} onClick={()=>toggleSkill(skill)}><b>{selectedSkills.some(item=>item.name===skill.name&&item.source===skill.source)?'✓ ':''}{skill.name}</b><span>{skill.description||'无描述'}</span></button>)}
+                  <button type="button" className="wb-pop-item" onClick={()=>{setPop('');setNav('skills')}}>管理技能…</button>
+                </div></>}
+              </div>
+              {selectedSkills.map(skill=><button type="button" className="chat-context-chip wb-skill-chip" key={`${skill.source}:${skill.name}`} title={`移除技能：${skill.name}`} onClick={()=>toggleSkill(skill)}>{skill.name} ✕</button>)}
               <div className="wb-pop-wrap">
-                <button className={`wb-pill ${pop === 'tpl' ? 'on' : ''}`} title="任务模板" onClick={() => setPop(pop === 'tpl' ? '' : 'tpl')}>
-                  {<Icon.Plus />}
+                <button className={`wb-pill ${pop === 'tpl' ? 'on' : ''}`} title="任务模板" aria-label="任务模板" onClick={() => setPop(pop === 'tpl' ? '' : 'tpl')}>
+                  {<Icon.Plus />} 模板
                     </button>
                 <button
                   className={`wb-pill ${pop === 'perm' ? 'on' : ''}`}
-                  title="执行权限：完全访问 = 计划生成后自动执行；执行前确认 = 每次先确认计划"
+                  title="执行权限：完全访问会自动执行非破坏性操作；执行前确认会在每次写操作前询问"
                   onClick={() => setPop(pop === 'perm' ? '' : 'perm')}
                 >
                   {<Icon.Shield />}
@@ -1092,8 +1138,8 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                     <div className="wb-pop">
                       {(
                         [
-                          ['auto', '完全访问', '计划生成后自动执行，产物自动入库'],
-                          ['confirm', '执行前确认', '生成计划后先展示，确认后再执行']
+                          ['auto', '完全访问', '读取和非破坏性写入自动执行，破坏性操作仍须确认'],
+                          ['confirm', '执行前确认', '读取自动执行，每次写操作前询问']
                         ] as const
                       ).map(([k, label, desc]) => (
                         <button
@@ -1155,7 +1201,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                 )}
               </div>
               <div className="wb-pop-wrap">
-                <button className={`wb-pill ${pop === 'effort' ? 'on' : ''}`} title="推理强度：模型的思考等级（工具步数上限在 设置→智能体）" onClick={() => setPop(pop === 'effort' ? '' : 'effort')}>
+                <button className={`wb-pill ${pop === 'effort' ? 'on' : ''}`} title="推理强度：模型的思考等级" onClick={() => setPop(pop === 'effort' ? '' : 'effort')}>
                   {<Icon.Sparkle />}
                   推理 {THINKINGS.find((x) => x.value === thinking)?.label ?? '默认'}
                   <span className="wb-pill-caret">▾</span>
@@ -1218,12 +1264,62 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
   )
 }
 
+// ---------- 今日科研台 ----------
+function TodayPane({papers,conversations,onOpenPaper,onOpenCalendar,onStartTask,onNewTask}:{papers:Paper[];conversations:Array<{id:string;title:string;updatedAt:string}>;onOpenPaper:(paper:Paper)=>void;onOpenCalendar:()=>void;onStartTask:(item:CalendarEvent)=>void;onNewTask:()=>void}): JSX.Element {
+  const today=localDayText(new Date()),until=localDayText(new Date(Date.now()+30*86400000))
+  const [events,setEvents]=useState<CalendarEvent[]>([])
+  const [focus,setFocus]=useState<FocusSummary|null>(null)
+  const [loading,setLoading]=useState(true),[error,setError]=useState('')
+  useEffect(()=>{
+    let cancelled=false
+    void Promise.all([window.api.calendarList(today,until),window.api.focusSummary(today)])
+      .then(([items,summary])=>{if(!cancelled){setEvents(items);setFocus(summary)}})
+      .catch(error=>{if(!cancelled)setError(String(error))})
+      .finally(()=>{if(!cancelled)setLoading(false)})
+    return()=>{cancelled=true}
+  },[today,until])
+  const todayItems=events.filter(item=>item.occurrenceDate===today)
+  const deadlines=events.filter(item=>item.kind==='deadline'&&item.occurrenceDate>=today).slice(0,5)
+  const readingPapers=papers.filter(paper=>paper.source_kind==='pdf').sort((a,b)=>Date.parse(b.opened_at??'')-Date.parse(a.opened_at??'')).slice(0,4)
+  const activeConversations=[...conversations].sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt)).slice(0,5)
+  const kindLabels:Record<CalendarEvent['kind'],string>={task:'任务',deadline:'截止',meeting:'会议',milestone:'里程碑'}
+  return <div className="wb-pane-full wb-today">
+    <header className="wb-today-head">
+      <div><small>{today}</small><h1>今日科研</h1></div>
+      <div><button className="wb-run" onClick={onNewTask}><Icon.Plus size={14}/>新建任务</button><button className="wb-mini" onClick={onOpenCalendar}>打开日历</button></div>
+    </header>
+    {loading?<p className="research-calendar-empty">正在汇总今天的科研数据…</p>:error?<p className="chat-message-error" role="alert">{error}</p>:<>
+      <section className="wb-today-metrics" aria-label="今日专注">
+        <div><small>阅读专注</small><strong>{focus?Math.round(focus.readingSeconds/60):0}<em>分钟</em></strong></div>
+        <div><small>休息恢复</small><strong>{focus?Math.round(focus.breakSeconds/60):0}<em>分钟</em></strong></div>
+        <div><small>完成轮</small><strong>{focus?.cycles??0}<em>轮</em></strong></div>
+      </section>
+      <div className="wb-today-grid">
+        <section className="wb-today-card">
+          <header><h2>今天安排</h2><button onClick={onOpenCalendar}>管理</button></header>
+          {todayItems.length?todayItems.map(item=><article key={`${item.id}-${item.occurrenceDate}`} className={item.completed?'done':''}><small>{item.startTime??'全天'} · {kindLabels[item.kind]}</small><strong>{item.title}</strong><button onClick={()=>onStartTask(item)}>交给 Work</button></article>):<p className="research-calendar-empty">今天还没有日程。</p>}
+        </section>
+        <section className="wb-today-card">
+          <header><h2>临近截止</h2><button onClick={onOpenCalendar}>看日历</button></header>
+          {deadlines.length?deadlines.map(item=><article key={`${item.id}-${item.occurrenceDate}`}><small>{item.occurrenceDate}</small><strong>{item.title}</strong></article>):<p className="research-calendar-empty">未来 30 天没有截止日期。</p>}
+        </section>
+        <section className="wb-today-card">
+          <header><h2>继续阅读</h2><span>PDF 原文</span></header>
+          {readingPapers.length?readingPapers.map(paper=><article key={paper.id}><small>{paper.last_page?`上次第 ${paper.last_page} 页`:'未开始'}</small><strong>{paper.title}</strong><button onClick={()=>onOpenPaper(paper)}>打开 PDF</button></article>):<p className="research-calendar-empty">库中还没有可阅读 PDF。</p>}
+        </section>
+        <section className="wb-today-card">
+          <header><h2>最近 Work 会话</h2><button onClick={onNewTask}>新任务</button></header>
+          {activeConversations.length?activeConversations.map(conversation=><article key={conversation.id}><small>{new Date(conversation.updatedAt).toLocaleString()}</small><strong>{conversation.title}</strong></article>):<p className="research-calendar-empty">还没有 Work 会话。</p>}
+        </section>
+      </div>
+    </>}
+    <p className="wb-dim wb-today-foot">数据来自当前工作区的日历、PDF 阅读记录和持久会话；番茄钟与喝水/休息提醒在 PDF 阅读器内使用。</p>
+  </div>
+}
+
 // ---------- 技能面板 ----------
-function SkillsPane(): JSX.Element {
-  const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string }> | null>(null)
-  useEffect(() => {
-    void window.api.agentSkills().then(setSkills).catch(() => setSkills([]))
-  }, [])
+function SkillsPane({skills,selected,onToggle,onRefresh,onUse}:{skills:SkillChoice[];selected:Array<Pick<SkillChoice,'name'|'source'>>;onToggle:(skill:SkillChoice)=>void;onRefresh:()=>void;onUse:()=>void}): JSX.Element {
+  useEffect(onRefresh, [])
   return (
     <div className="wb-pane-full">
       <div className="wb-pane-head">
@@ -1234,19 +1330,21 @@ function SkillsPane(): JSX.Element {
         </button>
       </div>
       <div className="wb-dim" style={{ marginBottom: 10 }}>
-        技能 = 可复用的研究工作流说明书（SKILL.md）。agent 在任务中按需加载并照做。放入用户技能目录即热生效——方法可参考 ARIS 等开源科研技能集。
+        技能是可复用的研究流程说明。选择后，其正文会随任务一起发送给模型；工具执行仍遵循当前权限设置。
       </div>
       <div className="wb-card-grid">
-        {(skills ?? []).map((sk) => (
-          <div key={sk.name} className="wb-card">
+        {skills.map((sk) => (
+          <div key={`${sk.source}:${sk.name}`} className="wb-card">
             <div className="wb-card-head">
               <span className="wb-card-title">{sk.name}</span>
               <span className={`wb-task-status ${sk.source === 'builtin' ? 'done' : 'running'}`}>{sk.source === 'builtin' ? '内置' : '用户'}</span>
             </div>
             <div className="wb-card-body">{sk.description || '—'}</div>
+            <button className="wb-mini" aria-pressed={selected.some(item=>item.name===sk.name&&item.source===sk.source)} onClick={()=>onToggle(sk)}>{selected.some(item=>item.name===sk.name&&item.source===sk.source)?'移除技能':'添加到任务'}</button>
           </div>
         ))}
       </div>
+      {selected.length>0&&<button className="wb-run" onClick={onUse}>返回任务 · 已选 {selected.length} 个技能</button>}
     </div>
   )
 }
