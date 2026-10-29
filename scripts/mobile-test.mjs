@@ -40,9 +40,12 @@ page.on('pageerror', (error) => errors.push('pageerror: ' + String(error).slice(
 page.on('console', (message) => { if (message.type() === 'error') errors.push('console: ' + message.text().slice(0, 200)) })
 
 // 翻译接口在测试中固定响应，避免公共免费通道限流导致移动端回归抖动。
-await page.route('https://translate.googleapis.com/*', async route => {
+await page.route(/https:\/\/translate\.googleapis\.com\/.*/, async route => {
   const body = JSON.stringify([[['移动端对照翻译回归结果。', null, null, null]], null, 'en'])
-  await route.fulfill({ status: 200, contentType: 'application/json', body })
+  await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body })
+})
+await page.route(/https:\/\/api\.mymemory\.translated\.net\/.*/, async route => {
+  await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ responseData: { translatedText: '移动端对照翻译回归结果。' } }) })
 })
 
 await page.goto('http://127.0.0.1:8123/?pack=__fixture.cspack')
