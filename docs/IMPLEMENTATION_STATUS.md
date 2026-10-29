@@ -20,7 +20,7 @@
 | `npm run typecheck` | 通过（含 tests 工程） |
 | `npm run test:core` | 75 / 75 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 72 / 72，无 renderer 异常 |
+| `npm run test:ui` | 74 / 74，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
@@ -65,6 +65,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 模型配置自动保存失败会在设置页显示错误；显式保存会取消待执行的自动保存，避免保存后旧定时器覆盖新配置。
 - 保存中防重复提交；测试或迁移执行中可直接关闭设置窗口，不再把用户锁在弹窗里。
 - 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 72/72、无 renderer 异常。
+
+## 持续迭代：PDF 阅读进度防丢（2026-10-29）
+
+- PDF 页码原本 2 秒节流落库；在节流窗口内切换或关闭标签，待写页码可能被下一篇覆盖或随组件卸载丢失。
+- 现在切换 active 标签或卸载 PDF 阅读器时会先清理节流定时器并立即补发旧文档的最新页码，再进入新文档。
+- 重新打开 PDF 时继续优先使用会话内最新页码，其次使用持久 `last_page`，确保恢复到关闭前位置。
+- 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 74/74、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

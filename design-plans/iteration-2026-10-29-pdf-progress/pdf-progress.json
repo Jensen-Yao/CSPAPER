@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-29",
+  "feature": "PDF last-page progress flush",
+  "problem": "last_page was throttled for two seconds; switching or closing a tab inside that window could discard the pending page or overwrite it with the next document transition.",
+  "fix": [
+    "centralize pending page flushing",
+    "clear the throttle timer before switching active PDF or unmounting",
+    "send the old document's latest page immediately",
+    "keep session-first restore behavior for reopened tabs"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "75/75",
+    "build": "pass",
+    "cssGate": "pass",
+    "ui": "74/74",
+    "rendererExceptions": 0
+  },
+  "uiCase": [
+    "jump to page three and close the tab without waiting for the two-second throttle",
+    "persisted paper last_page becomes 3 immediately",
+    "reopening the PDF restores page 3 of 3"
+  ]
+}

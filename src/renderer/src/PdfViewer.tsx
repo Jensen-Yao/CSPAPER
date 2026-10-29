@@ -109,6 +109,19 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     if (n === curPageRef.current) setLayerTick((v) => v + 1)
   }, [])
 
+  // 立即落库尚未触发的最新页码。切换/关闭 Tab 时调用，避免 2 秒节流窗口内的位置丢失。
+  const flushLastPage = useCallback(() => {
+    if (lastPageTimerRef.current != null) {
+      window.clearTimeout(lastPageTimerRef.current)
+      lastPageTimerRef.current = null
+    }
+    const pending = lastPagePendingRef.current
+    lastPagePendingRef.current = null
+    if (pending) {
+      try { window.api.paperLastPage(pending.id, pending.page) } catch { /* 进度保存不阻断阅读 */ }
+    }
+  }, [])
+
   // 挂载滚动容器：Ctrl+滚轮缩放；不再在 resize 时重缩放/回跳（保持阅读位置）
   const attachScrollEl = useCallback((el: HTMLDivElement | null) => {
     scrollRef.current = el
@@ -246,26 +259,12 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
     if (lastPageTimerRef.current != null) return
     lastPageTimerRef.current = window.setTimeout(() => {
       lastPageTimerRef.current = null
-      const p = lastPagePendingRef.current
-      lastPagePendingRef.current = null
-      if (p) {
-        try { window.api.paperLastPage(p.id, p.page) } catch { /* 忽略 */ }
-      }
+      flushLastPage()
     }, 2000)
-  }, [curPage, active?.paper.id, doc])
+  }, [curPage, active?.paper.id, doc, flushLastPage])
 
-  // 组件卸载：把还没落库的页码立即补发，避免丢进度
-  useEffect(() => {
-    return () => {
-      if (lastPageTimerRef.current != null) window.clearTimeout(lastPageTimerRef.current)
-      lastPageTimerRef.current = null
-      const p = lastPagePendingRef.current
-      lastPagePendingRef.current = null
-      if (p) {
-        try { window.api.paperLastPage(p.id, p.page) } catch { /* 忽略 */ }
-      }
-    }
-  }, [])
+  // 切换 activeId 或卸载时都先补发旧文档的待写页码；新文档加载完成前不会产生新 pending。
+  useEffect(() => flushLastPage, [activeId, flushLastPage])
 
   // 阅读时长心跳（W2）：文档打开且阅读器在前台（活跃 tab + read 模式）时每 30s 计 30s
   useEffect(() => {
