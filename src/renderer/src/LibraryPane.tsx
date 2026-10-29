@@ -203,7 +203,11 @@ export default function LibraryPane({
     [papersView]
   )
 
-  const [view, setView] = useState<'recent' | 'cats'>('recent')
+  const allPapers = useMemo(
+    () => [...papersView].sort((a, b) => (b.opened_at ?? b.added_at).localeCompare(a.opened_at ?? a.added_at)),
+    [papersView]
+  )
+  const [view, setView] = useState<'all' | 'recent' | 'cats'>('all')
   // v0.16：集合（多分类挂接）与回收站
   const [colls, setColls] = useState<Array<{ id: number; name: string; parent_id: number | null; n: number }>>([])
   const [selColl, setSelColl] = useState<number | null>(null)
@@ -235,26 +239,45 @@ export default function LibraryPane({
     setTrashOpen(true)
     void window.api.papersTrashed().then(setTrashed).catch(() => setTrashed([]))
   }
-  // 分类默认全部展开：科研浏览先看到“有哪些文献”，再按需收起。
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+  // 分类默认收起；用户显式展开的分类才保存状态。
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('pl.category-collapsed') ?? '[]') as unknown
+      const saved = JSON.parse(localStorage.getItem('pl.category-expanded') ?? '[]') as unknown
       return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : [])
     } catch { return new Set() }
   })
   useEffect(() => {
-    localStorage.setItem('pl.category-collapsed', JSON.stringify([...collapsed]))
-  }, [collapsed])
+    localStorage.setItem('pl.category-expanded', JSON.stringify([...expanded]))
+  }, [expanded])
   const toggle = (c: string): void =>
-    setCollapsed((current) => {
+    setExpanded((current) => {
       const next = new Set(current)
       if (next.has(c)) next.delete(c)
       else next.add(c)
       return next
     })
-  const allCollapsed = tree.length > 0 && tree.every(([category]) => collapsed.has(category))
-  const setAllCategories = (next: boolean): void =>
-    setCollapsed(next ? new Set(tree.map(([category]) => category)) : new Set())
+  const allCollapsed = tree.length > 0 && tree.every(([category]) => !expanded.has(category))
+  const setAllCategories = (expand: boolean): void =>
+    setExpanded(expand ? new Set(tree.map(([category]) => category)) : new Set())
+  // 集合 / 标签是附属筛选区，默认收起，把主空间留给文献列表。
+  const [closedSections, setClosedSections] = useState<Set<string>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pl.library-sections-open') ?? '[]') as unknown
+      const open = new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : [])
+      return new Set(['collections', 'tags'].filter(item => !open.has(item)))
+    } catch { return new Set(['collections', 'tags']) }
+  })
+  useEffect(() => {
+    const open = ['collections', 'tags'].filter(item => !closedSections.has(item))
+    localStorage.setItem('pl.library-sections-open', JSON.stringify(open))
+  }, [closedSections])
+  const toggleSection = (section: string): void =>
+    setClosedSections(current => {
+      const next = new Set(current)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
 
   const kw = q.trim().toLowerCase()
   const match = (p: Paper): boolean => !kw || p.title.toLowerCase().includes(kw) || p.authors.toLowerCase().includes(kw) || p.slug.includes(kw)
@@ -459,38 +482,40 @@ export default function LibraryPane({
       <div className="lib-files">
         {/* 文件区子标签：不透明背景，滚动内容不会从后面穿过去 */}
         {!searching && (
-          <div className="lib-view-toggle">
-            <div className="lib-view-seg">
-              <button className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')} title="最近导入 / 最近打开">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="8.5" />
-                  <path d="M12 7.5V12l3 2" />
-                </svg>
-                最近
-              </button>
-              <button className={view === 'cats' ? 'on' : ''} onClick={() => setView('cats')} title="按分类浏览">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                </svg>
-                分类
-              </button>
+          <>
+            <div className="lib-view-toggle" role="tablist" aria-label="文献浏览方式">
+              <div className="lib-view-seg">
+                <button className={view === 'all' ? 'on' : ''} onClick={() => setView('all')} title="显示当前筛选下的全部文献">
+                  全部文献
+                </button>
+                <button className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')} title="最近导入 / 最近打开">
+                  最近
+                </button>
+                <button className={view === 'cats' ? 'on' : ''} onClick={() => setView('cats')} title="按分类浏览，分类默认收起">
+                  分类
+                </button>
+              </div>
             </div>
-            <span style={{ flex: 1 }} />
-            <button
-              type="button"
-              className="lib-tree-fold"
-              onClick={() => setAllCategories(!allCollapsed)}
-              disabled={tree.length === 0}
-            >
-              {allCollapsed ? '全部展开' : '全部收起'}
-            </button>
-            <button className="lib-newcat" title="新建分类" onClick={() => { setNewCat({}); setNewCatVal('') }}>
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-                <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-              新建分类
-            </button>
-          </div>
+            {view === 'cats' && (
+              <div className="lib-tree-tools">
+                <button
+                  type="button"
+                  className="lib-tree-fold"
+                  onClick={() => setAllCategories(allCollapsed)}
+                  disabled={tree.length === 0}
+                >
+                  {allCollapsed ? '全部展开' : '全部收起'}
+                </button>
+                <span style={{ flex: 1 }} />
+                <button className="lib-newcat" title="新建分类" onClick={() => { setNewCat({}); setNewCatVal('') }}>
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                  新建分类
+                </button>
+              </div>
+            )}
+          </>
         )}
         {(searching || selectedTag) && (
           <div className="lib-filter-banner">
@@ -539,6 +564,21 @@ export default function LibraryPane({
                 </>
               )}
             </>
+          ) : view === 'all' ? (
+            <>
+              <div className="lib-section">全部文献 · {allPapers.length}</div>
+              {allPapers.map((p) =>
+                paperRow(
+                  p,
+                  <>
+                    <span className="cat">{catLabel(p.category)}</span>
+                    <span title={`导入 ${p.added_at.slice(0, 10)}${p.opened_at ? ` · 打开 ${p.opened_at.slice(0, 10)}` : ''}`}>
+                      {p.opened_at ? relTime(p.opened_at) : relTime(p.added_at)}
+                    </span>
+                  </>
+                )
+              )}
+            </>
           ) : view === 'recent' ? (
             <>
               <div className="lib-section">最近导入 / 打开</div>
@@ -560,7 +600,7 @@ export default function LibraryPane({
                 <button
                   type="button"
                   className={`cat-item ${dragCat === c ? 'drop-on' : ''}`}
-                  aria-expanded={!collapsed.has(c)}
+                  aria-expanded={expanded.has(c)}
                   aria-label={`${catLabel(c)}，${list.length} 篇文献`}
                   onClick={() => toggle(c)}
                   onContextMenu={(e) => {
@@ -579,11 +619,11 @@ export default function LibraryPane({
                   onDrop={(e) => onCatDrop(e, c)}
                   title="点击展开 / 收起；右键重命名、导出；拖文献到此移动"
                 >
-                  <span aria-hidden className={`cat-chevron ${collapsed.has(c) ? '' : 'open'}`}><Icon.ChevronR size={13} /></span>
+                  <span aria-hidden className={`cat-chevron ${expanded.has(c) ? 'open' : ''}`}><Icon.ChevronR size={13} /></span>
                   <span className="ellipsis cat-title">{catLabel(c)}</span>
-                  <span className="cat-count">{list.length}{collapsed.has(c) ? '' : ' 篇'}</span>
+                  <span className="cat-count">{list.length}{expanded.has(c) ? ' 篇' : ''}</span>
                 </button>
-                {!collapsed.has(c) && (
+                {expanded.has(c) && (
                   <div className="tree-papers">
                     {list.map((p) => paperRow(p))}
                     {list.length === 0 && <div className="tree-empty">空分类，右键可删除；拖文献进来或导入时 AI 归类</div>}
@@ -593,11 +633,20 @@ export default function LibraryPane({
             ))
           )}
         </div>
-        {/* 集合区（v0.16 多分类挂接）：一篇文献可属于多个集合，与物理分类并行 */}
-        <div className="tag-section">
+        {/* 集合区：可收起的逻辑分组，不挤占文献主列表 */}
+        <section className={`tag-section accessory ${closedSections.has('collections') ? 'closed' : ''}`}>
           <div className="tag-section-head">
-            <span className="tag-section-title">集合{selColl != null ? ` · ${colls.find((c) => c.id === selColl)?.name ?? ''}` : ''}</span>
-            <span style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="tag-section-toggle"
+              aria-expanded={!closedSections.has('collections')}
+              onClick={() => toggleSection('collections')}
+              title="展开或收起集合"
+            >
+              <span aria-hidden className={`cat-chevron ${closedSections.has('collections') ? '' : 'open'}`}><Icon.ChevronR size={12} /></span>
+              <span className="tag-section-title">集合{selColl != null ? ` · ${colls.find((c) => c.id === selColl)?.name ?? ''}` : ''}</span>
+              <span className="cat-count">{colls.length}</span>
+            </button>
             <button
               className="tag-add-btn"
               title="新建集合（逻辑分组，不动文件目录）"
@@ -610,37 +659,43 @@ export default function LibraryPane({
               ＋
             </button>
           </div>
-          {colls.length === 0 && <div className="tag-empty">暂无集合——集合是跨分类的逻辑分组（如「导师书单」「综述素材」），一篇文献可同时挂多个</div>}
-          {colls.filter((c) => c.parent_id == null).map((c) => (
-            <div key={c.id}>
-              <div
-                className={`cat-item ${selColl === c.id ? 'drop-on' : ''}`}
-                onClick={() => setSelColl(selColl === c.id ? null : c.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  void dlg.confirm({ title: `删除集合「${c.name}」？`, message: '只解除挂接，不动文献与文件。', okText: '删除', danger: true }).then((ok) => {
-                    if (ok) {
-                      void window.api.collectionsRemove(c.id).then(() => {
-                        if (selColl === c.id) setSelColl(null)
-                        refreshColls()
+          {!closedSections.has('collections') && (
+            <div className="tag-section-body">
+              {colls.length === 0 && <div className="tag-empty">暂无集合——集合是跨分类的逻辑分组（如「导师书单」「综述素材」），一篇文献可同时挂多个</div>}
+              {colls.filter((c) => c.parent_id == null).map((c) => (
+                <div key={c.id}>
+                  <button
+                    type="button"
+                    className={`cat-item collection ${selColl === c.id ? 'drop-on' : ''}`}
+                    aria-pressed={selColl === c.id}
+                    onClick={() => setSelColl(selColl === c.id ? null : c.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      void dlg.confirm({ title: `删除集合「${c.name}」？`, message: '只解除挂接，不动文献与文件。', okText: '删除', danger: true }).then((ok) => {
+                        if (ok) {
+                          void window.api.collectionsRemove(c.id).then(() => {
+                            if (selColl === c.id) setSelColl(null)
+                            refreshColls()
+                          })
+                        }
                       })
-                    }
-                  })
-                }}
-                title="点击查看集合内文献；右键删除集合（文献不受影响）"
-              >
-                <span className="ellipsis" style={{ flex: 1 }}>{c.name}</span>
-                <span className="cat-count">{c.n}</span>
-              </div>
-              {selColl === c.id && (
-                <div className="tree-papers">
-                  {(collPapersCache.get(c.id) ?? []).map((p) => paperRow(p))}
-                  {(collPapersCache.get(c.id) ?? []).length === 0 && <div className="tree-empty">空集合——在文献详情右键「加入集合」，或在纵览勾选后批量挂接</div>}
+                    }}
+                    title="点击查看集合内文献；右键删除集合（文献不受影响）"
+                  >
+                    <span className="ellipsis cat-title">{c.name}</span>
+                    <span className="cat-count">{c.n}</span>
+                  </button>
+                  {selColl === c.id && (
+                    <div className="tree-papers">
+                      {(collPapersCache.get(c.id) ?? []).map((p) => paperRow(p))}
+                      {(collPapersCache.get(c.id) ?? []).length === 0 && <div className="tree-empty">空集合——在文献详情右键「加入集合」，或在纵览勾选后批量挂接</div>}
+                    </div>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </section>
         {/* 回收站（软删除，可恢复） */}
         <div className="tag-section">
           <button className="lib-trash-btn" onClick={openTrash}>
@@ -691,39 +746,52 @@ export default function LibraryPane({
             </div>
           </div>
         )}
-        {/* 标签区：点击筛选，右键重命名 / 改色 / 删除，「＋」新建 */}
-        <div className="tag-section">
+        {/* 标签区：可收起的附属筛选 */}
+        <section className={`tag-section accessory ${closedSections.has('tags') ? 'closed' : ''}`}>
           <div className="tag-section-head">
-            <span className="tag-section-title">标签{selectedTag ? ` · ${selectedTag}` : ''}</span>
-            <span style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="tag-section-toggle"
+              aria-expanded={!closedSections.has('tags')}
+              onClick={() => toggleSection('tags')}
+              title="展开或收起标签"
+            >
+              <span aria-hidden className={`cat-chevron ${closedSections.has('tags') ? '' : 'open'}`}><Icon.ChevronR size={12} /></span>
+              <span className="tag-section-title">标签{selectedTag ? ` · ${selectedTag}` : ''}</span>
+              <span className="cat-count">{tags.length}</span>
+            </button>
             <button className="tag-add-btn" title="新建标签" onClick={() => void onCreateTag()}>
               ＋
             </button>
           </div>
-          <div className="tag-list">
-            {tags.length === 0 ? (
-              <div className="tag-empty">暂无标签</div>
-            ) : (
-              tags.map((t) => (
-                <div
-                  key={t.id}
-                  className={`tag-row ${selectedTag === t.name ? 'active' : ''}`}
-                  onClick={() => applyTagFilter(selectedTag === t.name ? null : t.name)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setTagMenu({ x: e.clientX, y: e.clientY, tag: t })
-                  }}
-                  title="点击按标签筛选（再点取消）；右键重命名 / 改色 / 删除"
-                >
-                  <i className="tag-dot" style={{ background: t.color }} />
-                  <span className="tag-name">{t.name}</span>
-                  <span className="tag-count">{t.count}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+          {!closedSections.has('tags') && (
+            <div className="tag-section-body">
+              <div className="tag-list">
+                {tags.length === 0 ? (
+                  <div className="tag-empty">暂无标签</div>
+                ) : (
+                  tags.map((t) => (
+                    <div
+                      key={t.id}
+                      className={`tag-row ${selectedTag === t.name ? 'active' : ''}`}
+                      onClick={() => applyTagFilter(selectedTag === t.name ? null : t.name)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setTagMenu({ x: e.clientX, y: e.clientY, tag: t })
+                      }}
+                      title="点击按标签筛选（再点取消）；右键重命名 / 改色 / 删除"
+                    >
+                      <i className="tag-dot" style={{ background: t.color }} />
+                      <span className="tag-name">{t.name}</span>
+                      <span className="tag-count">{t.count}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
 
       {renameCat && (

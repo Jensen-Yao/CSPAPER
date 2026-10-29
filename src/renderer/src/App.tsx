@@ -557,7 +557,7 @@ export default function App(): JSX.Element {
   )
 
   // 侧栏无级拖宽（宽度记忆在 localStorage）
-  const [libWidth, setLibWidth] = useState(() => Number(localStorage.getItem('pl.libW')) || 264)
+  const [libWidth, setLibWidth] = useState(() => Math.max(240, Math.min(560, Number(localStorage.getItem('pl.libW')) || 304)))
   const [sideWidth,setSideWidth]=useState(()=>Math.max(320,Math.min(440,Number(localStorage.getItem('pl.sideW'))||360)))
   useEffect(()=>{
     const query=window.matchMedia('(max-width: 1250px)')
@@ -760,7 +760,7 @@ export default function App(): JSX.Element {
               onModeChange={setMode}
               onPapersChanged={refreshPapers}
             />
-            <ResizeHandle id="library" label="文献栏宽度" width={libWidth} min={200} max={520} defaultWidth={264} storageKey="pl.libW" edge="right" onWidthChange={setLibWidth} />
+            <ResizeHandle id="library" label="文献栏宽度" width={libWidth} min={240} max={560} defaultWidth={304} storageKey="pl.libW" edge="right" onWidthChange={setLibWidth} />
           </>
         )}
         <div className="workspace">

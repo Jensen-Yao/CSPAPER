@@ -2538,3 +2538,47 @@ img.brand-icon.ws-logo-mark { padding: 0; border: 0; background: transparent; co
 .paper-status:hover { filter: brightness(.96); }
 .paper-year { color: var(--text-dim); font: 500 11px/1 var(--mono); }
 .library .paper-item .cat { max-width: 92px; background: var(--bg2); border: 1px solid var(--border); }
+
+/* ============ 左栏信息架构与可读性重构 ============ */
+.library {
+  width: 304px; background: var(--bg2); border-right: 1px solid var(--border-lit);
+  font-family: var(--sans); letter-spacing: .01em;
+}
+.lib-func { gap: 10px; padding: 14px 12px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+.nav-row { min-height: 30px; }
+.nav-label { color: var(--text); font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: .06em; }
+.library .add-btn { min-height: 34px; border-radius: var(--radius-sm); font-family: var(--sans); font-size: 13px; }
+.library .searchbox { min-height: 34px; border-radius: var(--radius-sm); font-family: var(--sans); font-size: 13px; }
+.library .kbd-hint { border-radius: 5px; font-family: var(--sans); }
+.lib-view-toggle { padding: 9px 10px; background: var(--bg2); border-bottom: 0; }
+.lib-view-seg { width: 100%; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 2px; padding: 3px; border-radius: 8px; }
+.lib-view-seg button { justify-content: center; min-width: 0; padding: 6px 4px; border-radius: 6px; font-family: var(--sans); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lib-tree-tools { display: flex; align-items: center; gap: 6px; padding: 0 10px 9px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+.lib-tree-fold { min-height: 27px; font-family: var(--sans); }
+.lib-newcat { min-height: 27px; font-family: var(--sans); }
+.lib-files-scroll { padding: 7px 9px 16px; }
+.library .lib-section { padding: 7px 8px 7px; color: var(--text-dim); font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.library .paper-item { border-radius: 8px; }
+.library .paper-item .t { font-family: var(--sans); }
+
+/* 附属区：集合 / 标签默认收起，不抢文献列表主层级。 */
+.tag-section.accessory { padding: 0 8px; border-top: 1px solid var(--border); background: var(--bg2); }
+.tag-section.accessory.closed { padding-bottom: 4px; }
+.tag-section.accessory .tag-section-head { min-height: 35px; padding: 4px 0 4px; border: 0; }
+.tag-section-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 3px 4px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--text-dim);
+  font: 600 12px/1.3 var(--sans); cursor: pointer; text-align: left;
+}
+.tag-section-toggle:hover, .tag-section-toggle:focus-visible { color: var(--text); background: var(--bg3); }
+.tag-section-toggle .cat-chevron { width: 19px; height: 19px; background: transparent; }
+.tag-section-toggle .tag-section-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; font-family: var(--sans); letter-spacing: .02em; }
+.tag-section-body { padding: 0 0 8px; }
+.tag-list { max-height: 190px; }
+.tag-row { min-height: 28px; font-family: var(--sans); font-size: 12px; }
+.tag-empty { font-family: var(--sans); }
+.library .cat-item.collection { min-height: 32px; padding: 4px 7px; background: var(--bg); box-shadow: none; font-size: 12px; }
+.library .cat-item.collection .cat-count { padding: 1px 5px; }
+.lib-trash-btn { min-height: 29px; border-radius: 6px; color: var(--text-dim); font-family: var(--sans); font-size: 12px; }
+.lib-trash-btn:hover { color: var(--text); background: var(--bg3); }
+@media (max-width: 900px) { .library { width: min(304px, 86vw); } }
