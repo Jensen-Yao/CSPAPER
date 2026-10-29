@@ -25,7 +25,8 @@
     "bench:chat": "node scripts/bench-chat.mjs",
     "bench": "npm run bench:library && npm run bench:chat",
     "test:lifecycle": "node scripts/test-single-instance.mjs && node scripts/test-window-cleanup.mjs && node scripts/test-operation-crash.mjs && node scripts/test-tray-restore.mjs",
-    "test:installer": "node scripts/test-installer.mjs"
+    "test:installer": "node scripts/test-installer.mjs",
+    "test:mobile": "node scripts/mobile-test.mjs"
   },
   "build": {
     "appId": "com.jensenyao.cspaper",

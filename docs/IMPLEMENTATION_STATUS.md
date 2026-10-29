@@ -23,6 +23,7 @@
 | `npm run test:ui` | 74 / 74，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
+| `npm run test:mobile` | 5 / 5；测试夹具从 10.9 MB 降至 10.8 KB，翻译响应离线固定，无 renderer 错误 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
 | 真实模型 | Agnes 3.0 Flash / 2.5 Flash 严格 JSON；三文献任务 7 工具、3 笔记、1 对比表 |
 | 用户库副本 | 105 篇 = 91 题录 + 14 PDF；14 PDF 均有 chunks；未修改原库 |
@@ -43,6 +44,7 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 用户勾选确认后才下载；请求强制公网 HTTPS、校验重定向终点、100MB 上限和 PDF 头，拒绝把网页或内网地址当作原文。
 - 替换题录页仍通过操作日志执行，保留原 PDF / Markdown 备份，成功后 `source_kind` 升级为 `pdf` 并触发索引重建。
 - 验证：typecheck 通过、核心回归 75/75（新增 OA 修复与取消用例）、生产构建通过、UI 回归 64/64（新增入口检查）、无 renderer 异常。
+
 ## 持续迭代：Work 会话管理与操作语义（2026-10-29）
 
 - Work 统一会话新增确认后永久删除；运行中任务必须先停止。删除事务清理会话、消息、运行、事件、来源、产物记录和关联旧任务，已写入文献库的笔记 / 对比表 / 文献不受影响。
@@ -50,6 +52,7 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 顶部操作改为明确动作：复制结果、导出 Markdown、宽屏阅读、继续任务 / 中断续跑、删除会话或任务。
 - Task 会话用户输入去掉嵌套卡片，改为文档流边线；宽屏模式真实扩展统一任务会话。
 - 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 69/69、无 renderer 异常。
+
 ## 持续迭代：已有功能安全与取消体验加固（2026-10-29）
 
 - OpenAccess 批量下载新增「停止下载」：中止当前网络请求，不再继续后续条目；已完成替换保留备份，未执行条目保持题录，结果明确展示已处理 / 成功 / 失败 / 未执行。
@@ -72,6 +75,14 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 现在切换 active 标签或卸载 PDF 阅读器时会先清理节流定时器并立即补发旧文档的最新页码，再进入新文档。
 - 重新打开 PDF 时继续优先使用会话内最新页码，其次使用持久 `last_page`，确保恢复到关闭前位置。
 - 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 74/74、无 renderer 异常。
+
+## 持续迭代：仓库与移动端测试夹具瘦身（2026-10-29）
+
+- 移除 Git 当前树中的 `mobile/sample.cspack` 静态二进制（10.9 MB）；该文件仅服务手动移动端测试，不是应用运行时资源。
+- 新增零依赖测试夹具生成器，在内存中生成 6 篇确定性单页 PDF 和符合移动端解析器的 STORE ZIP，体积约 10.8 KB。
+- 移动端测试不再读取静态样例包，也不再调用公共免费翻译接口；翻译响应由 Playwright 离线固定，避免限流导致回归抖动。
+- 测试失败时返回非零退出码，截图写入系统临时目录；`test:mobile` 已纳入 Windows CI verify 门禁。
+
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

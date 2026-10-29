@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-29",
+  "feature": "remove tracked mobile fixture binary",
+  "problem": "mobile/sample.cspack was a 10,920,666-byte binary committed only as a manual mobile-web test fixture.",
+  "fix": [
+    "add a zero-dependency fixture generator",
+    "generate six deterministic one-page PDFs and the cspack STORE ZIP in memory",
+    "serve the fixture from an in-process HTTP route",
+    "stub the free translation endpoint for deterministic offline regression",
+    "make the mobile test fail with a non-zero exit code on any failed check or renderer error",
+    "write test screenshots under the OS temporary directory",
+    "remove the 10.9 MB binary from the current Git tree and ignore regenerated sample packs",
+    "add npm run test:mobile to Windows CI verification"
+  ],
+  "fixture": {
+    "papers": 6,
+    "oldBytes": 10920666,
+    "newBytes": 10788,
+    "reductionPercent": 99.9,
+    "zipIntegrity": "pass"
+  },
+  "verification": {
+    "mobileWeb": "5/5",
+    "rendererErrors": 0,
+    "remoteTranslationDependency": false
+  }
+}
