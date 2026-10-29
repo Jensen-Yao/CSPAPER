@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-29",
+  "feature": "settings save feedback and busy-state hardening",
+  "fixes": [
+    "central settings save failure shows a toast and rethrows to the caller",
+    "explicit settings save keeps the dialog open and preserves edits on failure",
+    "theme, data directory, workspace, LLM test, embedding test, index rebuild, mobile export and merge report errors",
+    "all guarded operations restore busy state through finally blocks",
+    "profile autosave failures are visible and explicit save cancels pending autosave",
+    "busy settings can be closed without duplicate submission",
+    "footer save and header auto-save have real persistence checks"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "75/75",
+    "build": "pass",
+    "cssGate": "pass",
+    "ui": "72/72",
+    "rendererExceptions": 0
+  }
+}

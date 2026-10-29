@@ -234,6 +234,18 @@ try{
     return {direction:getComputedStyle(modal).flexDirection,side:side.getBoundingClientRect().right,main:main.getBoundingClientRect().left,footer:footer.getBoundingClientRect().bottom,height:innerHeight}
   })
   check('settings has usable two-column layout',layout.direction==='row'&&layout.main>=layout.side-1&&layout.footer<=layout.height)
+  const originalTranslateTarget=(await page.evaluate(()=>window.api.getSettings())).translateTarget
+  const settingsMarker='设置保存回归-'+Date.now()
+  await page.locator('.field').filter({hasText:'翻译目标语言'}).locator('input').fill(settingsMarker)
+  await page.locator('.set-main > .modal-actions button').filter({hasText:'保存'}).click()
+  await page.waitForSelector('.set-modal',{state:'detached',timeout:10000})
+  check('settings footer save persists a changed field',(await page.evaluate(()=>window.api.getSettings())).translateTarget===settingsMarker)
+  await page.locator('.icon-btn[title="设置"]').click();await wait(300)
+  await page.locator('.field').filter({hasText:'翻译目标语言'}).locator('input').fill(originalTranslateTarget)
+  await page.locator('.set-modal .modal-x[title="关闭（自动保存）"]').click()
+  await page.waitForSelector('.set-modal',{state:'detached',timeout:10000})
+  check('settings close action auto-saves restored value',(await page.evaluate(()=>window.api.getSettings())).translateTarget===originalTranslateTarget)
+  await page.locator('.icon-btn[title="设置"]').click();await wait(300)
   await shot('03-settings')
   await page.locator('.set-nav-item').filter({hasText:'模型服务'}).click();await shot('04-models')
   await page.keyboard.press('Escape')

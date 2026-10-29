@@ -447,10 +447,15 @@ export default function App(): JSX.Element {
   }, [papers, activeId, openPaperFromTree])
 
   const saveSettings = useCallback(async (patch: Partial<Settings>) => {
-    const s = await window.api.saveSettings(patch)
-    setSettings(s)
-    return s
-  }, [])
+    try {
+      const s = await window.api.saveSettings(patch)
+      setSettings(s)
+      return s
+    } catch (error) {
+      dlg.toast(`设置保存失败：${String(error).replace(/^Error: /, '').slice(0, 120)}`, 'error')
+      throw error
+    }
+  }, [dlg])
 
   const profiles = settings?.profiles ?? []
   const models = profiles.length ? profiles.flatMap((p) => p.models) : settings?.models?.length ? settings.models : settings?.model ? [settings.model] : []

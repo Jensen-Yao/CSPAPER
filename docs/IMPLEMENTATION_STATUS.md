@@ -20,7 +20,7 @@
 | `npm run typecheck` | 通过（含 tests 工程） |
 | `npm run test:core` | 75 / 75 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 70 / 70，无 renderer 异常 |
+| `npm run test:ui` | 72 / 72，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
@@ -57,6 +57,14 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 下载超时信号覆盖响应头和响应体读取全程，避免慢响应体绕过超时。
 - 全屏对话列表为每个会话提供可见删除入口，确认后与 Work 使用同一持久删除协议；运行中会话必须先停止。
 - 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 70/70、无 renderer 异常。
+
+## 持续迭代：设置页保存反馈与忙碌状态加固（2026-10-29）
+
+- 设置保存失败会在全局 toast 与设置页底部同时给出明确错误，不再产生未处理 Promise；失败时窗口保持打开，已修改内容不丢失。
+- 主题切换、数据目录迁移、工作区切换、模型/嵌入测试、索引重建、移动端导出与合并全部补齐失败反馈和 busy 复位。
+- 模型配置自动保存失败会在设置页显示错误；显式保存会取消待执行的自动保存，避免保存后旧定时器覆盖新配置。
+- 保存中防重复提交；测试或迁移执行中可直接关闭设置窗口，不再把用户锁在弹窗里。
+- 验证：typecheck 通过、核心回归 75/75、生产构建通过、CSS gate 通过、UI 回归 72/72、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

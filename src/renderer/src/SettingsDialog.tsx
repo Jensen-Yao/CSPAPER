@@ -124,6 +124,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
     profileSaveTimer.current = setTimeout(() => {
       void onSave({ profiles:list.map((profile,index)=>({id:profile.id??`profile-${index+1}`,...profile})) })
+        .catch(error=>setMsg(`✗ 配置自动保存失败：${String(error).slice(0,120)}`))
     }, 300)
   }
 
@@ -133,11 +134,12 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       if (e.key !== 'Escape' || e.defaultPrevented) return
       // 子浮层（picker 搜索/命令面板）打开时不关整个设置——只关子层自己的处理已 stopPropagation
       if (showPicker) return
+      if (busy) { onClose(); return }
       void saveRef.current()
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [])
+  }, [showPicker, busy])
   useEffect(() => {
     void window.api
       .appStatus()
@@ -266,14 +268,18 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
 
   const pickTheme = async (theme: Settings['theme']): Promise<void> => {
     set({ theme })
-    await onSave({ theme })
+    try{await onSave({ theme })}catch(error){setMsg(`✗ 主题保存失败：${String(error).slice(0,120)}`)}
   }
 
   const changeDataDir = async (): Promise<void> => {
-    const target = await window.api.dataChangeDir()
-    if (!target) return
-    setDataDir(target)
-    setMsg('数据目录已迁移，重启 CSPAPER 后生效')
+    try {
+      const target = await window.api.dataChangeDir()
+      if (!target) return
+      setDataDir(target)
+      setMsg('数据目录已迁移，重启 CSPAPER 后生效')
+    } catch(error) {
+      setMsg(`✗ 数据目录迁移失败：${String(error).slice(0,120)}`)
+    }
   }
 
   const pickWorkspace = async (): Promise<void> => {
@@ -282,64 +288,93 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
     setBusy(true)
     setMsg('切换工作区并扫描…')
     set({ libraryPath: p })
-    const s = await onSave({ libraryPath: p })
-    const r = await window.api.scanLibrary(s.libraryPath)
-    setMsg(`工作区：${workspaceName(p)}（${r.total} 篇）`)
-    onRescanned()
-    setBusy(false)
+    try {
+      const s = await onSave({ libraryPath: p })
+      const r = await window.api.scanLibrary(s.libraryPath)
+      setMsg(`工作区：${workspaceName(p)}（${r.total} 篇）`)
+      onRescanned()
+    } catch(error) {
+      setMsg(`✗ 工作区切换失败：${String(error).slice(0,120)}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const testLlm = async (): Promise<void> => {
-    setLlmTest('测试中…')
-    const active = profiles.find((p) => p.models.includes(form.model)) ?? profiles[0]
-    const over = active
-      ? {
-          provider: active.provider,
-          apiBase: active.apiBase,
-          apiKey: active.apiKey,
-          model: active.models.includes(form.model) ? form.model : (active.models[0] ?? form.model)
-        }
-      : { provider: form.provider, apiBase: form.apiBase, apiKey: form.apiKey, model: form.model }
-    await onSave({ ...form, profiles })
-    const r = await window.api.testLLM(over)
-    if (r.ok) {
-      const bal = r.balance ? `，余额 ${r.balance.currency === 'CNY' ? '¥' : r.balance.currency + ' '}${r.balance.amount}` : ''
-      setLlmTest(`✓ 连接成功：${r.model}（${r.latencyMs}ms）${bal}`)
-    } else {
-      setLlmTest(`✗ ${r.error ?? '连接失败'}`)
+    setBusy(true);setLlmTest('测试中…')
+    try {
+      const active = profiles.find((p) => p.models.includes(form.model)) ?? profiles[0]
+      const over = active
+        ? {
+            provider: active.provider,
+            apiBase: active.apiBase,
+            apiKey: active.apiKey,
+            model: active.models.includes(form.model) ? form.model : (active.models[0] ?? form.model)
+          }
+        : { provider: form.provider, apiBase: form.apiBase, apiKey: form.apiKey, model: form.model }
+      await onSave({ ...form, profiles })
+      const r = await window.api.testLLM(over)
+      if (r.ok) {
+        const bal = r.balance ? `，余额 ${r.balance.currency === 'CNY' ? '¥' : r.balance.currency + ' '}${r.balance.amount}` : ''
+        setLlmTest(`✓ 连接成功：${r.model}（${r.latencyMs}ms）${bal}`)
+      } else {
+        setLlmTest(`✗ ${r.error ?? '连接失败'}`)
+      }
+    } catch(error) {
+      setLlmTest(`✗ 测试失败：${String(error).slice(0,120)}`)
+    } finally {
+      setBusy(false)
     }
   }
 
   const testEmbed = async (): Promise<void> => {
-    setEmbedTest('测试中…')
-    await onSave({ ...form, profiles })
-    const r = await window.api.testEmbed()
-    setEmbedTest(r.ok ? `✓ 嵌入正常，向量维度 ${r.dim}` : `✗ ${r.error ?? '失败'}`)
+    setBusy(true);setEmbedTest('测试中…')
+    try {
+      await onSave({ ...form, profiles })
+      const r = await window.api.testEmbed()
+      setEmbedTest(r.ok ? `✓ 嵌入正常，向量维度 ${r.dim}` : `✗ ${r.error ?? '失败'}`)
+    } catch(error) {
+      setEmbedTest(`✗ 测试失败：${String(error).slice(0,120)}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const rebuild = async (): Promise<void> => {
     setBusy(true)
-    await onSave({ ...form, profiles })
-    await window.api.rebuildIndex()
-    setMsg('已清空索引并开始重建，可关闭本窗口')
-    setBusy(false)
+    try {
+      await onSave({ ...form, profiles })
+      await window.api.rebuildIndex()
+      setMsg('已清空索引并开始重建，可关闭本窗口')
+    } catch(error) {
+      setMsg(`✗ 索引重建启动失败：${String(error).slice(0,120)}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const save = async (): Promise<void> => {
-    const active = profiles.find((p) => p.models.includes(form.model)) ?? profiles[0]
-    await onSave({
-      ...form,
-      profiles,
-      ...(active ? { provider: active.provider, apiBase: active.apiBase, apiKey: active.apiKey, models: active.models } : {})
-    })
-    if (profileSaveTimer.current) {
-    clearTimeout(profileSaveTimer.current)
-    profileSaveTimer.current = null
-  }
-  onClose()
+    setBusy(true)
+    try {
+      const active = profiles.find((p) => p.models.includes(form.model)) ?? profiles[0]
+      await onSave({
+        ...form,
+        profiles,
+        ...(active ? { provider: active.provider, apiBase: active.apiBase, apiKey: active.apiKey, models: active.models } : {})
+      })
+      if (profileSaveTimer.current) {
+        clearTimeout(profileSaveTimer.current)
+        profileSaveTimer.current = null
+      }
+      onClose()
+    } catch(error) {
+      setMsg(`✗ 设置保存失败：${String(error).slice(0,140)}`)
+      setBusy(false)
+    }
   }
   saveRef.current = save
   const closeAndSave = (): void => {
+    if(busy){ onClose(); return }
     void save()
   }
 
@@ -362,8 +397,15 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   )
 
   const exportMobile = async (): Promise<void> => {
-    const r = await window.api.exportMobilePack()
-    if (r) setMsg(`已导出 ${r.papers} 篇 · ${Math.round(r.bytes / 1024)} KB`)
+    setBusy(true)
+    try {
+      const r = await window.api.exportMobilePack()
+      if (r) setMsg(`已导出 ${r.papers} 篇 · ${Math.round(r.bytes / 1024)} KB`)
+    } catch(error) {
+      setMsg(`✗ 移动端数据包导出失败：${String(error).slice(0,120)}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   // 浏览器扩展一键装载：自动打开对应浏览器的扩展管理页，扩展目录路径已进剪贴板
@@ -382,10 +424,17 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
   }
 
   const mergeMobile = async (): Promise<void> => {
-    const r = await window.api.mergeMobileNotes()
-    if (r) {
-      setMsg(`已合并：标注 ${r.mergedHighlights} 条 · 状态 ${r.mergedStatus} 项`)
-      onRescanned()
+    setBusy(true)
+    try {
+      const r = await window.api.mergeMobileNotes()
+      if (r) {
+        setMsg(`已合并：标注 ${r.mergedHighlights} 条 · 状态 ${r.mergedStatus} 项`)
+        onRescanned()
+      }
+    } catch(error) {
+      setMsg(`✗ 移动端数据合并失败：${String(error).slice(0,120)}`)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -1163,9 +1212,8 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
             <button className="btn ghost" onClick={onClose}>
               取消
             </button>
-            <button className="btn" onClick={save}>
-              保存
-            </button>
+            <button className="btn" onClick={() => void save()} disabled={busy}>{busy ? '处理中…' : '保存'}</button>
+
           </div>
         </div>
 
