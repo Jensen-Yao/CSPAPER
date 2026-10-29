@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CompareData, CompareTable, Paper } from './types'
 import { BASE_FIELDS, AI_DIMENSION_PRESETS } from './dimensions'
 import * as Icon from './Icon'
@@ -38,6 +38,42 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
   const [customDim, setCustomDim] = useState('')
   const [genAllBusy, setGenAllBusy] = useState(false)
   const [genAllProg, setGenAllProg] = useState('')
+  const cmpScrollRef = useRef<HTMLDivElement | null>(null)
+  const [panning, setPanning] = useState(false)
+  const panPointRef = useRef({ x: 0, y: 0, left: 0, top: 0 })
+  const panningRef = useRef(false)
+
+  const beginTablePan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || event.pointerType === 'touch') return
+    const target = event.target as HTMLElement
+    if (target.closest('button, input, textarea, select, label, a, .cite-chip')) return
+    const container = cmpScrollRef.current
+    if (!container || container.scrollWidth <= container.clientWidth + 2) return
+    event.preventDefault()
+    window.getSelection()?.removeAllRanges()
+    container.setPointerCapture(event.pointerId)
+    panPointRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: container.scrollLeft,
+      top: container.scrollTop
+    }
+    panningRef.current = true
+    setPanning(true)
+  }
+  const moveTablePan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const container = cmpScrollRef.current
+    if (!container || !panningRef.current) return
+    const start = panPointRef.current
+    container.scrollLeft = Math.max(0, start.left - (event.clientX - start.x))
+    container.scrollTop = Math.max(0, start.top - (event.clientY - start.y))
+  }
+  const endTablePan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!panningRef.current) return
+    panningRef.current = false
+    try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* pointer capture may already be released */ }
+    setPanning(false)
+  }
 
   useEffect(() => {
     void window.api
@@ -272,6 +308,14 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
         </button>
       </div>
 
+      <div className="cmp-meta-bar">
+        <span>{active.data.paperIds.length} 篇文献</span>
+        <i />
+        <span>{active.data.dimensions.length} 个维度</span>
+        <i />
+        <span>拖动表格可上下左右查看；点击页码回到原文</span>
+      </div>
+
       {err && <div className="cmp-err">{err}</div>}
 
       {active.data.paperIds.length === 0 ? (
@@ -284,7 +328,16 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
           </div>
         </div>
       ) : (
-        <div className="cmp-scroll">
+        <div
+          ref={cmpScrollRef}
+          className={`cmp-scroll ${panning ? 'panning' : ''}`}
+          role="region"
+          aria-label="对比表内容：可拖动上下左右滚动"
+          onPointerDown={beginTablePan}
+          onPointerMove={moveTablePan}
+          onPointerUp={endTablePan}
+          onPointerCancel={endTablePan}
+        >
           <table className="cmp-table">
             <thead>
               <tr>
