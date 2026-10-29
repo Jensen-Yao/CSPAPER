@@ -1,18 +1,21 @@
-import { normalizePath, notesFromMarkdown, paperFiles, patchFrontmatter, readPaperMarkdown, replaceMarkdownNotes, writeFilesAtomically } from './paper-files'
+import { normalizePath, notesFromMarkdown, paperFiles, parseFrontmatter, patchFrontmatter, readPaperMarkdown, replaceMarkdownNotes, writeFilesAtomically } from './paper-files'
 // Zotero Web API v3 同步（v0.9）：userId + apiKey 直连 api.zotero.org。
 // 分页（limit=100 + Total-Results）、429 退避、Last-Modified-Version → since= 增量游标（存 meta 表）。
 // 采集：条目 + 分类映射 + 标签 + 子笔记 + **PDF 标注**（children 端点）+ CSL-JSON + stored PDF 附件下载（限速）。
 // 落地复用导入管线（分类/eqKey 去重/noteMd 增强 +doi 与「Zotero 标注」段/无 PDF 题录占位页）。
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { app } from 'electron'
-import { getSettings, getMeta, setMeta, scanLibraryAsync } from './db'
+import { getDb, getSettings, getMeta, setMeta, scanLibraryAsync } from './db'
 import { sanitizeCategoryName, findCategoryDir, nextCategoryDir } from './import'
 import { createPlaceholderPdf } from './records'
+import { runFileOperation } from './operations/journal'
 
 const API = 'https://api.zotero.org'
 const API_VERSION = '3'
 function syncKey():string { const s=getSettings();return 'zotero.syncVersion:'+s.zoteroUserId+':'+normalizePath(s.libraryPath) }
+function lastSyncKey():string { const s=getSettings();return 'zotero.lastSyncAt:'+s.zoteroUserId+':'+normalizePath(s.libraryPath) }
 
 export interface ZoteroApiStatus {
   configured: boolean
@@ -25,7 +28,7 @@ export function apiStatus(): ZoteroApiStatus {
   return {
     configured: !!s.zoteroUserId && !!s.zoteroApiKey,
     lastSyncVersion: getMeta(syncKey()) ? parseInt(getMeta(syncKey())!) : null,
-    lastSyncAt: getMeta('zotero.lastSyncAt')
+    lastSyncAt: getMeta(lastSyncKey()) ?? getMeta('zotero.lastSyncAt')
   }
 }
 
@@ -131,6 +134,7 @@ export interface SyncOptions {
 export interface SyncResult {
   ok: boolean
   error?: string
+  errors?: string[]
   fetched: number
   imported: number
   skipped: number
@@ -153,11 +157,15 @@ function findDupAcrossDirs(libPapers: string, key: string): string | null {
   return null
 }
 
+function* chunk<T>(values: T[], size: number): Generator<T[]> {
+  for (let i = 0; i < values.length; i += size) yield values.slice(i, i + size)
+}
+
 export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
   const s = getSettings()
   const userId = s.zoteroUserId?.trim()
   const apiKey = s.zoteroApiKey?.trim()
-  const res: SyncResult = { ok: false, fetched: 0, imported: 0, skipped: 0, failed: 0, version: null }
+  const res: SyncResult = { ok: false, fetched: 0, imported: 0, skipped: 0, failed: 0, version: null, errors: [] }
   if (!userId || !apiKey) {
     res.error = '请先在设置里填写 Zotero userId 与 apiKey'
     return res
@@ -202,6 +210,50 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
     if (page.length < 100) break
     start += 100
   }
+  // 增量同步时，新增/更新附件不一定改变父条目版本；单独拉取变更附件并补拉其父条目，
+  // 否则“远端后来补 PDF”会被 since= 过滤，本地题录永远无法升级。
+  const forcedPdfParents = new Set<string>()
+  if (since) {
+    const attachmentParams = new URLSearchParams({ limit: '100', format: 'json', itemType: 'attachment', since })
+    let attachmentStart = 0
+    for (;;) {
+      attachmentParams.set('start', String(attachmentStart))
+      let attachmentPage: ApiItem[]
+      try {
+        const attachmentResponse = await zotFetch(userId, apiKey, 'items', attachmentParams)
+        attachmentPage = attachmentResponse.json as ApiItem[]
+        version = parseInt(attachmentResponse.headers.get('last-modified-version') ?? '0', 10) || version
+      } catch (err) {
+        res.error = String(err).slice(0, 200)
+        return res
+      }
+      for (const attachment of attachmentPage) {
+        const parent = attachment.data.parentItem
+        if (
+          typeof parent === 'string' &&
+          attachment.data.itemType === 'attachment' &&
+          attachment.data.contentType === 'application/pdf' &&
+          attachment.data.linkMode === 'imported_file'
+        ) forcedPdfParents.add(parent)
+      }
+      if (attachmentPage.length < 100) break
+      attachmentStart += 100
+    }
+    for (const keys of [...chunk([...forcedPdfParents], 50)]) {
+      const parentParams = new URLSearchParams({ limit: '50', format: 'json', itemKeys: keys.join(',') })
+      try {
+        const parentResponse = await zotFetch(userId, apiKey, 'items', parentParams)
+        const parents = parentResponse.json as ApiItem[]
+        version = parseInt(parentResponse.headers.get('last-modified-version') ?? '0', 10) || version
+        for (const parent of parents) {
+          if (parent.data.itemType !== 'attachment' && !items.some((item) => item.key === parent.key)) items.push(parent)
+        }
+      } catch (err) {
+        res.error = String(err).slice(0, 200)
+        return res
+      }
+    }
+  }
   res.fetched = items.length
 
   const upsertDir = (catName: string): string => {
@@ -224,22 +276,25 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       const localName=fs.readdirSync(dir).find(d=>eqKey(d,it.key))
       const existing=localName?path.join(dir,localName):findDupAcrossDirs(libPapers,it.key)
       let isUpdate = false
+      let existingRecord = false
+      let remoteNewer = false
+      let inspectRecordPdf = false
       if (existing) {
-        // upsert：远端版本更新则重写 md（此前永远 skip，Zotero 改了卷期页本地不变）
+        // upsert：远端版本更新则重写 md。题录条目需要额外检查子附件，
+        // 因为 Zotero 新增 PDF 附件不一定改变父条目 version。
         try {
           const mdFile=path.basename(paperFiles(path.join(existing,'paper.pdf')).md)
-          if (mdFile) {
-            const raw = fs.readFileSync(path.join(existing, mdFile), 'utf8')
-            const mVer = raw.match(/^zotero-version:\s*(\d+)/m)
-            const localVer = mVer ? parseInt(mVer[1], 10) : 0
-            if ((it.version ?? 0) > localVer) {
-              isUpdate = true
-              res.updated = (res.updated ?? 0) + 1
-            } else {
-              res.skipped++
-              continue
-            }
-          } else {
+          if (!mdFile) {
+            res.skipped++
+            continue
+          }
+          const raw = fs.readFileSync(path.join(existing, mdFile), 'utf8')
+          const mVer = raw.match(/^zotero-version:\s*(\d+)/m)
+          const localVer = mVer ? parseInt(mVer[1], 10) : 0
+          existingRecord = parseFrontmatter(raw).source_kind === 'record'
+          remoteNewer = (it.version ?? 0) > localVer
+          inspectRecordPdf = existingRecord && (opts.mode === 'full' || forcedPdfParents.has(it.key))
+          if (!remoteNewer && !inspectRecordPdf) {
             res.skipped++
             continue
           }
@@ -288,29 +343,43 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
         }
       } catch(error) { throw new Error('Zotero 子条目未完整获取：'+String(error)) }
 
+      // 全量检查题录或附件变更指向题录时，只有远端确实有 stored PDF 才算更新；
+      // 没有原文的合法题录在全量重复同步时仍按 skipped 处理。
+      if (existing && !remoteNewer && inspectRecordPdf && !pdfKey) {
+        res.skipped++
+        continue
+      }
+      if (existing && (remoteNewer || (inspectRecordPdf && !!pdfKey))) {
+        isUpdate = true
+        res.updated = (res.updated ?? 0) + 1
+      }
+
       // 3b) 目录 + slug + 去重后落地
       const slug=existing?path.basename(existing):`${year ?? 'nd'}-${it.key.toLowerCase()}`
       const dest = existing ?? path.join(dir, slug)
       fs.mkdirSync(dest, { recursive: true })
 
-      // PDF：stored 附件下载；拿不到就题录占位（更新时保留本地已有 PDF，不重下）
+      // PDF：远端有 stored 附件且本地缺失/仍为题录时下载；已有真实原文不重复下载。
+      const pdfPath = path.join(dest, 'paper.pdf')
       let hasPdf = false
-      if (isUpdate && fs.existsSync(path.join(dest, 'paper.pdf'))) {
-        hasPdf = true
-      }
-      if (!isUpdate && downloadPdf && pdfKey) {
+      let downloadedPdf: Buffer | null = null
+      if (fs.existsSync(pdfPath) && !(existing && existingRecord)) hasPdf = true
+      const shouldDownloadPdf = downloadPdf && !!pdfKey && (!existing || existingRecord || !fs.existsSync(pdfPath))
+      if (shouldDownloadPdf) {
+        const u = `${API}/users/${encodeURIComponent(userId)}/items/${pdfKey}/file`
+        let buf: Buffer
         try {
-          const u = `${API}/users/${encodeURIComponent(userId)}/items/${pdfKey}/file`
           const resp = await fetch(u, { headers: { 'Zotero-API-Version': API_VERSION, Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(60000) })
-          if (resp.ok) {
-            const buf = Buffer.from(await resp.arrayBuffer())
-            if (buf.length > 512 && buf.subarray(0, 4).toString('latin1') === '%PDF') {
-              fs.writeFileSync(path.join(dest, 'paper.pdf'), buf)
-              hasPdf = true
-            }
-          }
-          await new Promise((r2) => setTimeout(r2, 300)) // 附件下载限速
-        } catch { /* 下载失败走占位 */ }
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          buf = Buffer.from(await resp.arrayBuffer())
+          if (buf.length <= 512 || buf.subarray(0, 4).toString('latin1') !== '%PDF') throw new Error('附件内容不是有效 PDF')
+        } catch (error) {
+          // 不能把瞬时下载失败伪装成题录并推进 since 游标；保留游标后重试才能避免永久漏原文。
+          throw new Error(`Zotero PDF 附件未下载：${String(error).slice(0, 120)}`)
+        }
+        downloadedPdf = buf
+        hasPdf = true
+        await new Promise((resolve) => setTimeout(resolve, 300)) // 附件下载限速
       }
       if (!hasPdf) {
         try {
@@ -345,7 +414,30 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       const localNotes=notesFromMarkdown(doc.raw)
       if(localNotes) md=replaceMarkdownNotes(md,localNotes)
       md=patchFrontmatter(md,{source_kind:hasPdf?'pdf':'record',doi,abstract,volume:it.data.volume??'',issue:it.data.issue??'',pages:it.data.pages??'',publisher:it.data.publisher??'',language:it.data.language??''})
-      writeFilesAtomically([{path:doc.path,content:md}])
+      if (downloadedPdf && existing) {
+        // 远端后来补 PDF 时，不能直接覆盖本地占位页；操作日志保留替换前 PDF/Markdown 备份。
+        const db = getDb()
+        const digest = createHash('sha256').update(downloadedPdf).digest('hex')
+        const operationId = `zotero-sync-pdf-${it.key}-${it.version ?? 0}-${digest}`
+        const operation = runFileOperation(db, {
+          id: operationId,
+          kind: 'zotero.sync_pdf',
+          target: `paper:${it.key}`,
+          expectedVersion: String(it.version ?? 0),
+          edits: [
+            { path: pdfPath, content: downloadedPdf },
+            { path: doc.path, content: md }
+          ],
+          commit: () => {
+            db.prepare(`UPDATE papers SET source_kind='pdf',source_stamp=NULL,file_mtime=?,file_size=?,indexed=0,pvec=NULL,missing_at=NULL WHERE slug=?`)
+              .run(Date.now(), downloadedPdf.length, slug)
+          }
+        })
+        if (operation.state === 'failed') throw new Error(operation.error || 'Zotero PDF 替换失败')
+      } else {
+        if (downloadedPdf) fs.writeFileSync(pdfPath, downloadedPdf)
+        writeFilesAtomically([{ path: doc.path, content: md }])
+      }
 
       // 3d) CSL-JSON：API 的 item.data 本身就是 Zotero JSON，转成 CSL 兼容侧车（引文引擎优先用）
       try {
@@ -364,17 +456,18 @@ export async function syncZotero(opts: SyncOptions): Promise<SyncResult> {
       } catch { /* 侧车失败不影响条目 */ }
 
       res.imported++
-    } catch {
+    } catch (error) {
       res.failed++
+      res.errors?.push(`${title || it.key}: ${String(error).slice(0, 180)}`)
     }
   }
 
   // 有失败项不推进增量游标：失败条目 version ≤ 新游标后 since= 增量永远漏拉
   if (version && res.failed === 0) setMeta(syncKey(),String(version))
-  setMeta('zotero.lastSyncAt', new Date().toLocaleString('zh-CN'))
+  setMeta(lastSyncKey(), new Date().toLocaleString('zh-CN'))
   await scanLibraryAsync(s.libraryPath)
   res.ok = res.failed === 0
-  if(res.failed) res.error=`有 ${res.failed} 条文献未同步，已保留游标，请重试`
+  if(res.failed) res.error=`有 ${res.failed} 条文献未同步，已保留游标；${(res.errors ?? []).slice(0,3).join('；')}`
   res.version = version
   return res
 }

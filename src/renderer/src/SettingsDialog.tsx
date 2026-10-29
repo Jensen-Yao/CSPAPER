@@ -119,6 +119,17 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
       setZotBusy(false)
     }
   }
+  const runZoteroSync = async (mode: 'full' | 'incremental'): Promise<void> => {
+    if (zotBusy) return
+    setZotBusy(true)
+    setZotMsg(mode === 'full' ? '正在全量同步…' : '正在增量同步…')
+    try {
+      await window.api.zoteroApiSync(mode)
+    } catch (error) {
+      setZotBusy(false)
+      setZotMsg(`✗ 同步启动失败：${String(error).slice(0,120)}`)
+    }
+  }
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfiles = (list: NonNullable<Settings['profiles']>): void => {
     if (profileSaveTimer.current) clearTimeout(profileSaveTimer.current)
@@ -1055,16 +1066,16 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   </button>
                   <button
                     className="btn ghost"
-                    disabled={!(form.zoteroUserId && form.zoteroApiKey)}
-                    onClick={() => void window.api.zoteroApiSync('full')}
+                    disabled={zotBusy || !(form.zoteroUserId && form.zoteroApiKey)}
+                    onClick={() => void runZoteroSync('full')}
                     title="拉取全部条目（按 key 去重，已有条目自动跳过）"
                   >
                     立即全量同步
                   </button>
                   <button
                     className="btn ghost"
-                    disabled={!(form.zoteroUserId && form.zoteroApiKey)}
-                    onClick={() => void window.api.zoteroApiSync('incremental')}
+                    disabled={zotBusy || !(form.zoteroUserId && form.zoteroApiKey)}
+                    onClick={() => void runZoteroSync('incremental')}
                     title="只拉取上次同步之后的变更"
                   >
                     增量同步

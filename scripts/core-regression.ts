@@ -268,6 +268,54 @@ app.whenReady().then(async()=>{
       assert.equal(apiStatus().lastSyncVersion,2)
     } finally {globalThis.fetch=original}
   })
+  await test('Zotero PDF download failure retains the incremental cursor',async()=>{
+    store.saveSettings({zoteroUserId:'test-user',zoteroApiKey:'test-key'})
+    store.setMeta('zotero.syncVersion:test-user:'+normalizePath(library),'2')
+    const original=globalThis.fetch
+    globalThis.fetch=(async(input:any)=>{
+      const url=new URL(String(input))
+      if(url.pathname.endsWith('/collections'))return new Response('[]',{headers:{'Last-Modified-Version':'3'}})
+      if(url.pathname.endsWith('/children'))return new Response(JSON.stringify([{key:'FILEKEY1',data:{itemType:'attachment',contentType:'application/pdf',linkMode:'imported_file',filename:'remote.pdf'}}]),{headers:{'Last-Modified-Version':'3'}})
+      if(url.pathname.endsWith('/file'))return new Response('temporarily unavailable',{status:503})
+      return new Response(JSON.stringify([{key:'NEWPDF99',version:3,data:{itemType:'journalArticle',title:'Remote PDF transient failure',date:'2026',creators:[],collections:[]}}]),{headers:{'Content-Type':'application/json','Last-Modified-Version':'3'}})
+    }) as typeof fetch
+    try {
+      const result=await syncZotero({mode:'incremental'})
+      assert.equal(result.ok,false);assert.equal(result.failed,1);assert.equal(result.imported,0)
+      assert.match(result.error??'',/PDF 附件未下载|HTTP 503/)
+      assert.equal(apiStatus().lastSyncVersion,2)
+    } finally {globalThis.fetch=original}
+  })
+  await test('Zotero can upgrade a record-only item when remote later provides a PDF',async()=>{
+    const paper=fixture('2026-pdfkey1','99-inbox')
+    fs.writeFileSync(paper.md,patchFrontmatter(fs.readFileSync(paper.md,'utf8'),{'zotero-version':1,source_kind:'record'}))
+    store.saveSettings({zoteroUserId:'test-user',zoteroApiKey:'test-key'})
+    store.setMeta('zotero.syncVersion:test-user:'+normalizePath(library),'2')
+    const remotePdf=Buffer.concat([Buffer.from('%PDF-1.4 remote full text\n'),Buffer.alloc(600,65)])
+    const original=globalThis.fetch
+    globalThis.fetch=(async(input:any)=>{
+      const url=new URL(String(input))
+      if(url.pathname.endsWith('/collections'))return new Response('[]',{headers:{'Last-Modified-Version':'3'}})
+      if(url.searchParams.get('itemType')==='-attachment')return new Response('[]',{headers:{'Content-Type':'application/json','Last-Modified-Version':'3'}})
+      if(url.searchParams.get('itemType')==='attachment')return new Response(JSON.stringify([{key:'FILEKEY1',version:3,data:{itemType:'attachment',parentItem:'PDFKEY1',contentType:'application/pdf',linkMode:'imported_file',filename:'remote.pdf'}}]),{headers:{'Content-Type':'application/json','Last-Modified-Version':'3'}})
+      if(url.searchParams.get('itemKeys'))return new Response(JSON.stringify([{key:'PDFKEY1',version:1,data:{itemType:'journalArticle',title:'Remote record upgraded',date:'2026',creators:[],collections:[]}}]),{headers:{'Content-Type':'application/json','Last-Modified-Version':'3'}})
+      if(url.pathname.endsWith('/children'))return new Response(JSON.stringify([{key:'FILEKEY1',data:{itemType:'attachment',contentType:'application/pdf',linkMode:'imported_file',filename:'remote.pdf'}}]),{headers:{'Last-Modified-Version':'3'}})
+      if(url.pathname.endsWith('/file'))return new Response(new Uint8Array(remotePdf),{headers:{'Content-Type':'application/pdf','Last-Modified-Version':'3'}})
+      throw new Error('unexpected Zotero URL '+url.toString())
+    }) as typeof fetch
+    try {
+      const result=await syncZotero({mode:'incremental'})
+      assert.equal(result.ok,true);assert.equal(result.updated,1)
+      assert.equal(fs.readFileSync(paper.pdf).subarray(0,8).toString('latin1'),remotePdf.subarray(0,8).toString('latin1'))
+      assert.equal(parseFrontmatter(fs.readFileSync(paper.md,'utf8')).source_kind,'pdf')
+      const row=db.prepare('SELECT source_kind FROM active_papers WHERE id=?').get(paper.id) as {source_kind:string}
+      assert.equal(row.source_kind,'pdf')
+      const journal=db.prepare("SELECT state,backup_dir FROM operation_journal WHERE kind='zotero.sync_pdf' ORDER BY created_at DESC LIMIT 1").get() as {state:string;backup_dir:string}
+      assert.equal(journal.state,'committed');assert.ok(fs.existsSync(journal.backup_dir))
+      assert.equal(apiStatus().lastSyncVersion,3)
+      assert.ok(apiStatus().lastSyncAt)
+    } finally {globalThis.fetch=original}
+  })
   await test('library inventory reports progress and honors cancellation',async()=>{
     const progress:Array<{found:number;current:string}>=[]
     const inventory=collectLibrary(library,{}, {onProgress:(found,current)=>progress.push({found,current})})

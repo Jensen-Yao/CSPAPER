@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-29",
+  "feature": "Zotero Web API sync reliability",
+  "problems": [
+    "a transient stored-PDF download failure was silently converted to a record-only item and the incremental cursor advanced, permanently skipping the real PDF until the Zotero item changed again",
+    "an existing record-only item did not download a PDF added later in Zotero because updates always preserved the local placeholder",
+    "lastSyncAt was global instead of scoped by Zotero user and workspace",
+    "startup auto-sync failures were silent and settings buttons allowed duplicate sync launches"
+  ],
+  "fixes": [
+    "require a valid PDF response when a stored attachment exists and PDF download is requested",
+    "retain the incremental cursor on PDF download or validation failure",
+    "download a remote PDF when an existing Zotero item is still source_kind=record",`n    "incremental sync separately scans changed stored-PDF attachments and backfills their parent items, because adding an attachment does not always bump the parent item version",
+    "replace record PDF and Markdown through the operation journal with backups and DB source-state commit",
+    "report per-item failure reasons through the sync result and IPC",
+    "scope lastSyncAt by Zotero user and normalized library path",
+    "surface startup automatic-sync failures",
+    "disable full/incremental buttons while a Zotero sync launch is active"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "77/77",
+    "build": "pass",
+    "cssGate": "pass",
+    "ui": "74/74",
+    "rendererExceptions": 0
+  },
+  "coreCases": [
+    "HTTP 503 while downloading a stored PDF leaves failed=1, imported=0 and cursor unchanged",
+    "an attachment-only change retrieves the unchanged parent and upgrades source_kind to pdf",`n    "remote PDF added after an initial record-only sync upgrades source_kind to pdf",
+    "upgrade writes a committed zotero.sync_pdf operation with a preserved backup",
+    "existing local notes and exact paths remain intact"
+  ]
+}

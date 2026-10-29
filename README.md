@@ -66,7 +66,7 @@
 
 ### 🧬 Zotero 与中文生态
 
-- 本地 Zotero SQLite 迁移：条目、分类、标签、笔记、PDF、标注与元数据。
+- 本地 Zotero SQLite 迁移：条目、分类、标签、笔记、PDF、标注与元数据；云端 stored PDF 瞬时失败不推进增量游标；增量同步会扫描附件变更并补拉父条目，远端后补 PDF 可安全升级题录。
 - 题录/原文状态显式区分；`从 Zotero 修复原文`按条目 key 精确匹配 storage 附件，替换前自动备份且操作幂等。
 - `探测开放获取原文`按 DOI / 标题查询 OpenAlex，先列出可下载 OA PDF，确认后才下载；下载限制公网 HTTPS、100MB 与 PDF 头校验，替换走操作日志。
 - 无 PDF 条目保留为题录并明确标注，拿到原文后替换 `paper.pdf` 即可升级为全文。
@@ -130,7 +130,7 @@ Markdown + CSL + PDF    Operation Journal
 | 检查 | 结果 |
 |---|---|
 | Typecheck | ✅ 通过 |
-| Core regression | ✅ 75 / 75 |
+| Core regression | ✅ 77 / 77 |
 | UI regression | ✅ 74 / 74，无 renderer 异常 |
 | Packaged app UI | ✅ 63 / 63 |
 | Lifecycle / crash | ✅ 单实例、窗口清理、操作崩溃、托盘恢复 |

@@ -213,6 +213,7 @@ app.whenReady().then(() => {
       .then((m) =>
         m.syncZotero({ mode: 'incremental' }).then((r) => {
           if (r.ok && r.imported > 0) send('app:notice', { title: 'Zotero 自动同步完成', detail: `新增/更新 ${r.imported} 条` })
+          if (!r.ok) send('app:notice', { title: 'Zotero 自动同步未完成', detail: (r.error ?? '未知错误').slice(0, 220) })
         })
       )
       .catch(() => {})

@@ -18,7 +18,7 @@
 | 验证 | 当前结果 |
 |---|---|
 | `npm run typecheck` | 通过（含 tests 工程） |
-| `npm run test:core` | 75 / 75 |
+| `npm run test:core` | 77 / 77 |
 | `npm run build` | 通过 |
 | `npm run test:ui` | 74 / 74，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
@@ -83,6 +83,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 移动端测试不再读取静态样例包，也不再调用公共免费翻译接口；翻译响应由 Playwright 离线固定，避免限流导致回归抖动。
 - 测试失败时返回非零退出码，截图写入系统临时目录；`test:mobile` 已纳入 Windows CI verify 门禁。
 
+## 持续迭代：Zotero 云端同步可靠性（2026-10-29）
+
+- stored PDF 附件下载失败或校验失败时，该条目计入失败并保留增量 `since` 游标，不再伪装成题录成功，避免真实 PDF 永久漏拉。
+- 增量同步会单独扫描变更附件并补拉父条目，因为新增 PDF 附件不一定提高父条目版本；已有 `source_kind=record` 的条目如果远端后来补了 stored PDF，会下载并通过 `zotero.sync_pdf` 操作日志原子替换占位 PDF / Markdown，保留替换前备份。
+- 同步失败会带回逐条错误原因；启动自动增量同步失败时发送应用通知，不再静默。
+- `lastSyncAt` 按 Zotero 用户与工作区隔离；设置页同步按钮在启动同步后进入忙碌状态，避免重复触发。
+- 验证：typecheck 通过、核心回归 77/77（新增 PDF 下载失败保留游标、远端后补 PDF 升级题录两项）、生产构建通过、CSS gate 通过、UI 回归 74/74、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

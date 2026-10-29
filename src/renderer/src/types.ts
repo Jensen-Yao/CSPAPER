@@ -554,7 +554,7 @@ declare global {
       zoteroApiStatus: () => Promise<{ configured: boolean; lastSyncVersion: number | null; lastSyncAt: string | null }>
       zoteroApiVerify: (userId: string, apiKey: string) => Promise<{ ok: boolean; error?: string; items?: number }>
       zoteroApiSync: (mode: 'full' | 'incremental') => Promise<{ ok: boolean }>
-      onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string }) => void) => () => void
+      onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string; errors?: string[] }) => void) => () => void
       agentMcpStatus: () => Promise<{ results: Array<{ server: string; ok: boolean; tools: number; error?: string }>; tools: Array<{ fullName: string; server: string; description: string }>; configPath: string }>
       agentMcpOpenConfig: () => Promise<boolean>
       agentSkills: () => Promise<Array<{ name: string; description: string; source: 'builtin' | 'user' }>>

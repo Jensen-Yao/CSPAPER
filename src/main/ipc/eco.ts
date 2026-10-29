@@ -173,11 +173,11 @@ export function registerZoteroApiIpc(ctx: IpcCtx): void {
           mode,
           onProgress: (p) => ctx.send('zotero:progress', p)
         })
-        if (r.ok) ctx.send('zotero:sync-done', { ok: true, imported: r.imported, skipped: r.skipped, failed: r.failed, fetched: r.fetched })
-        else ctx.send('zotero:sync-done', { ok: false, error: r.error })
+        if (r.ok) ctx.send('zotero:sync-done', { ok: true, imported: r.imported, skipped: r.skipped, failed: r.failed, fetched: r.fetched, errors: r.errors ?? [] })
+        else ctx.send('zotero:sync-done', { ok: false, error: r.error, errors: r.errors ?? [] })
       } catch (err) {
         // 异步 IIFE 必须 catch：否则重复 handle/网络异常被吞，UI 的 sync-done 永不到达而卡死
-        ctx.send('zotero:sync-done', { ok: false, error: String(err).slice(0, 200) })
+        ctx.send('zotero:sync-done', { ok: false, error: String(err).slice(0, 200), errors: [String(err).slice(0, 200)] })
       }
     })()
     return { ok: true }

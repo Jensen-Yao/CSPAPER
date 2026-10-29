@@ -364,7 +364,7 @@ const api = {
   zoteroApiStatus: () => ipcRenderer.invoke('zotero:api-status'),
   zoteroApiVerify: (userId: string, apiKey: string) => ipcRenderer.invoke('zotero:api-verify', userId, apiKey),
   zoteroApiSync: (mode: 'full' | 'incremental') => ipcRenderer.invoke('zotero:api-sync', mode),
-  onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string }) => void) => {
+  onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string; errors?: string[] }) => void) => {
     const h = (_e: unknown, p: unknown) => cb(p as never)
     ipcRenderer.on('zotero:sync-done', h)
     return () => ipcRenderer.removeListener('zotero:sync-done', h)
