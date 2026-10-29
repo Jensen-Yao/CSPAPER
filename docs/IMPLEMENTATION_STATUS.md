@@ -18,9 +18,9 @@
 | 验证 | 当前结果 |
 |---|---|
 | `npm run typecheck` | 通过（含 tests 工程） |
-| `npm run test:core` | 77 / 77 |
+| `npm run test:core` | 78 / 78 |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 74 / 74，无 renderer 异常 |
+| `npm run test:ui` | 76 / 76，无 renderer 异常 |
 | `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
 | `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
 | `npm run test:mobile` | 5 / 5；测试夹具从 10.9 MB 降至 10.8 KB，翻译响应离线固定，无 renderer 错误 |
@@ -90,6 +90,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 同步失败会带回逐条错误原因；启动自动增量同步失败时发送应用通知，不再静默。
 - `lastSyncAt` 按 Zotero 用户与工作区隔离；设置页同步按钮在启动同步后进入忙碌状态，避免重复触发。
 - 验证：typecheck 通过、核心回归 77/77（新增 PDF 下载失败保留游标、远端后补 PDF 升级题录两项）、生产构建通过、CSS gate 通过、UI 回归 74/74、无 renderer 异常。
+## 持续迭代：Work 深度任务独立超时（2026-10-29）
+
+- Work / act 运行与普通问答的超时保护分离：普通 ask / 翻译仍为 3 分钟，act 深度任务默认 10 分钟。
+- 设置 → 智能体新增“单任务超时（分钟）”，范围 1–60，和最大工具步数一起构成执行护栏。
+- 超时在 act run 启动时读取当前设置，用户仍可随时手动停止。
+- 超时后持久化为 failed + retryable `run_timeout`，与中断恢复和重试协议兼容。
+- 验证：typecheck 通过、核心回归 78/78、生产构建通过、UI 回归 76/76、无 renderer 异常。
 ## 证据
 
 最新证据目录：`design-plans/execution-review-2026-10-29/`。`ci.json`、`installer.json`、`real-model.json`、`benchmark.json` 和 `ui-results.json` 已记录本机与远端验收结果。

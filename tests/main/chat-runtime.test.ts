@@ -167,4 +167,25 @@ export async function testChatRuntime(test:Test,db:Database.Database,root:string
     assert.equal(repository.getRun(turn.run.id)?.error?.retryable,true)
     assert.ok(!JSON.stringify(repository.getMessage(turn.assistantMessage.id)).includes('unreachable'))
   })
+  await test('act runs use the dedicated agent timeout',async()=>{
+    const repository=new ChatRepository(db),workspace=repository.ensureWorkspace(root+'/act-timeout-tests'),conversation=repository.createConversation({workspaceId:workspace.id,mode:'act',entry:'work'})
+    let aborted=false
+    const provider:ChatProvider={async *stream(_messages,{signal}){
+      await new Promise<void>((_resolve,reject)=>signal!.addEventListener('abort',()=>{aborted=true;reject(signal!.reason)},{once:true}))
+      yield 'unreachable'
+    }}
+    const runtime=new ChatRuntime(repository,provider,new ChatEventBus(repository),1,undefined,new ToolRegistry(),'auto',{timeoutMs:60_000,actTimeoutMs:25})
+    const turn=runtime.submitTurn({
+      conversationId:conversation.id,
+      clientMessageId:'act-timeout',
+      text:'deep research timeout',
+      mode:'act',
+      modelBinding:{bindingId:'p:m',profileId:'p',provider:'mock',model:'m',capabilities:['text'],reasoning:'default'},
+      context:{conversationId:conversation.id,runId:'pending',refs:[],permission:'auto',budget:{totalChars:100,usedChars:0,reservedForOutput:0},diagnostics:[],createdAt:new Date().toISOString()}
+    })
+    await runtime.idle()
+    assert.equal(aborted,true)
+    assert.equal(repository.getRun(turn.run.id)?.status,'failed')
+    assert.equal(repository.getRun(turn.run.id)?.error?.code,'run_timeout')
+  })
 }

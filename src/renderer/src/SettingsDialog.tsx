@@ -1029,6 +1029,19 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   />
                   <span className="hint">步数越多越彻底，也越耗时耗 token</span>
                 </div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: 12.5 }}>单任务超时（分钟）</span>
+                  <input
+                    className="set-input"
+                    style={{ width: 90 }}
+                    value={String(form.agentTimeoutMinutes ?? 10)}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value.replace(/\D/g, ''), 10)
+                      set({ agentTimeoutMinutes: Math.max(1, Math.min(60, isNaN(v) ? 10 : v)) })
+                    }}
+                  />
+                  <span className="hint">Work / 深度调研适用；普通问答仍保持 3 分钟保护</span>
+                </div>
                 <div className="section-title">MCP / 技能 / 自动化</div>
                 <div className="hint">
                   三者的管理入口在 顶栏 Work → 左栏对应面板。MCP 服务器配置文件在数据目录 mcp.json；技能目录放入 .md 即热生效。

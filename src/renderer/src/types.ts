@@ -70,6 +70,7 @@ export interface Settings {
   zoteroAutoSync?: boolean
   agentModel?: string
   agentMaxSteps?: number
+  agentTimeoutMinutes?: number
   agentGoal?: string
   imageModel?: string
 }

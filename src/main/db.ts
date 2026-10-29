@@ -80,6 +80,7 @@ export interface Settings {
   // 智能体（v0.11）：独立模型绑定与护栏参数
   agentModel?: string
   agentMaxSteps?: number
+  agentTimeoutMinutes?: number
   agentGoal?: string
   imageModel?: string
 }
@@ -112,7 +113,8 @@ const DEFAULTS: Settings = {
   zoteroApiKey: '',
   zoteroAutoSync: false,
   agentModel: '',
-  agentMaxSteps: 24
+  agentMaxSteps: 24,
+  agentTimeoutMinutes: 10
 }
 
 let db: Database.Database

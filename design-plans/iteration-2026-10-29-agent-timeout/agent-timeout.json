@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-29",
+  "feature": "configurable Work agent run timeout",
+  "problem": "all unified runs shared a fixed three-minute timeout even though Work allowed up to 60 tool steps; deep research runs could be interrupted before finishing with no user control",
+  "fix": [
+    "separate ask and act timeout selection in ChatRuntime",
+    "keep ordinary ask/translation runs at the existing three-minute guard",
+    "add agentTimeoutMinutes setting with a 10-minute default and 1-60 minute range",
+    "add a visible setting control alongside agent max steps",
+    "apply the setting when an act run starts and retain cancellation for immediate user control",
+    "cover dedicated act timeout behavior and settings persistence with regressions"
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "core": "78/78",
+    "build": "pass",
+    "ui": "76/76",
+    "rendererExceptions": 0
+  },
+  "cases": [
+    "act run uses actTimeoutMs instead of ask timeoutMs",
+    "act timeout records failed status with retryable run_timeout error",
+    "settings page exposes a default 10-minute value",
+    "changing the value to 11 and closing with auto-save persists it"
+  ]
+}

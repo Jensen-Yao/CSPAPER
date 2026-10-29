@@ -11,6 +11,7 @@ import { validateCitations } from './citations'
 import { actPrompt } from './prompts'
 import { extractPlanSteps, parseModelJsonObject, validatePlan, type PlanStepRecord } from './planning'
 import { ToolExecutor } from '../tools/executor'
+import { getSettings } from '../db'
 import type { ToolRegistry } from '../tools/registry'
 import type { ToolResult } from '../../shared/tools'
 import type { Source } from '../../shared/sources'
@@ -36,7 +37,7 @@ export class ChatRuntime {
   private readonly waiters=new Set<()=>void>()
   private readonly resumptions=new Map<string,{plan?:PlanStepRecord[];approvedCallId?:string;revision?:number}>()
 
-  constructor(private readonly repository:ChatRepository,private readonly provider:ChatProvider,private readonly events:ChatEventBus,private readonly maxConcurrent=2,private readonly retrieve?:(input:{query:string;runId:string;workspaceId:string;refs:ContextSnapshot['refs'];signal:AbortSignal})=>Promise<Source[]>,private readonly toolRegistry?:ToolRegistry,private readonly permission:'auto'|'confirm'|'readonly'='auto',private readonly limits:{timeoutMs?:number}={}) {}
+  constructor(private readonly repository:ChatRepository,private readonly provider:ChatProvider,private readonly events:ChatEventBus,private readonly maxConcurrent=2,private readonly retrieve?:(input:{query:string;runId:string;workspaceId:string;refs:ContextSnapshot['refs'];signal:AbortSignal})=>Promise<Source[]>,private readonly toolRegistry?:ToolRegistry,private readonly permission:'auto'|'confirm'|'readonly'='auto',private readonly limits:{timeoutMs?:number;actTimeoutMs?:number}={}) {}
 
   submitTurn(input:RuntimeSubmitInput):RuntimeSubmitResult {
     const turn=this.repository.createTurn(input)
@@ -145,6 +146,14 @@ export class ChatRuntime {
     this.pump()
   }
 
+  private timeoutMsFor(runId:string):number {
+    const run=this.repository.getRun(runId)
+    if(run?.mode!=='act') return this.limits.timeoutMs ?? 180000
+    if(this.limits.actTimeoutMs != null) return this.limits.actTimeoutMs
+    const minutes=Number(getSettings().agentTimeoutMinutes ?? 10)
+    return Math.max(1, Math.min(60, Number.isFinite(minutes) ? minutes : 10)) * 60_000
+  }
+
   private pump():void {
     while(this.queue.length&&this.active.size<this.maxConcurrent) {
       const occupied=new Set([...this.active.keys()].map(id=>this.repository.getRun(id)?.conversationId))
@@ -153,7 +162,7 @@ export class ChatRuntime {
       if(index<0)break
       const runId=this.queue.splice(index,1)[0]
       const controller=new AbortController()
-      const timer=setTimeout(()=>controller.abort(new DOMException('运行超过时间限制','TimeoutError')),this.limits.timeoutMs??180000)
+      const timer=setTimeout(() => controller.abort(new DOMException('运行超过时间限制', 'TimeoutError')), this.timeoutMsFor(runId))
       const promise=Promise.resolve().then(()=>this.execute(runId,controller)).finally(() => {
         clearTimeout(timer)
         this.active.delete(runId)
