@@ -14,6 +14,7 @@ import { getDb, getSettings } from '../db'
 import { getChatServices } from './chat'
 import { ResearchCalendar } from '../research-calendar'
 import { ResearchFocus } from '../research-focus'
+import { ResearchProjects } from '../research-projects'
 import { ensureWorkspace } from '../workspaces'
 import type { IpcCtx } from './context'
 
@@ -48,6 +49,7 @@ function legacyStatus(status:string|undefined|null):AgentTask['status']|null {
 export function registerAgentIpc(ctx: IpcCtx): void {
   const calendar=new ResearchCalendar(getDb())
   const focus=new ResearchFocus(getDb())
+  const projects=new ResearchProjects(getDb())
   const workspaceId=()=>ensureWorkspace(getDb(),getSettings().libraryPath).id
   const chat=getChatServices()
   if(chat)chat.bus.subscribe({listener:event=>{
@@ -136,6 +138,12 @@ export function registerAgentIpc(ctx: IpcCtx): void {
   ipcMain.handle('calendar:remove',(_e,id:number)=>calendar.remove(workspaceId(),id))
   ipcMain.handle('focus:log',(_e,input:unknown)=>focus.log(workspaceId(),input as import('../../shared/calendar').FocusLogInput))
   ipcMain.handle('focus:summary',(_e,date:string)=>focus.summary(workspaceId(),date))
+  ipcMain.handle('projects:list',()=>projects.listProjects(workspaceId()))
+  ipcMain.handle('projects:save',(_e,input:unknown,id?:number)=>projects.saveProject(workspaceId(),input as import('../../shared/projects').ProjectInput,id))
+  ipcMain.handle('projects:remove',(_e,id:number)=>projects.removeProject(workspaceId(),id))
+  ipcMain.handle('tasks:list',(_e,projectId?:number)=>projects.listTasks(workspaceId(),projectId))
+  ipcMain.handle('tasks:save',(_e,input:unknown,id?:number)=>projects.saveTask(workspaceId(),input as import('../../shared/projects').TaskInput,id))
+  ipcMain.handle('tasks:remove',(_e,id:number)=>projects.removeTask(workspaceId(),id))
 }
 
 let schedulerStarted = false

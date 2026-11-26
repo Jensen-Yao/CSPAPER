@@ -14,20 +14,28 @@ interface Props {
   commands: PaletteCommand[]
   onClose: () => void
   onOpenPaper: (p: Paper) => void
+  onOpenNote?: (noteId: number) => void
+  onOpenConversation?: (conversationId: string) => void
 }
 
 type Row =
   | { kind: 'command'; cmd: PaletteCommand }
   | { kind: 'paper'; paper: Paper }
+  | { kind: 'note'; noteId: number; title: string; updated: string }
+  | { kind: 'conversation'; conversationId: string; title: string; updated: string }
 
-export default function CommandPalette({ papers, commands, onClose, onOpenPaper }: Props): JSX.Element {
+export default function CommandPalette({ papers, commands, onClose, onOpenPaper, onOpenNote, onOpenConversation }: Props): JSX.Element {
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
+  const [notes, setNotes] = useState<Array<{ id: number; title: string; updated_at: string }>>([])
+  const [conversations, setConversations] = useState<Array<{ id: string; title: string; updatedAt: string }>>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
+    void window.api.standaloneNotesList().then(setNotes).catch(() => setNotes([]))
+    void window.api.chat.listConversations({ limit: 100 }).then(page => setConversations(page.items)).catch(() => setConversations([]))
   }, [])
 
   const kw = q.trim().toLowerCase()
@@ -37,10 +45,12 @@ export default function CommandPalette({ papers, commands, onClose, onOpenPaper 
     const cmds: Row[] = commands.filter((c) => hit(c.label)).map((cmd) => ({ kind: 'command', cmd }))
     const pprs: Row[] = papers
       .filter((p) => hit(p.title) || hit(p.slug) || hit(p.category) || String(p.year ?? '').includes(kw))
-      .slice(0, 30)
+      .slice(0, 20)
       .map((paper) => ({ kind: 'paper', paper }))
-    return [...cmds, ...pprs]
-  }, [kw, commands, papers])
+    const noteRows: Row[] = notes.filter(note => hit(note.title)).slice(0, 8).map(note => ({ kind: 'note', noteId: note.id, title: note.title, updated: note.updated_at }))
+    const conversationRows: Row[] = conversations.filter(conversation => hit(conversation.title)).slice(0, 8).map(conversation => ({ kind: 'conversation', conversationId: conversation.id, title: conversation.title, updated: conversation.updatedAt }))
+    return [...cmds, ...pprs, ...noteRows, ...conversationRows]
+  }, [kw, commands, papers, notes, conversations])
 
   useEffect(() => {
     setSel(0)
@@ -53,7 +63,9 @@ export default function CommandPalette({ papers, commands, onClose, onOpenPaper 
   const runRow = (r: Row): void => {
     onClose()
     if (r.kind === 'command') r.cmd.run()
-    else onOpenPaper(r.paper)
+    else if (r.kind === 'paper') onOpenPaper(r.paper)
+    else if (r.kind === 'note') onOpenNote?.(r.noteId)
+    else onOpenConversation?.(r.conversationId)
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -73,7 +85,7 @@ export default function CommandPalette({ papers, commands, onClose, onOpenPaper 
 
   const groups: Array<{ label: string; items: Array<{ row: Row; i: number }> }> = []
   rows.forEach((row, i) => {
-    const label = row.kind === 'command' ? '命令' : '文献'
+    const label = row.kind === 'command' ? '命令' : row.kind === 'paper' ? '文献' : row.kind === 'note' ? '笔记' : '会话'
     const g = groups[groups.length - 1]
     if (g && g.label === label) g.items.push({ row, i })
     else groups.push({ label, items: [{ row, i }] })
@@ -90,7 +102,7 @@ export default function CommandPalette({ papers, commands, onClose, onOpenPaper 
           <input
             ref={inputRef}
             className="palette-input"
-            placeholder="搜索文献，或输入命令…"
+            placeholder="搜索文献、笔记、会话，或输入命令…" aria-label="全局搜索"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
@@ -104,7 +116,7 @@ export default function CommandPalette({ papers, commands, onClose, onOpenPaper 
               <div className="palette-group">{g.label}</div>
               {g.items.map(({ row, i }) => (
                 <div
-                  key={row.kind === 'command' ? row.cmd.id : `p${row.paper.id}`}
+                  key={row.kind === 'command' ? row.cmd.id : row.kind === 'paper' ? `p${row.paper.id}` : row.kind === 'note' ? `n${row.noteId}` : `c${row.conversationId}`}
                   className={`palette-item ${i === sel ? 'sel' : ''}`}
                   onMouseEnter={() => setSel(i)}
                   onClick={() => runRow(row)}
@@ -114,12 +126,22 @@ export default function CommandPalette({ papers, commands, onClose, onOpenPaper 
                       <span className="pi-label">{row.cmd.label}</span>
                       {row.cmd.hint && <span className="pi-meta">{row.cmd.hint}</span>}
                     </>
-                  ) : (
+                  ) : row.kind === 'paper' ? (
                     <>
                       <span className="pi-label">{row.paper.title}</span>
                       <span className="pi-meta">
                         {row.paper.year ?? '—'} · {catLabel(row.paper.category)}
                       </span>
+                    </>
+                  ) : row.kind === 'note' ? (
+                    <>
+                      <span className="pi-label">{row.title}</span>
+                      <span className="pi-meta">笔记</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="pi-label">{row.title}</span>
+                      <span className="pi-meta">会话</span>
                     </>
                   )}
                 </div>

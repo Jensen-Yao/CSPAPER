@@ -1,0 +1,42 @@
+/* Social banner (1200x630) and README banner, rendered by scripts/build-banner.mjs. */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"CSP Sans","Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:#1c1915;-webkit-font-smoothing:antialiased}
+.banner{position:relative;width:1200px;height:630px;display:grid;grid-template-columns:552px minmax(0,1fr);gap:36px;padding:60px 60px 56px 64px;background:radial-gradient(820px 520px at 92% 4%,rgba(21,88,192,.11),transparent 62%),#f4f1ea;overflow:hidden}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:25px;letter-spacing:.1em}
+.brand i{width:8px;height:8px;background:#9e3b2f;margin-left:2px;margin-top:8px}
+.eyebrow{margin-top:50px;font-family:"CSP Mono",Consolas,monospace;font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:#1558c0}
+.banner h1{margin:20px 0 0;font-family:"CSP Serif","Noto Serif SC","Songti SC",serif;font-weight:600;font-size:62px;line-height:1.2;letter-spacing:-.01em}
+.banner h1 em{font-style:normal;color:#1558c0}
+.sub{margin:26px 0 0;font-size:19px;line-height:1.6;color:#453f37}
+.meta{margin:8px 0 0;font-family:"CSP Mono",Consolas,monospace;font-size:13px;color:#7b7366}
+.url{position:absolute;left:64px;bottom:50px;font-family:"CSP Mono",Consolas,monospace;font-size:13px;color:#7b7366}
+.right{display:flex;align-items:center}
+.win{width:100%;height:486px;background:#fdfcf9;border:1px solid #d9d1c2;border-radius:12px;box-shadow:0 40px 80px -34px rgba(28,25,21,.5),0 2px 6px rgba(28,25,21,.06);overflow:hidden;display:flex;flex-direction:column}
+.win-bar{height:34px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;background:#f4f1ea;border-bottom:1px solid rgba(42,36,26,.11)}
+.win-bar i{width:9px;height:9px;border-radius:50%;background:#d9d1c2}
+.win-bar .tab{margin-left:10px;padding:2px 10px;border:1px solid rgba(42,36,26,.2);border-radius:5px;background:#fdfcf9;font-size:11px;color:#221f1a}
+.win-bar b{margin-left:auto;font-size:10px;letter-spacing:.1em;color:#7d766a}
+.win-nav{height:34px;flex:none;display:flex;align-items:center;gap:4px;padding:0 14px;border-bottom:1px solid rgba(42,36,26,.11)}
+.win-nav span{padding:4px 10px;border-radius:5px;font-size:11.5px;color:#7d766a}
+.win-nav span.on{background:rgba(158,59,47,.09);color:#9e3b2f;font-weight:600}
+.hello{padding:14px 16px 4px;display:grid;gap:2px}
+.hello small{font-size:10.5px;color:#9e3b2f}
+.hello b{font-family:"CSP Serif","Noto Serif SC","Songti SC",serif;font-size:17px;font-weight:600}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);margin:10px 16px 12px;border:1px solid rgba(42,36,26,.11);border-radius:10px;overflow:hidden}
+.metrics div{padding:9px 12px;border-left:1px solid rgba(42,36,26,.11)}
+.metrics div:first-child{border-left:0}
+.metrics small{display:block;font-size:9.5px;color:#7d766a}
+.metrics strong{display:block;margin-top:2px;font-size:20px;line-height:1.15;font-variant-numeric:tabular-nums}
+.metrics em{margin-left:3px;font-size:10px;font-style:normal;font-weight:400;color:#7d766a}
+.cols{flex:1;min-height:0;display:grid;grid-template-columns:1.5fr 1fr;gap:12px;padding:0 16px 16px}
+.panel{border:1px solid rgba(42,36,26,.11);border-radius:10px;padding:10px 12px;min-width:0}
+.panel h3{margin:0 0 4px;font-size:11.5px;font-weight:600}
+.row{display:grid;gap:2px;padding:7px 0;border-top:1px solid rgba(42,36,26,.09)}
+.row b{font-family:"CSP Serif","Noto Serif SC","Songti SC",serif;font-size:11px;font-weight:600;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row small{font-size:9.5px;color:#7d766a}
+.row i{display:block;height:3px;margin-top:4px;border-radius:999px;background:linear-gradient(to right,#9e3b2f var(--w,0%),rgba(42,36,26,.08) var(--w,0%))}
+.task{display:grid;gap:2px;padding:7px 0;border-top:1px solid rgba(42,36,26,.09)}
+.task small{font-size:9.5px;color:#7d766a}
+.task.overdue small{color:#a8761d}
+.task b{font-size:11px;font-weight:600;line-height:1.4}

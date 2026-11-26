@@ -241,6 +241,12 @@ export const Book = svg( // 阅读
     <path d="M13.5 3.2c-1.8-.8-3.7-.8-5.5 0v9.6c1.8-.8 3.7-.8 5.5 0z" />
   </>
 )
+export const Home = svg(
+  <>
+    <path d="M2.5 7.2 8 2.5l5.5 4.7v5.8h-11z" />
+    <path d="M6.3 12.9V9.2h3.4v3.7" />
+  </>
+)
 export const Chat = svg(
   <>
     <path d="M2.5 3.5h11v7h-6L4 13.5V10.5H2.5z" />

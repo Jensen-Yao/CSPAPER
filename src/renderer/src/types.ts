@@ -570,6 +570,12 @@ declare global {
       calendarRemove: (id: number) => Promise<boolean>
       focusLog: (input: import('../../shared/calendar').FocusLogInput) => Promise<import('../../shared/calendar').FocusSummary>
       focusSummary: (date: string) => Promise<import('../../shared/calendar').FocusSummary>
+      projectsList: () => Promise<import('../../shared/projects').ResearchProject[]>
+      projectsSave: (input: import('../../shared/projects').ProjectInput, id?: number) => Promise<import('../../shared/projects').ResearchProject>
+      projectsRemove: (id: number) => Promise<boolean>
+      tasksList: (projectId?: number) => Promise<import('../../shared/projects').ResearchTask[]>
+      tasksSave: (input: import('../../shared/projects').TaskInput, id?: number) => Promise<import('../../shared/projects').ResearchTask>
+      tasksRemove: (id: number) => Promise<boolean>
       onAgentEvent: (cb: (p: { taskId: string; event: { t: number; kind: string; tool?: string; text?: string; ok?: boolean; ms?: number; sid?: number; stream?: boolean; artifact?: { kind: string; title: string; paperId?: number; tableId?: number; slug?: string } }; replace?: boolean }) => void) => () => void
       // ---------- 知识体系 + 统计扩展（v0.7） ----------
       graphKeywords: (category?: string) => Promise<{ nodes: Array<{ id: string; n: number; papers: number[] }>; edges: Array<{ a: string; b: string; w: number }> }>

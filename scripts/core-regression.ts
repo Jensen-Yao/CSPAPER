@@ -26,6 +26,7 @@ import { buildContextSnapshot } from '../src/main/chat/context'
 import { snapshotSkills, type SkillInfo } from '../src/main/skills'
 import { ResearchCalendar } from '../src/main/research-calendar'
 import { ResearchFocus } from '../src/main/research-focus'
+import { ResearchProjects } from '../src/main/research-projects'
 import { explicitContextSources, retrieveSources } from '../src/main/chat/retrieval'
 import { applyZoteroRepairs } from '../src/main/zotero-repair'
 import { previewOaRepairs, applyOaRepairs, type OaRepairProgress } from '../src/main/oa-repair'
@@ -341,10 +342,10 @@ app.whenReady().then(async()=>{
     await scan;assert.equal(responsive,true)
   })
   await test('tracked migrations apply exactly once across repeated initialization',()=>{
-    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10])
+    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10,11])
     store.initDb()
-    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10])
-    for(const table of ['workspaces','conversations','chat_messages','chat_runs','chat_run_events','chat_tool_calls','chat_sources','chat_artifacts','operation_journal'])
+    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10,11])
+    for(const table of ['workspaces','conversations','chat_messages','chat_runs','chat_run_events','chat_tool_calls','chat_sources','chat_artifacts','operation_journal','research_projects','research_tasks'])
       assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table),table)
   })
   await test('research calendar persists valid dates and isolates workspace operations',()=>{
@@ -378,6 +379,33 @@ app.whenReady().then(async()=>{
     assert.equal(other.readingSeconds,0);assert.equal(other.cycles,0)
     assert.throws(()=>focus.log(b.id,{paperId:one.id,phase:'reading',seconds:60,startedAt,endedAt:end}))
     assert.throws(()=>focus.log(a.id,{paperId:999999,phase:'reading',seconds:60,startedAt,endedAt:end}))
+  })
+  await test('research projects and tasks persist, isolate workspaces and cascade on delete',()=>{
+    const repo=new ChatRepository(db),projects=new ResearchProjects(db)
+    const a=repo.ensureWorkspace(path.join(root,'projects-a')),b=repo.ensureWorkspace(path.join(root,'projects-b'))
+    const conversation=repo.createConversation({workspaceId:a.id,title:'项目会话'})
+    const project=projects.saveProject(a.id,{name:'睡眠与认知',description:'综述准备',color:'#1558c0',status:'active',dueDate:'2028-03-31'})
+    assert.ok(project.id>0);assert.deepEqual(project.taskCounts,{todo:0,doing:0,done:0})
+    const task=projects.saveTask(a.id,{projectId:project.id,title:'读完三篇核心文献',notes:'先看方法部分',status:'todo',priority:'high',dueDate:'2028-02-29',paperId:one.id,conversationId:conversation.id})
+    assert.equal(task.projectName,'睡眠与认知');assert.equal(projects.listTasks(a.id)[0].status,'todo')
+    const done=projects.saveTask(a.id,{projectId:task.projectId,title:task.title,notes:task.notes,status:'done',priority:task.priority,dueDate:task.dueDate,paperId:task.paperId,conversationId:task.conversationId},task.id)
+    assert.ok(done.completedAt);assert.deepEqual(projects.listProjects(a.id)[0].taskCounts,{todo:0,doing:0,done:1})
+    // 工作区隔离：另一工作区看不到、也改不了本项目与任务；关联会话必须属于同一工作区
+    assert.equal(projects.listProjects(b.id).length,0);assert.equal(projects.listTasks(b.id).length,0)
+    assert.throws(()=>projects.saveTask(b.id,{projectId:project.id,title:'越权',status:'todo',priority:'medium',dueDate:null,paperId:null,conversationId:null}))
+    assert.throws(()=>projects.saveTask(a.id,{projectId:project.id,title:'跨库会话',status:'todo',priority:'medium',dueDate:null,paperId:null,conversationId:repo.createConversation({workspaceId:b.id,title:'B 会话'}).id}))
+    assert.throws(()=>projects.saveTask(a.id,{projectId:project.id,title:'无效日期',status:'todo',priority:'medium',dueDate:'2028-02-30',paperId:null,conversationId:null}))
+    assert.throws(()=>projects.saveTask(a.id,{projectId:project.id,title:'无效状态',status:'blocked',priority:'medium',dueDate:null,paperId:null,conversationId:null}))
+    assert.throws(()=>projects.saveProject(a.id,{name:'',status:'active',dueDate:null}))
+    assert.equal(projects.removeTask(b.id,task.id),false)
+    // 项目可编辑；删除项目级联删除任务，文献与会话不受影响
+    const renamed=projects.saveProject(a.id,{name:'睡眠与认知（修订）',description:'综述准备',color:project.color,status:'paused',dueDate:'2028-03-31'},project.id)
+    assert.equal(renamed.status,'paused')
+    assert.equal(projects.removeProject(b.id,project.id),false)
+    assert.equal(projects.removeProject(a.id,project.id),true)
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM research_tasks').get() as {n:number}).n,0)
+    assert.equal(projects.listTasks(a.id).length,0)
+    assert.ok(db.prepare('SELECT 1 FROM conversations WHERE id=?').get(conversation.id))
   })
   await test('persistent conversations isolate workspaces and survive repository reload',()=>{
     const repo=new ChatRepository(db),workspace=repo.ensureWorkspace(library,'Regression Library')

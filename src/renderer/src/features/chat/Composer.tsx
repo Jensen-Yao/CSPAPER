@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 
-interface Props {value:string;onChange:(value:string)=>void;onSend:()=>void;onStop?:()=>void;busy:boolean;placeholder:string;children?:ReactNode;banner?:ReactNode;textareaClassName?:string}
+interface Props {value:string;onChange:(value:string)=>void;onSend:()=>void;onStop?:()=>void;busy:boolean;placeholder:string;children?:ReactNode;banner?:ReactNode;top?:ReactNode;textareaClassName?:string}
 
-export default function Composer({value,onChange,onSend,onStop,busy,placeholder,children,banner,textareaClassName='hero-textarea'}:Props) {
+export default function Composer({value,onChange,onSend,onStop,busy,placeholder,children,banner,top,textareaClassName='hero-textarea'}:Props) {
   return <div className="hero-input chat-composer">
     {banner}
+    {top}
     <textarea className={textareaClassName} aria-label="对话消息" value={value} rows={2} placeholder={placeholder}
       onChange={event=>onChange(event.target.value)}
       onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();onSend()}}}/>

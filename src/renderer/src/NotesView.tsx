@@ -2,7 +2,7 @@ import { persistNote, readNoteDraft, rememberNoteDraft } from './lib/note-storag
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Highlight, Paper } from './types'
 import { useDialog } from './Dialog'
-import { dispatchWorkspaceAction } from './workspace-actions'
+import { dispatchWorkspaceAction, OPEN_NOTE_EVENT } from './workspace-actions'
 
 interface Props {
   papers: Paper[]
@@ -128,10 +128,28 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
     const h = (): void => {
       cacheRef.current = new Map()
       runRef.current += 1
+      setSnotesVer((v) => v + 1) // 快速记录 / 独立笔记增删改后同步刷新
     }
     window.addEventListener('cspaper:notes-changed', h)
     return () => window.removeEventListener('cspaper:notes-changed', h)
   }, [])
+
+  // 研究台 / 命令面板 → 打开指定独立笔记并进入编辑，滚动到可见位置
+  useEffect(() => {
+    const open = (event: Event): void => {
+      const noteId = Number((event as CustomEvent<{ noteId?: number }>).detail?.noteId)
+      if (!Number.isInteger(noteId)) return
+      setSnotesVer((v) => v + 1)
+      void window.api.standaloneNotesGet(noteId).then((note) => { setSnBody(note.body_md); setSnEdit(noteId) }).catch(() => undefined)
+    }
+    window.addEventListener(OPEN_NOTE_EVENT, open)
+    return () => window.removeEventListener(OPEN_NOTE_EVENT, open)
+  }, [])
+  useEffect(() => {
+    if (snEdit === null) return
+    const timer = window.setTimeout(() => document.getElementById(`snote-${snEdit}`)?.scrollIntoView({ block: 'center' }), 80)
+    return () => window.clearTimeout(timer)
+  }, [snEdit])
 
   // 分批加载前 limit 篇的笔记与标注（串行分批，逐批上屏）
   useEffect(() => {
@@ -315,7 +333,7 @@ export default function NotesView({ papers, visible, onOpenPaper, onRefresh }: P
         <div className="standalone-notes">
           <div className="libhome-month" style={{ marginBottom: 6 }}>独立笔记</div>
           {snotes.map((n) => (
-            <div key={n.id} className="snote-card">
+            <div key={n.id} id={`snote-${n.id}`} className={`snote-card ${snEdit === n.id ? 'editing' : ''}`}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b className="ellipsis" style={{ flex: 1, fontSize: 13 }}>{n.title}</b>
                 <span className="cat-count">{(n.updated_at || '').slice(5, 16)}</span>

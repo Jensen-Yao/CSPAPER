@@ -1,6 +1,15 @@
-# 当前实施状态（2026-10-29）
+# 当前实施状态（2026-11-27）
 
-**状态：0.21.2 AI 对比表拖动浏览与视觉重构已实现并验证；0.21.1 左栏信息架构修正已发布。完整提升计划仍未全部完成。**此前逐项对照见 [PLAN_ACCEPTANCE.md](./PLAN_ACCEPTANCE.md)。
+**状态：0.22.0 Research OS 已实现并验证——研究台、快速记录、全局搜索、项目与任务看板、对话快捷指令，以及全新的 README / GitHub Pages / 在线演示 / 横幅。**计划见 [V022_RESEARCH_OS_PLAN.md](./V022_RESEARCH_OS_PLAN.md)，此前逐项对照见 [PLAN_ACCEPTANCE.md](./PLAN_ACCEPTANCE.md)。
+
+## v0.22 · Research OS（2026-11-27）
+
+- **研究台**：Paper 模式默认首页，展示继续阅读、阅读队列、今日安排、今日任务、最近笔记与会话、今日专注；数据全部来自当前工作区，空状态不展示假数据。文献侧栏在首页隐藏，导航新增“研究台”入口。
+- **快速记录**：`Ctrl/Cmd + Shift + N` 打开表单，保存为独立笔记并广播 `notes-changed`，研究台与笔记中心即时同步。
+- **全局搜索**：命令面板并行搜索文献、独立笔记、会话与命令；笔记在笔记中心就地打开编辑，会话按类型分别进入文献问答或 Work。
+- **项目与任务**：迁移 011 新增 `research_projects` / `research_tasks`；Work 新增“项目”入口与看板（拖拽换列、完成、编辑、删除、关联文献、交给 Work），今日页汇总到期与逾期任务，研究台可一键定位到对应项目。
+- **对话快捷指令**：总结这篇 / 找证据 / 对比方法 / 生成提纲 / 追问局限，随选中的文献或分类调整措辞。
+- **发布面**：README、GitHub Pages 首页、新的多视图在线演示（`docs/demo/`）、README 与社交横幅全部重做；旧 `demo.html` 自动跳转到新演示。
 
 当前 Work 的 `/plan` 生成可审阅计划但不执行工具；`/goal` 保存全局研究背景并纳入后续 Work 规划。它尚不是有独立状态、暂停/恢复、自动续跑和完成验证的长期目标系统。执行器目前仍以一次生成的静态计划为主，工具结果驱动的持续规划和实时干预也尚待完善。
 
@@ -22,11 +31,11 @@ Work 可显式选择技能并把技能正文快照传给本轮规划、修订和
 | 验证 | 当前结果 |
 |---|---|
 | `npm run typecheck` | 通过（含 tests 工程） |
-| `npm run test:core` | 83 / 83 |
+| `npm run test:core` | 84 / 84（新增项目/任务：工作区隔离、级联删除、关联校验） |
 | `npm run build` | 通过 |
-| `npm run test:ui` | 103 / 103，无 renderer 异常 |
-| `node scripts/probe-css.mjs` | 圆角 17 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
-| `node scripts/landing-test.mjs` | 首页/功能/下载截图与 demo 资源检查通过 |
+| `npm run test:ui` | 126 / 126，无 renderer 异常（新增研究台、快速记录、项目看板、全局搜索回归） |
+| `node scripts/probe-css.mjs` | 圆角 18 档、字号 14 档、important 5、half-px 0、transition-all 0，全绿 |
+| `node scripts/landing-test.mjs` | 首页字体/截图/窄屏、在线演示七视图交互与旧 `demo.html` 跳转检查通过 |
 | `npm run test:mobile` | 5 / 5；测试夹具从 10.9 MB 降至 10.8 KB，翻译响应离线固定，无 renderer 错误 |
 | 生命周期 | 单实例、窗口销毁清理、文件/DB 强制崩溃、托盘恢复 |
 | 真实模型 | Agnes 3.0 Flash / 2.5 Flash 严格 JSON；三文献任务 7 工具、3 笔记、1 对比表 |
@@ -138,6 +147,13 @@ main 与 GitHub Pages 已更新；远端 CI 已通过。此次用户指令为推
 - 表头、序号列与标题列滚动时保持可见，重叠区域增加清晰投影。
 - 工具栏分组、表格密度、行悬停、要点行距、页码角标、空值与选中文献列表视觉重构。
 - 验证：typecheck 通过、生产构建与 CSS gate 通过、Electron UI 回归 103/103；新增上下左右拖动回归。
+
+## 持续迭代：v0.22 Research OS（2026-11-27）
+
+- 研究台、快速记录、全局搜索、项目与任务、对话快捷指令的实现细节见上文“v0.22 · Research OS”。
+- 看板内的拖放会阻止冒泡，窗口级“拖入 PDF 导入”对空 `dataTransfer` 直接忽略，避免内部拖拽触发导入。
+- 发布面：`scripts/capture-screenshots.mjs` 用隔离示例库 + mock 模型服务从真实 Electron 生成截图（WebP）；`scripts/build-site-fonts.py` 生成自托管字体子集；`scripts/build-banner.mjs` 渲染横幅；`scripts/landing-test.mjs` 验证首页与演示。
+- 验证：typecheck 通过；核心回归 84/84；生产构建通过；CSS gate 通过；Electron UI 回归 126/126、无 renderer 异常；落地页与演示验证通过。
 
 ## 证据
 

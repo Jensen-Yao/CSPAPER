@@ -3,67 +3,367 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CSPAPER · 本地优先的中文 AI 文献工作台</title>
-<meta name="description" content="CSPAPER 是开源、本地优先的中文科研文献工作台：PDF 精读、可溯源问答、科研 Agent、今日科研台、科研日历、阅读专注、多文献对比、Zotero 迁移与知识网络。">
-<meta property="og:title" content="CSPAPER · 本地优先的中文 AI 文献工作台">
-<meta property="og:description" content="PDF 精读、可溯源问答、科研 Agent、今日科研台、科研日历、阅读专注、多文献对比、Zotero 迁移与知识网络。">
-<meta property="og:image" content="./icon.png">
-<link rel="icon" type="image/png" href="./icon.png">
-<style>
-:root{--ink:#141118;--paper:#f7f2ea;--paper2:#fffdf8;--line:#ded2c2;--text:#251f20;--muted:#6f6160;--red:#9e3b2f;--red2:#c75d4d;--blue:#1558c0;--gold:#a87528;--shadow:0 24px 70px rgba(58,38,24,.14);--radius:18px;font-family:"Inter","HarmonyOS Sans SC","MiSans","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--paper);color:var(--text);line-height:1.72;overflow-x:hidden}a{color:inherit;text-decoration:none}img{max-width:100%;display:block}.shell{width:min(1180px,calc(100% - 40px));margin:auto}.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border:1px solid transparent;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s}.primary{background:linear-gradient(135deg,#8d3125,#c75d4d);color:#fff;box-shadow:0 12px 30px rgba(158,59,47,.24)}.primary:hover{transform:translateY(-2px)}.ghost{border-color:var(--line);background:rgba(255,255,255,.62);color:var(--text)}.ghost:hover{border-color:var(--red);color:var(--red)}
-nav{position:sticky;top:0;z-index:20;background:rgba(247,242,234,.86);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}.nav{display:flex;align-items:center;gap:18px;height:68px}.brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:.2px}.brand img{width:34px;height:34px}.nav .links{margin-left:auto;display:flex;gap:20px;font-size:14px;color:var(--muted)}.nav .links a:hover{color:var(--red)}@media(max-width:760px){.nav .links{display:none}}
-.hero{position:relative;padding:78px 0 54px}.hero-grid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:48px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fffaf1;color:var(--red);font-size:12px;font-weight:750}.hero h1{margin:20px 0 12px;font-family:Georgia,"Times New Roman","Songti SC",serif;font-size:clamp(36px,5.5vw,61px);line-height:1.08}.hero h1 em{font-style:normal;color:var(--red)}.lede{color:var(--muted);font-size:17px;max-width:610px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px;color:var(--muted);font-size:12px}.meta span{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:#fffaf1}
-.hero-shot{position:relative}.hero-shot img{border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}.float{position:absolute;padding:12px 14px;border:1px solid var(--line);background:rgba(255,253,248,.94);border-radius:14px;box-shadow:var(--shadow);font-size:12px}.float.a{left:-24px;bottom:34px}.float.b{right:-16px;top:30px}.float b{display:block;font-size:16px;color:var(--red)}@media(max-width:900px){.hero-grid{grid-template-columns:1fr}.float{display:none}}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}.stat{background:#fffaf0;padding:22px;text-align:center}.stat b{display:block;font-size:28px;color:var(--red)}.stat span{font-size:12px;color:var(--muted)}@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
-section{padding:76px 0}.section-head{max-width:690px;margin-bottom:34px}.section-head .k{color:var(--red);font-size:12px;font-weight:800;letter-spacing:2.4px}.section-head h2{font-family:Georgia,"Songti SC",serif;font-size:clamp(27px,4vw,40px);margin:8px 0 10px}.section-head p{color:var(--muted)}
-.features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.feature{background:var(--paper2);border:1px solid var(--line);border-radius:16px;padding:24px;transition:.2s}.feature:hover{transform:translateY(-4px);border-color:#d5b6a6;box-shadow:var(--shadow)}.feature .ico{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#f5e6db;color:var(--red);font-size:20px;margin-bottom:15px}.feature h3{font-size:17px}.feature p{margin-top:8px;color:var(--muted);font-size:14px}.feature b{color:var(--red)}@media(max-width:900px){.features{grid-template-columns:1fr 1fr}}@media(max-width:620px){.features{grid-template-columns:1fr}}
-.workflow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;counter-reset:flow}.step{position:relative;background:#fffaf0;border:1px solid var(--line);border-radius:14px;padding:22px 16px;text-align:center;font-size:13px}.step:before{counter-increment:flow;content:counter(flow);display:block;width:30px;height:30px;line-height:30px;margin:0 auto 10px;border-radius:50%;background:var(--red);color:#fff;font-weight:800}.step b{display:block;margin-bottom:5px}@media(max-width:1150px){.workflow{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:720px){.workflow{grid-template-columns:1fr}}
-.gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.shot{background:var(--paper2);border:1px solid var(--line);border-radius:16px;overflow:hidden}.shot img{aspect-ratio:16/10;object-fit:cover;border-bottom:1px solid var(--line)}.caption{padding:14px 16px}.caption b{display:block}.caption span{font-size:12px;color:var(--muted)}@media(max-width:760px){.gallery{grid-template-columns:1fr}}
-.dark{background:#151118;color:#f3eeea}.dark .section-head p{color:#a79fa7}.dark .section-head .k{color:#e48571}.evidence{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.proof{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);border-radius:14px;padding:20px}.proof b{display:block;font-size:22px}.proof b{color:#f4bbb8}.proof span{font-size:13px;color:#b9b1b8}.note{margin-top:22px;color:#a79fa7;font-size:12px}
-.downloads{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.download{background:var(--paper2);border:1px solid var(--line);border-radius:18px;padding:28px;text-align:center;transition:.2s}.download:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:#d5b6a6}.download .os{font-size:34px}.download h3{margin:12px 0 6px}.download p{font-size:13px;color:var(--muted)}@media(max-width:760px){.downloads{grid-template-columns:1fr}}
-footer{padding:46px 0;color:var(--muted);font-size:13px}.foot{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.foot a:hover{color:var(--red)}
-</style>
+<title>CSPAPER · 本地优先的科研文献工作台 · Research OS</title>
+<meta name="description" content="CSPAPER 把 PDF 精读、划词翻译、可溯源问答、项目任务、科研日历和 Work 智能体收进同一个本地工作台。今天读什么、问什么、推进什么，打开就知道。">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f4f1ea">
+<link rel="canonical" href="https://jensen-yao.github.io/CSPAPER/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CSPAPER">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="CSPAPER · 本地优先的科研文献工作台">
+<meta property="og:description" content="PDF 精读、可溯源问答、项目任务与 Work 智能体，在同一个本地工作台里闭环。">
+<meta property="og:image" content="https://jensen-yao.github.io/CSPAPER/assets/og-banner.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CSPAPER · 本地优先的科研文献工作台">
+<meta name="twitter:description" content="PDF 精读、可溯源问答、项目任务与 Work 智能体，在同一个本地工作台里闭环。">
+<meta name="twitter:image" content="https://jensen-yao.github.io/CSPAPER/assets/og-banner.png">
+<link rel="icon" type="image/png" href="./assets/favicon.png">
+<link rel="preload" as="font" type="font/woff2" href="./assets/fonts/serif-sc-600.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="./assets/fonts/sans-sc-400.woff2" crossorigin>
+<link rel="stylesheet" href="./assets/fonts.css">
+<link rel="stylesheet" href="./assets/landing.css">
+<script>document.documentElement.classList.add('js')</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"CSPAPER","operatingSystem":"Windows, macOS, Android","applicationCategory":"EducationalApplication","license":"https://opensource.org/licenses/Apache-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"url":"https://jensen-yao.github.io/CSPAPER/"}</script>
 </head>
 <body>
-<nav><div class="shell nav"><a class="brand" href="./"><img src="./icon.png" alt="CSPAPER">CSPAPER</a><div class="links"><a href="#features">功能</a><a href="#workflow">Work</a><a href="#gallery">界面</a><a href="#evidence">验证</a><a href="./demo.html">演示</a><a href="https://github.com/Jensen-Yao/CSPAPER">GitHub</a></div></div></nav>
-
-<header class="hero"><div class="shell hero-grid">
-  <div>
-    <span class="eyebrow">v0.21 · 科研工作台</span>
-    <h1>把文献库变成<br><em>可审计的科研工作台</em></h1>
-    <p class="lede">CSPAPER 0.21 将 PDF 精读、划词翻译、全库 RAG、多文献对比、科研 Agent、今日科研台和科研日历接入同一套持久会话。每个结论都能回到论文页、精确选区、笔记或 Web 来源。</p>
-    <div class="actions"><a class="btn primary" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">下载安装包</a><a class="btn ghost" href="./demo.html">进入在线演示</a><a class="btn ghost" href="https://github.com/Jensen-Yao/CSPAPER">查看源码</a></div>
-    <div class="meta"><span>Windows / macOS / Android</span><span>本地 SQLite + Markdown + PDF</span><span>任意 OpenAI 兼容接口</span><span>Apache-2.0</span></div>
+<nav class="nav" id="nav" aria-label="主导航">
+  <div class="shell nav-inner">
+    <a class="brand" href="./"><img src="./assets/brand-128.png" width="28" height="28" alt="">CSPAPER<i aria-hidden="true"></i></a>
+    <div class="nav-links">
+      <a href="#capabilities">能力</a>
+      <a href="#workflow">工作流</a>
+      <a href="#work">Work</a>
+      <a href="#gallery">界面</a>
+      <a href="#download">下载</a>
+    </div>
+    <div class="nav-actions">
+      <a class="btn btn-quiet btn-sm" href="./demo/">在线演示</a>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/Jensen-Yao/CSPAPER" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">下载 v0.22</a>
+    </div>
   </div>
-  <div class="hero-shot"><img src="./screenshots/work.png" alt="CSPAPER Work 今日科研台"><div class="float a"><b>今日科研</b>日程 · 截止 · 专注</div><div class="float b"><b>科研日历</b>月 / 周 / 日 / 议程</div></div>
-</div></header>
+</nav>
 
-<div class="shell"><div class="stats"><div class="stat"><b>103/103</b><span>真实 Electron UI 回归</span></div><div class="stat"><b>83/83</b><span>核心与迁移回归</span></div><div class="stat"><b>7</b><span>真实模型任务工具调用</span></div><div class="stat"><b>本地</b><span>数据与 API Key 优先</span></div></div></div>
+<header class="hero">
+  <div class="shell">
+    <span class="eyebrow">v0.22 <span class="sep">/</span> Research OS <span class="sep">/</span> 本地优先</span>
+    <h1>文献读完，<br><em>研究才刚开始。</em></h1>
+    <p class="lede">CSPAPER 是本地优先的科研文献工作台。PDF 精读、划词翻译、可溯源问答、项目任务和 Work 智能体在同一个窗口里——打开应用的第一屏，就知道今天读什么、问什么、推进什么。</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">下载安装包</a>
+      <a class="btn btn-ghost" href="./demo/">进入在线演示</a>
+      <a class="btn btn-quiet" href="https://github.com/Jensen-Yao/CSPAPER" target="_blank" rel="noopener">在 GitHub 上查看源码</a>
+    </div>
+    <div class="hero-meta">
+      <span>Windows · macOS · Android</span>
+      <span>SQLite + Markdown + PDF</span>
+      <span>任意 OpenAI 兼容模型</span>
+      <span>Apache-2.0</span>
+    </div>
+    <figure class="hero-shot reveal">
+      <img src="./screenshots/hub.webp" width="2880" height="1800" alt="CSPAPER 研究台：继续阅读、阅读队列、今日安排、今日任务与最近笔记" fetchpriority="high">
+      <figcaption class="hero-caption">
+        <div><b>研究台</b>打开就是今天：继续阅读、阅读队列、今日安排与到期任务。</div>
+        <div><b>记住位置</b>每篇 PDF 记住读到第几页，队列里一键开始、已读或稍后读。</div>
+        <div><b>快速记录</b><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>N</kbd> 随时记一条想法，自动进入笔记中心。</div>
+      </figcaption>
+    </figure>
+    <div class="proof">
+      <div><b>11</b><span>次数据库迁移，逐版校验、可回滚</span></div>
+      <div><b>84 / 84</b><span>核心与迁移回归测试</span></div>
+      <div><b>126 / 126</b><span>真实 Electron 界面回归，无渲染异常</span></div>
+      <div><b>3</b><span>个平台：Windows、macOS、Android</span></div>
+    </div>
+  </div>
+</header>
 
-<section id="features"><div class="shell"><div class="section-head"><div class="k">CAPABILITIES</div><h2>从导入到产出一站完成</h2><p>CSPAPER 不只是 PDF 阅读器，而是把阅读、证据、写作与 Agent 产物连接在同一个本地数据模型里。</p></div>
-<div class="features">
-<article class="feature"><div class="ico">📖</div><h3>沉浸 PDF 阅读</h3><p>多标签、缩略图、目录、页内查找、续读记忆、高亮与批注；划词即可翻译、解释或加入统一对话。</p></article>
-<article class="feature"><div class="ico">⏱</div><h3>阅读专注与提醒</h3><p>读文献专属番茄钟、短/长休息、喝水与活动提醒；离开阅读自动暂停，专注流水进入今日汇总。</p></article>
-<article class="feature"><div class="ico">📅</div><h3>今日科研台</h3><p>当天安排、临近截止、最近会话、可继续阅读 PDF 与真实专注数据；科研日历支持月 / 周 / 日 / 议程和重复日程。</p></article>
-<article class="feature"><div class="ico">💬</div><h3>可溯源问答</h3><p>本地向量 + BM25 混合检索，回答引用绑定 Source；点击角标回到 <b>第 N 页 + 精确文本</b>。</p></article>
-<article class="feature"><div class="ico">🧠</div><h3>题录 / 原文状态</h3><p>Zotero 无 PDF 条目明确显示“题录 · 无原文”。模型只能基于元数据回答，不会假装读过全文；可探测 OpenAlex OA 原文，确认后安全升级。</p></article>
-<article class="feature"><div class="ico">📊</div><h3>多文献对比</h3><p>三篇或多篇文献按研究问题、方法、数据、结果、局限自动对比，页码出处可回跳并导出 MD/CSV。</p></article>
-<article class="feature"><div class="ico">🕸</div><h3>知识网络</h3><p>相似网络、关键词共现、作者合作、主题星系与知识库；支持滚轮缩放和画布平移。</p></article>
-<article class="feature"><div class="ico">🔌</div><h3>Zotero 与中文生态</h3><p>本地 Zotero 迁移、标签/笔记/标注、OpenAlex、DOI/arXiv、知网与万方题录导入。</p></article>
-<article class="feature"><div class="ico">🔐</div><h3>权限与恢复</h3><p>Agent 写入前审批；文件操作带日志、摘要与备份，崩溃后进入 rollback / needs review 的明确状态。</p></article>
-<article class="feature"><div class="ico">🧩</div><h3>模型能力档案</h3><p>多服务商、同模型名精确绑定；思考等级跟随模型能力，支持 minimal / xhigh / max / 自定义档位。</p></article>
-<article class="feature"><div class="ico">📝</div><h3>写作与引文</h3><p>笔记模板、思维导图、GB/T 7714 与万种 CSL、Word/WPS 引文助手、BibTeX 导出。</p></article>
-</div></div></section>
+<main>
+  <section class="section" id="capabilities">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">Capabilities · 能力</div>
+          <h2>从导入到产出，<br>一条线走完。</h2>
+          <p>阅读、证据、笔记、日程和智能体产物共用同一套本地数据。每个结论都能回到论文页、精确选区、笔记或网页来源。</p>
+        </div>
+        <div class="idx">01 / 06</div>
+      </div>
+      <div class="caps reveal">
+        <a class="cap" href="./demo/#hub">
+          <span class="n">01</span>
+          <h3>研究台</h3>
+          <p>打开就知道今天做什么：继续阅读、阅读队列、今日日程与到期任务、最近笔记与会话，全部来自当前工作区的真实记录。</p>
+          <span class="tag">PAPER</span>
+        </a>
+        <a class="cap" href="./demo/#reader">
+          <span class="n">02</span>
+          <h3>PDF 精读</h3>
+          <p>多标签、目录、页内查找、续读记忆；划词即翻译、解释或高亮。读文献专属番茄钟与喝水、活动提醒，离开阅读自动暂停。</p>
+          <span class="tag">PAPER</span>
+        </a>
+        <a class="cap" href="./demo/#chat">
+          <span class="n">03</span>
+          <h3>可溯源问答</h3>
+          <p>对当前论文、选区、笔记、集合或全库提问。回答里的每个关键论断都带页码引用，点一下回到原文并高亮精确文本。</p>
+          <span class="tag">PAPER</span>
+        </a>
+        <a class="cap" href="./demo/#projects">
+          <span class="n">04</span>
+          <h3>项目与任务</h3>
+          <p>把阅读、对话和成果组织成研究项目。看板拖拽换列、截止日期、关联文献，今天到期的任务会同时出现在研究台与 Work。</p>
+          <span class="tag">WORK</span>
+        </a>
+        <a class="cap" href="./demo/#work">
+          <span class="n">05</span>
+          <h3>Work 智能体</h3>
+          <p>给一个目标，它先列出可审阅的计划，再检索、读原文、写笔记、做对比表。权限、技能与逐工具审批都在你手里。</p>
+          <span class="tag">WORK</span>
+        </a>
+        <a class="cap" href="./demo/#compare">
+          <span class="n">06</span>
+          <h3>多文献对比</h3>
+          <p>按研究问题、方法、结论等维度从原文提取要点并标注页码，生成可整体拖动浏览、可导出的对比表。</p>
+          <span class="tag">PAPER</span>
+        </a>
+        <a class="cap" href="#download">
+          <span class="n">07</span>
+          <h3>科研日历与专注</h3>
+          <p>月、周、日与议程视图，具体时间与重复日程；阅读、短休、长休的专注流水按工作区汇总进今日。</p>
+          <span class="tag">WORK</span>
+        </a>
+        <a class="cap" href="#download">
+          <span class="n">08</span>
+          <h3>本地优先与迁移</h3>
+          <p>文献、笔记、数据库都在你自己的文件夹里。一键从 Zotero 迁移，DOI、arXiv、知网等站点脚本与浏览器插件随时补充。</p>
+          <span class="tag">DATA</span>
+        </a>
+      </div>
+    </div>
+  </section>
 
-<section id="workflow" style="background:#fffaf0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)"><div class="shell"><div class="section-head"><div class="k">RESEARCH WORKBENCH</div><h2>会做事，也会安排证据</h2><p>Work 不只是聊天：模型先给出计划，用户确认后执行工具，所有运行事件、来源和产物持久保存；今日台与科研日历把研究安排接到真实阅读和会话。</p></div><div class="workflow"><div class="step"><b>今日安排</b>日程 / 截止 / 专注</div><div class="step"><b>研究目标</b>选定文献或集合</div><div class="step"><b>计划确认</b>可编辑 / 可拒绝</div><div class="step"><b>工具执行</b>读原文、写笔记、建对比</div><div class="step"><b>审批与修订</b>风险动作单独确认</div><div class="step"><b>产物入库</b>重启后继续追问</div></div></div></section>
+  <section class="section" id="workflow">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">Workflow · 工作流</div>
+          <h2>一天的研究，这样推进。</h2>
+          <p>不是把功能堆在一起，而是让每一步都接得上：读到的变成问得出的，问到的变成记得住的，记下的变成能交付的。</p>
+        </div>
+        <div class="idx">02 / 06</div>
+      </div>
+      <div class="flow reveal">
+        <div class="step"><span class="n">01</span><h3>今天做什么</h3><p>研究台汇总继续阅读、阅读队列、日程与到期任务。</p></div>
+        <div class="step"><span class="n">02</span><h3>读什么</h3><p>PDF 精读，划词即译；番茄钟与喝水提醒帮你保持专注。</p></div>
+        <div class="step"><span class="n">03</span><h3>问什么</h3><p>对当前论文或全库提问，回答带页码，点一下回到原文。</p></div>
+        <div class="step"><span class="n">04</span><h3>记什么</h3><p>高亮、笔记与快速记录自动归档，随时从研究台找回。</p></div>
+        <div class="step"><span class="n">05</span><h3>产出什么</h3><p>对比表、综述提纲、项目任务；交给 Work 继续推进。</p></div>
+      </div>
+      <div class="duo">
+        <figure class="figure reveal">
+          <img src="./screenshots/reader.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="阅读器：PDF 划词高亮与右侧问答，回答带页码引用">
+          <figcaption><span><b>阅读器</b> · 划词高亮，侧栏问答直接引用当前论文</span><span>Paper</span></figcaption>
+        </figure>
+        <figure class="figure reveal">
+          <img src="./screenshots/chat.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="文献问答：跨全库提问，回答含表格与来源引用">
+          <figcaption><span><b>文献问答</b> · 跨库提问，表格与要点都标注来源</span><span>Paper</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
 
-<section id="gallery"><div class="shell"><div class="section-head"><div class="k">INTERFACE</div><h2>为长时间阅读设计的界面</h2><p>统一的品牌系统、可拖拽分栏、模型能力控制、深浅主题与窄窗布局。</p></div><div class="gallery"><figure class="shot"><img src="./screenshots/reader.png" alt="PDF 阅读"><figcaption class="caption"><b>阅读与侧栏问答</b><span>高亮 · 翻译 · 精确选区引用</span></figcaption></figure><figure class="shot"><img src="./screenshots/work.png" alt="Work Agent"><figcaption class="caption"><b>Work 科研工作台</b><span>今日 · 日历 · 计划 · 工具 · 产物</span></figcaption></figure><figure class="shot"><img src="./screenshots/graph.png" alt="知识网络"><figcaption class="caption"><b>知识网络</b><span>滚轮缩放 · 平移 · 五种视图</span></figcaption></figure><figure class="shot"><img src="./screenshots/providers.png" alt="模型配置"><figcaption class="caption"><b>模型能力档案</b><span>多服务商 · 自定义推理等级</span></figcaption></figure></div></div></section>
+  <section class="section dark" id="work">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">Work · 智能体</div>
+          <h2>给一个目标，<br>它先列计划，再动手。</h2>
+          <p>Work 把“读、查、写”变成可审阅的步骤。每一步工具调用都能展开查看，产物写回你的文献库，重启后继续。</p>
+        </div>
+        <div class="idx">03 / 06</div>
+      </div>
+      <div class="work-grid">
+        <ul class="work-list reveal">
+          <li><span class="n">01</span><div><b>先计划，后执行</b><span>计划可审阅、可修改；执行中每一步检索、读写都有记录。</span></div></li>
+          <li><span class="n">02</span><div><b>真实产物</b><span>对比表、笔记、综述直接写回文献库，从对话里一键打开。</span></div></li>
+          <li><span class="n">03</span><div><b>可控</b><span>技能与模板、模型与思考强度、执行权限与逐工具审批。</span></div></li>
+          <li><span class="n">04</span><div><b>可自动化</b><span>定时任务与每日文献日报，失败自动重试并保留恢复点。</span></div></li>
+        </ul>
+        <div class="work-shot reveal">
+          <img src="./screenshots/work-dark.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="Work 任务视图：计划、工具调用与最终报告（深色主题）">
+        </div>
+      </div>
+    </div>
+  </section>
 
-<section id="evidence" class="dark"><div class="shell"><div class="section-head"><div class="k">VERIFICATION</div><h2>发布前不是“看起来能用”</h2><p>本机完成源码、打包应用、安装器生命周期、强制崩溃恢复与真实模型链路验证。</p></div><div class="evidence"><div class="proof"><b>83/83</b><span>核心、迁移、运行时、工具与数据回归</span></div><div class="proof"><b>103/103</b><span>真实 Electron UI 回归通过，无 renderer 异常</span></div><div class="proof"><b>NSIS</b><span>首装 · 启动 · 升级 · 卸载 · 残留检查</span></div><div class="proof"><b>真实模型</b><span>Agnes 严格 JSON 与三文献工具链</span></div><div class="proof"><b>10k</b><span>万篇列表 86.45ms，事件循环最大 94.33ms</span></div><div class="proof"><b>迁移备份</b><span>WAL 纳入备份，历史迁移 checksum 拒绝漂移</span></div></div><p class="note">最新证据目录：design-plans/work-upgrade-2026-10-29/；发布基线证据：design-plans/execution-review-2026-10-29/。CI 与安装器发布由 GitHub Actions 自动执行。</p></div></section>
+  <section class="section" id="gallery">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">Interface · 界面</div>
+          <h2>每一屏，都为<br>长时间使用而设计。</h2>
+          <p>统一的字体、间距与状态色，深浅两套主题；侧栏与面板都能拖动调宽，标签、集合这些附属区随时可以收起。</p>
+        </div>
+        <div class="idx">04 / 06</div>
+      </div>
+      <div class="gallery">
+        <figure class="figure reveal">
+          <img src="./screenshots/projects.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="Work 项目与任务看板">
+          <figcaption><span><b>项目看板</b> · 待办 / 进行中 / 已完成，拖拽换列</span><span>Work</span></figcaption>
+        </figure>
+        <figure class="figure reveal">
+          <img src="./screenshots/compare.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="多文献对比表">
+          <figcaption><span><b>对比表</b> · 按维度提取要点，页码角标回到原文</span><span>Paper</span></figcaption>
+        </figure>
+        <figure class="figure reveal">
+          <img src="./screenshots/today.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="Work 今日科研台与任务">
+          <figcaption><span><b>今日科研</b> · 专注、日程、继续阅读与到期任务</span><span>Work</span></figcaption>
+        </figure>
+        <figure class="figure reveal">
+          <img src="./screenshots/notes.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="笔记中心">
+          <figcaption><span><b>笔记中心</b> · 全库笔记、划词标注与独立笔记</span><span>Paper</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
 
-<section id="download"><div class="shell"><div class="section-head"><div class="k">DOWNLOAD</div><h2>选择你的平台</h2><p>安装包由 GitHub Actions 构建并附加到 Release；也可以克隆仓库自行构建。</p></div><div class="downloads"><a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest"><div class="os">🪟</div><h3>Windows</h3><p>Windows 10/11 x64 NSIS</p><span class="btn primary" style="margin-top:16px">下载 exe</span></a><a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest"><div class="os">🍎</div><h3>macOS</h3><p>Apple Silicon / Intel DMG</p><span class="btn primary" style="margin-top:16px">下载 dmg</span></a><a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest"><div class="os">🤖</div><h3>Android</h3><p>Android 7.0+ 阅读端 APK</p><span class="btn primary" style="margin-top:16px">下载 APK</span></a></div></div></section>
+  <section class="section" id="principles">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">Principles · 原则</div>
+          <h2>你的文献库，<br>始终是你的。</h2>
+        </div>
+        <div class="idx">05 / 06</div>
+      </div>
+      <div class="principles reveal">
+        <div class="principle">
+          <div class="k">Local first</div>
+          <h3>本地优先</h3>
+          <p>PDF、Markdown 笔记、SQLite 与向量索引都保存在本机。浏览器插件、Word 引文助手和桌面端只通过 127.0.0.1 通信；文件写入带操作日志与备份，崩溃后不会静默重放。</p>
+        </div>
+        <div class="principle">
+          <div class="k">Traceable</div>
+          <h3>可溯源</h3>
+          <p>回答的每个关键论断都绑定到持久化的来源：页码、精确选区、笔记或网页。原文改动后会提示版本差异；题录条目只用于元数据，不会被当成全文结论。</p>
+        </div>
+        <div class="principle">
+          <div class="k">Your model</div>
+          <h3>模型自选</h3>
+          <p>任意 OpenAI 兼容接口，内置智谱、DeepSeek、通义、Kimi、OpenAI、Gemini、Ollama 等预设。思考强度跟随每个模型的能力档案，可在对话里直接新增档位。</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<footer><div class="shell foot"><div><b>CSPAPER</b> · Apache-2.0 · 本地优先，不做云服务</div><div><a href="./demo.html">在线演示</a> · <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/docs/ARCHITECTURE.md">架构</a> · <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/docs/IMPLEMENTATION_STATUS.md">状态</a> · <a href="https://github.com/Jensen-Yao/CSPAPER/releases">下载</a></div></div></footer>
+  <section class="section" id="download">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">Download · 下载</div>
+          <h2>装好就能用。</h2>
+          <p>安装包由 GitHub Actions 构建并发布到 Releases。首次启动选择文献库文件夹、粘贴一个模型 Key 即可；也可以直接从源码运行。</p>
+        </div>
+        <div class="idx">06 / 06</div>
+      </div>
+      <div class="downloads reveal">
+        <a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">
+          <span class="os">Windows</span>
+          <span class="meta">Windows 10 / 11 · x64 · NSIS</span>
+          <p>安装、升级与卸载流程纳入自动化回归。首次运行如遇 SmartScreen，选择“仍要运行”。</p>
+          <span class="link">下载 Setup 安装包</span>
+        </a>
+        <a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">
+          <span class="os">macOS</span>
+          <span class="meta">Apple Silicon · Intel · DMG</span>
+          <p>提供 arm64 与 x64 两种镜像。首次打开可右键应用，选择“打开”。</p>
+          <span class="link">下载 DMG</span>
+        </a>
+        <a class="download" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">
+          <span class="os">Android</span>
+          <span class="meta">Android 7.0+ · APK</span>
+          <p>导出移动端数据包后在手机上阅读与记笔记，再把数据合并回桌面端。</p>
+          <span class="link">下载 APK</span>
+        </a>
+      </div>
+      <div class="terminal reveal" aria-label="从源码运行">
+<div><span class="c"># 从源码运行（Node 20+）</span></div>
+<div><span class="p">$</span> git clone https://github.com/Jensen-Yao/CSPAPER.git</div>
+<div><span class="p">$</span> cd CSPAPER <span class="c">&amp;&amp;</span> npm ci</div>
+<div><span class="p">$</span> npm run rebuild</div>
+<div><span class="p">$</span> npm run dev</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="shell">
+      <div class="section-head reveal">
+        <div>
+          <div class="k">FAQ · 常见问题</div>
+          <h2>使用之前，<br>你可能想问。</h2>
+        </div>
+      </div>
+      <div class="faq reveal">
+        <details open>
+          <summary>我的文献和数据会上传到哪里？</summary>
+          <p>文献、PDF、笔记、会话、向量索引和工具记录都保存在本机，默认放在你选择的文献库文件夹与用户数据目录。只有在发起提问或翻译时，相关的文本片段才会发送给你配置的模型服务；不配置 Key 也能阅读、做笔记和整理文献。</p>
+        </details>
+        <details>
+          <summary>支持哪些模型服务？</summary>
+          <p>任何 OpenAI 兼容接口都可以接入，内置智谱、DeepSeek、通义、Kimi、OpenAI、Gemini、OpenRouter、Ollama、LM Studio 等预设。每个服务商独立保存 Key、Base URL、模型列表与能力档案；嵌入默认可用本地模型，不必上传数据。</p>
+        </details>
+        <details>
+          <summary>能直接从 Zotero 迁移吗？</summary>
+          <p>可以。CSPAPER 能读取 Zotero 的数据目录，把分类、标签、笔记与 PDF 附件迁移进本地文献库；没有 PDF 的条目保留为“题录”，并标注“无原文”，拿到 PDF 后替换文件即可升级为全文。</p>
+        </details>
+        <details>
+          <summary>回答里的引用可信吗？</summary>
+          <p>回答只依据检索到的来源与上下文生成，每个关键论断后紧跟引用角标。点开角标会跳回论文页并高亮精确文本；原文被修改后会提示版本差异，来源不足时模型会明确说明而不是编造。</p>
+        </details>
+        <details>
+          <summary>CSPAPER 免费吗？</summary>
+          <p>CSPAPER 以 Apache-2.0 许可开源，安装包免费。模型调用费用取决于你选择的服务商，本地模型（如 Ollama、LM Studio）不产生费用。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="shell foot-grid">
+    <div>
+      <a class="brand" href="./"><img src="./assets/brand-128.png" width="24" height="24" alt="">CSPAPER<i aria-hidden="true"></i></a>
+      <p style="margin:12px 0 0;max-width:460px">面向中文科研场景的本地 AI 文献工作台。PDF 渲染由 pdf.js 提供，AI 运行时基于 Vercel AI SDK，学术元数据来自 Crossref、OpenAlex 与 arXiv 公开接口。</p>
+    </div>
+    <div class="foot-links">
+      <a href="https://github.com/Jensen-Yao/CSPAPER" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Jensen-Yao/CSPAPER/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">架构文档</a>
+      <a href="./demo/">在线演示</a>
+      <a href="https://github.com/Jensen-Yao/CSPAPER/blob/main/LICENSE" target="_blank" rel="noopener">Apache-2.0</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var nav = document.getElementById('nav')
+  var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 8) }
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll()
+  var items = document.querySelectorAll('.reveal')
+  if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    items.forEach(function (item) { item.classList.add('in') }); return
+  }
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) { entry.target.classList.add('in'); observer.unobserve(entry.target) }
+    })
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+  items.forEach(function (item) { observer.observe(item) })
+})()
+</script>
 </body>
 </html>

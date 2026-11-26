@@ -387,6 +387,12 @@ const api = {
   calendarRemove: (id: number) => ipcRenderer.invoke('calendar:remove', id),
     focusLog: (input: import('../shared/calendar').FocusLogInput) => ipcRenderer.invoke('focus:log', input),
     focusSummary: (date: string) => ipcRenderer.invoke('focus:summary', date),
+    projectsList: () => ipcRenderer.invoke('projects:list'),
+    projectsSave: (input: import('../shared/projects').ProjectInput, id?: number) => ipcRenderer.invoke('projects:save', input, id),
+    projectsRemove: (id: number) => ipcRenderer.invoke('projects:remove', id),
+    tasksList: (projectId?: number) => ipcRenderer.invoke('tasks:list', projectId),
+    tasksSave: (input: import('../shared/projects').TaskInput, id?: number) => ipcRenderer.invoke('tasks:save', input, id),
+    tasksRemove: (id: number) => ipcRenderer.invoke('tasks:remove', id),
 
   // ---------- 内置浏览器 + 一键安装（v0.7） ----------
   webSavePage: (url: string, category?: string) => ipcRenderer.invoke('web:save-page', url, category),

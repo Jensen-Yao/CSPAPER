@@ -15,6 +15,9 @@ import TaskChatWorkspace from './features/chat/TaskChatWorkspace'
 import { conversationStore } from './features/chat/conversation-store'
 import { useDialog } from './Dialog'
 import CalendarPane from './CalendarPane'
+import ProjectsPane from './ProjectsPane'
+import { OPEN_PROJECTS_EVENT, OPEN_WORK_CONVERSATION_EVENT, TASKS_CHANGED_EVENT, notifyTasksChanged } from './workspace-actions'
+import { taskInputOf, type ResearchTask } from '../../shared/projects'
 import type { CalendarEvent, FocusSummary } from '../../shared/calendar'
 
 interface PlanStep {
@@ -154,7 +157,8 @@ function workedMsOf(task: TaskFull, now: number): number {
 }
 
 export default function WorkbenchView({ visible, papers, models, profiles, onOpenPaper, onOpenCompare, onOpenNotes, onOpenSettings }: Props): JSX.Element | null {
-  const [nav, setNav] = useState<'today' | 'tasks' | 'skills' | 'auto' | 'mcp' | 'calendar'>('today')
+  const [nav, setNav] = useState<'today' | 'projects' | 'tasks' | 'skills' | 'auto' | 'mcp' | 'calendar'>('today')
+  const [focusProjectId, setFocusProjectId] = useState<number | null>(null)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [selId, setSelId] = useState<string | null>(null)
   const [task, setTask] = useState<TaskFull | null>(null)
@@ -447,6 +451,9 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
       setTimeout(() => inputRef.current?.focus(), 30)
       return true
     }
+    if (name === 'projects') { setNav('projects'); setGoal(''); return true }
+    if (name === 'today') { setNav('today'); setGoal(''); return true }
+    if (name === 'calendar') { setNav('calendar'); setGoal(''); return true }
     if (name === 'skills') { setNav('skills'); setGoal(''); return true }
     if (name === 'mcp') { setNav('mcp'); setGoal(''); return true }
     if (name === 'cron') { setNav('auto'); setGoal(''); return true }
@@ -456,6 +463,24 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
     }
     return false
   }
+
+  // 研究台 / 命令面板发来的打开请求：定位项目，或直接载入某条 Work 会话
+  const loadChatTaskRef = useRef(loadChatTask)
+  loadChatTaskRef.current = loadChatTask
+  useEffect(() => {
+    const onProjects = (event: Event): void => {
+      const projectId = (event as CustomEvent<{ projectId?: number }>).detail?.projectId
+      setFocusProjectId(Number.isInteger(projectId) ? Number(projectId) : null)
+      setNav('projects')
+    }
+    const onConversation = (event: Event): void => {
+      const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
+      if (conversationId) void loadChatTaskRef.current(conversationId)
+    }
+    window.addEventListener(OPEN_PROJECTS_EVENT, onProjects)
+    window.addEventListener(OPEN_WORK_CONVERSATION_EVENT, onConversation)
+    return () => { window.removeEventListener(OPEN_PROJECTS_EVENT, onProjects); window.removeEventListener(OPEN_WORK_CONVERSATION_EVENT, onConversation) }
+  }, [])
 
   const submit = (): void => {
     const g = goal.trim()
@@ -666,6 +691,9 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
           <button className={`wb-nav-item ${nav === 'today' ? 'on' : ''}`} onClick={() => setNav('today')}>
             <span className="wb-nav-icon"><Icon.Calendar /></span><span className="wb-nav-label">今日</span>
           </button>
+          <button className={`wb-nav-item ${nav === 'projects' ? 'on' : ''}`} onClick={() => setNav('projects')}>
+            <span className="wb-nav-icon">{<Icon.Folder />}</span><span className="wb-nav-label">项目</span>
+          </button>
           <button className={`wb-nav-item ${nav === 'auto' ? 'on' : ''}`} onClick={() => setNav('auto')}>
             <span className="wb-nav-icon">{<Icon.Clock />}</span>
             <span className="wb-nav-label">自动化</span>
@@ -756,9 +784,10 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
         {nav !== 'tasks' ? (
           <div className="wb-pane-full">
             {nav === 'skills' && <SkillsPane skills={skills} selected={selectedSkills} onToggle={toggleSkill} onRefresh={refreshSkills} onUse={()=>{setNav('tasks');setTimeout(()=>inputRef.current?.focus(),30)}} />}
+            {nav === 'projects' && <ProjectsPane papers={papers} focusProjectId={focusProjectId} onOpenPaper={onOpenPaper} onDraftTask={item => { setNav('tasks'); setFocusProjectId(null); if (item.conversationId) void loadChatTask(item.conversationId); else { setSelId(null); setTask(null) } setGoal(`请协助处理项目任务「${item.title}」。${item.notes ? ' 说明：' + item.notes : ''}${item.dueDate ? ' 截止：' + item.dueDate : ''}`); setTimeout(() => inputRef.current?.focus(), 30) }} />}
             {nav === 'auto' && <AutoPane />}
             {nav === 'mcp' && <McpPane />}
-            {nav === 'today' && <TodayPane papers={papers} conversations={chatConversations.map(conversation=>({id:conversation.id,title:conversation.title,updatedAt:conversation.updatedAt}))} onOpenPaper={onOpenPaper} onOpenCalendar={()=>setNav('calendar')} onNewTask={()=>{setNav('tasks');setSelId(null);setTask(null);setTimeout(()=>inputRef.current?.focus(),30)}} onStartTask={item=>{setNav('tasks');if(item.conversationId)void loadChatTask(item.conversationId);else{setSelId(null);setTask(null)}setGoal(`请协助处理这条科研日程：${item.title}。日期：${item.occurrenceDate}。${item.notes?' 补充说明：'+item.notes:''}`);setTimeout(()=>inputRef.current?.focus(),30)}} />}
+            {nav === 'today' && <TodayPane papers={papers} conversations={chatConversations.map(conversation=>({id:conversation.id,title:conversation.title,updatedAt:conversation.updatedAt}))} onOpenPaper={onOpenPaper} onOpenCalendar={()=>setNav('calendar')} onNewTask={()=>{setNav('tasks');setSelId(null);setTask(null);setTimeout(()=>inputRef.current?.focus(),30)}} onStartTask={item=>{setNav('tasks');if(item.conversationId)void loadChatTask(item.conversationId);else{setSelId(null);setTask(null)}setGoal(`请协助处理这条科研日程：${item.title}。日期：${item.occurrenceDate}。${item.notes?' 补充说明：'+item.notes:''}`);setTimeout(()=>inputRef.current?.focus(),30)}} onOpenProjects={projectId=>{setFocusProjectId(projectId??null);setNav('projects')}} />}
             {nav === 'calendar' && <CalendarPane conversationId={task?.conversationId??null} onOpenConversation={id=>{setNav('tasks');void loadChatTask(id)}} onStartTask={item=>{setNav('tasks');if(item.conversationId)void loadChatTask(item.conversationId);else{setSelId(null);setTask(null)}setGoal(`请协助处理这条科研日程：${item.title}。日期：${item.date}。${item.notes?' 补充说明：'+item.notes:''}`);setTimeout(()=>inputRef.current?.focus(),30)}}/>}
           </div>
         ) : task ? (
@@ -1265,7 +1294,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
 }
 
 // ---------- 今日科研台 ----------
-function TodayPane({papers,conversations,onOpenPaper,onOpenCalendar,onStartTask,onNewTask}:{papers:Paper[];conversations:Array<{id:string;title:string;updatedAt:string}>;onOpenPaper:(paper:Paper)=>void;onOpenCalendar:()=>void;onStartTask:(item:CalendarEvent)=>void;onNewTask:()=>void}): JSX.Element {
+function TodayPane({papers,conversations,onOpenPaper,onOpenCalendar,onStartTask,onNewTask,onOpenProjects}:{papers:Paper[];conversations:Array<{id:string;title:string;updatedAt:string}>;onOpenPaper:(paper:Paper)=>void;onOpenCalendar:()=>void;onStartTask:(item:CalendarEvent)=>void;onNewTask:()=>void;onOpenProjects:(projectId?:number)=>void}): JSX.Element {
   const today=localDayText(new Date()),until=localDayText(new Date(Date.now()+30*86400000))
   const [events,setEvents]=useState<CalendarEvent[]>([])
   const [focus,setFocus]=useState<FocusSummary|null>(null)
@@ -1278,9 +1307,23 @@ function TodayPane({papers,conversations,onOpenPaper,onOpenCalendar,onStartTask,
       .finally(()=>{if(!cancelled)setLoading(false)})
     return()=>{cancelled=true}
   },[today,until])
+  const [dueTasks,setDueTasks]=useState<ResearchTask[]>([]),[taskBusy,setTaskBusy]=useState(false)
+  const refreshTasks=():void=>{void window.api.tasksList().then(rows=>setDueTasks(rows.filter(item=>!!item.dueDate&&item.dueDate<=today&&item.status!=='done').sort((a,b)=>(a.dueDate??'').localeCompare(b.dueDate??'')).slice(0,6))).catch(()=>{})}
+  useEffect(()=>{refreshTasks();window.addEventListener(TASKS_CHANGED_EVENT,refreshTasks);return()=>window.removeEventListener(TASKS_CHANGED_EVENT,refreshTasks)},[today])
+  const [taskDone,setTaskDone]=useState('')
+  const completeTask=(item:ResearchTask):void=>{
+    if(taskBusy)return
+    setTaskBusy(true)
+    const timer=window.setTimeout(()=>setTaskDone(''),2400)
+    void window.api.tasksSave({...taskInputOf(item),status:'done'},item.id)
+      .then(()=>{setTaskDone('已完成：'+item.title);notifyTasksChanged()})
+      .catch(()=>{window.clearTimeout(timer);setTaskDone('任务更新失败，请到项目看板重试')})
+      .finally(()=>setTaskBusy(false))
+  }
   const todayItems=events.filter(item=>item.occurrenceDate===today)
   const deadlines=events.filter(item=>item.kind==='deadline'&&item.occurrenceDate>=today).slice(0,5)
-  const readingPapers=papers.filter(paper=>paper.source_kind==='pdf').sort((a,b)=>Date.parse(b.opened_at??'')-Date.parse(a.opened_at??'')).slice(0,4)
+  const overdueCount=dueTasks.filter(item=>(item.dueDate??'')<today).length
+  const readingPapers=papers.filter(paper=>paper.source_kind==='pdf').sort((a,b)=>(b.opened_at?Date.parse(b.opened_at):0)-(a.opened_at?Date.parse(a.opened_at):0)).slice(0,4)
   const activeConversations=[...conversations].sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt)).slice(0,5)
   const kindLabels:Record<CalendarEvent['kind'],string>={task:'任务',deadline:'截止',meeting:'会议',milestone:'里程碑'}
   return <div className="wb-pane-full wb-today">
@@ -1299,7 +1342,15 @@ function TodayPane({papers,conversations,onOpenPaper,onOpenCalendar,onStartTask,
           <header><h2>今天安排</h2><button onClick={onOpenCalendar}>管理</button></header>
           {todayItems.length?todayItems.map(item=><article key={`${item.id}-${item.occurrenceDate}`} className={item.completed?'done':''}><small>{item.startTime??'全天'} · {kindLabels[item.kind]}</small><strong>{item.title}</strong><button onClick={()=>onStartTask(item)}>交给 Work</button></article>):<p className="research-calendar-empty">今天还没有日程。</p>}
         </section>
-        <section className="wb-today-card">
+        <section className="wb-today-card wb-today-tasks" aria-label="今日任务">
+          <header><div><h2>今日任务</h2>{taskDone&&<small className="wb-today-flash">{taskDone}</small>}</div><button onClick={()=>onOpenProjects()}>项目看板</button></header>
+          {dueTasks.length?dueTasks.map(item=><article key={item.id} className={item.dueDate&&item.dueDate<today?'overdue':''}>
+            <small>{item.projectName} · {item.dueDate&&item.dueDate<today?'已逾期 · ':''}截止 {item.dueDate}</small>
+            <strong>{item.title}</strong>
+            <button disabled={taskBusy} onClick={()=>completeTask(item)}>完成</button>
+          </article>):<p className="research-calendar-empty">今天没有到期的项目任务。</p>}
+        </section>
+        <section className="wb-today-card wb-today-wide">
           <header><h2>临近截止</h2><button onClick={onOpenCalendar}>看日历</button></header>
           {deadlines.length?deadlines.map(item=><article key={`${item.id}-${item.occurrenceDate}`}><small>{item.occurrenceDate}</small><strong>{item.title}</strong></article>):<p className="research-calendar-empty">未来 30 天没有截止日期。</p>}
         </section>

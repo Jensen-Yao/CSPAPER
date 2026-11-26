@@ -1,0 +1,7 @@
+/* Self-hosted webfonts (SIL OFL 1.1). Regenerate after changing site copy: python scripts/build-site-fonts.py */
+@font-face{font-family:"CSP Serif";src:url("./fonts/serif-sc-600.woff2") format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"CSP Sans";src:url("./fonts/inter-400.woff2") format("woff2");font-weight:400;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-200F,U+2030-206F,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"CSP Sans";src:url("./fonts/inter-700.woff2") format("woff2");font-weight:700;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-200F,U+2030-206F,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"CSP Sans";src:url("./fonts/sans-sc-400.woff2") format("woff2");font-weight:400;font-display:swap;unicode-range:U+2010-2027,U+3000-303F,U+3400-4DBF,U+4E00-9FFF,U+FF00-FFEF}
+@font-face{font-family:"CSP Sans";src:url("./fonts/sans-sc-700.woff2") format("woff2");font-weight:700;font-display:swap;unicode-range:U+2010-2027,U+3000-303F,U+3400-4DBF,U+4E00-9FFF,U+FF00-FFEF}
+@font-face{font-family:"CSP Mono";src:url("./fonts/dm-mono-400.woff2") format("woff2");font-weight:400;font-display:swap}

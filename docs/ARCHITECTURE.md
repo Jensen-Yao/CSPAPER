@@ -40,6 +40,12 @@ record before/after digests + backup -> replace files -> commit DB -> mark commi
 
 A failed commit marks the operation failed and leaves evidence. At startup, pending operations become `rolled_back`, `needs_review`, or `conflict`; startup code never assumes success. Zotero PDF repair uses deterministic operation IDs, exact Zotero keys and preserved pre-replacement backups. OpenAccess repair first queries OpenAlex in read-only mode, then downloads only user-selected public-HTTPS OA PDFs after redirect, size and PDF-header validation; replacement follows the same journaled operation path.
 
+## Research hub, projects and tasks
+
+The Paper home is the research hub (`ResearchHub`). It owns no storage: on every visit it reads the current workspace through existing APIs (reading positions, focus summary, calendar, standalone notes, conversations) plus the v0.22 project/task APIs, so the hub never shows placeholder data. Quick capture (`Ctrl/Cmd+Shift+N`) writes a standalone note and broadcasts `cspaper:notes-changed`; the command palette searches papers, notes and conversations in parallel.
+
+Projects and tasks live in `research_projects` / `research_tasks` (migration 011) behind `ResearchProjects`, a small main-process service that validates input with shared Zod schemas, enforces workspace ownership for the project, linked paper and linked conversation, and relies on foreign-key cascades when a project is deleted. Cross-view navigation uses DOM events (`cspaper:open-note`, `cspaper:open-conversation`, `cspaper:work-open-projects`, `cspaper:tasks-changed`) so the hub, the Work today pane and the project board stay in sync without a new global store.
+
 ## Verification
 
 `npm run check` performs typecheck, Electron core regression, production build, lifecycle regression, UI regression and both benchmarks. UI tests launch the actual Electron renderer with isolated files and a mock model service. They include the fixed three-paper research flow, exact citation opening, version-change warning, source boundaries, graph zoom, pane resizing, restart/follow-up and 600-message history. `npm run dist:win`, `npm run test:installer`, packaged-app UI and real Agnes model tests are required for a release candidate. GitHub Actions CI must pass after push before a tag/release is promoted.

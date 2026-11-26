@@ -10,7 +10,7 @@ import ConversationList from './features/chat/ConversationList'
 import MessageList,{messageText} from './features/chat/MessageList'
 import Composer from './features/chat/Composer'
 import ChatWorkspace from './features/chat/ChatWorkspace'
-import { WORKSPACE_ACTION, type WorkspaceAction } from './workspace-actions'
+import { WORKSPACE_ACTION, OPEN_CONVERSATION_EVENT, type WorkspaceAction } from './workspace-actions'
 import './features/chat/chat.css'
 import type { ContextRef } from '../../shared/context'
 import type { Message } from '../../shared/chat'
@@ -86,6 +86,16 @@ export default function ChatView({
 
   const {newConversation}=chat
   useEffect(()=>{if(resetKey>0)void newConversation()},[resetKey,newConversation])
+  // 研究台 / 命令面板 → 打开指定会话（用 ref 取最新 selectConversation，避免闭包过期）
+  const selectRef=useRef(chat.selectConversation);selectRef.current=chat.selectConversation
+  useEffect(()=>{
+    const open=(event:Event):void=>{
+      const conversationId=(event as CustomEvent<{conversationId?:string}>).detail?.conversationId
+      if(conversationId)void selectRef.current(conversationId).catch(()=>flash('会话加载失败'))
+    }
+    window.addEventListener(OPEN_CONVERSATION_EVENT,open)
+    return()=>window.removeEventListener(OPEN_CONVERSATION_EVENT,open)
+  },[])
   const execSlash=(raw:string):boolean=>{
     const parsed=parseSlash(raw);if(!parsed)return false
     const {name,args}=parsed
@@ -105,6 +115,18 @@ export default function ChatView({
     flash('/'+name+' 请在 Work 工作台执行');return true
   }
 
+  // 快捷指令：随上下文（选中文献 / 分类 / 全库）变化，一键发起可溯源的研究动作
+  const quickPrompts=useMemo<Array<{label:string;prompt:string}>>(()=>{
+    const count=selectedPaperIds.length
+    const target=count===1?'这篇文献':count>1?`选中的 ${count} 篇文献`:scope.type==='cat'&&scope.cat?`「${scope.cat}」分类下的文献`:'文献库中的文献'
+    return [
+      {label:count===1?'总结这篇':'梳理脉络',prompt:`请总结 ${target} 的研究问题、核心方法与主要结论，分点说明并标注出处页码。`},
+      {label:'找证据',prompt:`围绕 ${target} 的核心主张，列出支持与反对的证据，逐条标注来源文献与页码。`},
+      {label:'对比方法',prompt:`用表格对比 ${target} 的研究方法、数据集、评价指标与局限，并给出适用场景建议。`},
+      {label:'生成提纲',prompt:`基于 ${target}，为一份文献综述生成详细提纲，包含各节要点与可引用的文献。`},
+      {label:'追问局限',prompt:`${target} 还有哪些局限与未解决的问题？下一步可以从哪些角度推进？`}
+    ]
+  },[selectedPaperIds.length,scope.type,scope.cat])
   const send=(raw?:string):void=>{
     const question=(raw??input).trim();if(!question||busy)return
     if(isCommandInput(question)&&execSlash(question)){setInput('');return}
@@ -132,7 +154,11 @@ export default function ChatView({
   const noticeBar=chat.error?<div className="wb-notice error" style={{width:'100%',marginBottom:6}}>会话错误：{chat.error}</div>:chatNotice?<div className="wb-notice" style={{width:'100%',marginBottom:6}}>{chatNotice}</div>:null
   const inputBox=(
     <Composer value={input} onChange={setInput} onSend={()=>send()} onStop={()=>void chat.stop()} busy={busy}
-      placeholder="与全库文献对话；会话自动保存，重启后继续追问" banner={noticeBar}>
+      placeholder="与全库文献对话；会话自动保存，重启后继续追问" banner={noticeBar}
+      top={chat.messages.length<=2&&!busy?<div className="chat-quick-prompts" role="toolbar" aria-label="快捷指令">
+        <span className="chat-quick-label">快捷</span>
+        {quickPrompts.map(item=><button type="button" key={item.label} title={item.prompt} onClick={()=>send(item.prompt)}>{item.label}</button>)}
+      </div>:null}>
       <ContextPicker papers={papers} selected={selectedPaperIds} onChange={(ids)=>{setSelectedPaperIds(ids);setContextNotes([]);setContextSelections([]);setContextWeb([])}}
         selectedCollections={selectedCollectionIds} onCollectionsChange={setSelectedCollectionIds} collections={collections}/>
       <ScopePill cats={cats} scope={scope} onChange={onScopeChange} paperCount={paperCount} catCounts={catCounts}/>

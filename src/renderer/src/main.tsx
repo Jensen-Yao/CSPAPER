@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './styles.css'
 import App from './App'
 import './workspace.css'
+import './research-os.css'
 import { DialogProvider } from './Dialog'
 import ErrorBoundary from './ErrorBoundary'
 

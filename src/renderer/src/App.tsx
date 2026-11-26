@@ -1,5 +1,7 @@
 import WorkspaceNavigation from './WorkspaceNavigation'
-import { WORKSPACE_ACTION, type WorkspaceAction } from './workspace-actions'
+import { WORKSPACE_ACTION, OPEN_NOTE_EVENT, OPEN_CONVERSATION_EVENT, OPEN_WORK_CONVERSATION_EVENT, type WorkspaceAction } from './workspace-actions'
+import ResearchHub from './ResearchHub'
+import QuickCaptureDialog from './QuickCaptureDialog'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LibraryPane from './LibraryPane'
 import PdfViewer, { type ViewerHandle } from './PdfViewer'
@@ -115,7 +117,8 @@ export default function App(): JSX.Element {
   const [llmChip, setLlmChip] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [mode, setMode] = useState<'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web'>('read')
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
+  const [mode, setMode] = useState<'home' | 'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web'>('home')
   const [topMode, setTopMode] = useState<'work' | 'paper'>('paper')
   const [overviewTab, setOverviewTab] = useState<'table' | 'graph' | 'stats'>('table')
   const [onlineOpen, setOnlineOpen] = useState(false)
@@ -131,6 +134,11 @@ export default function App(): JSX.Element {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((v) => !v)
+      }
+      // Ctrl/Cmd + Shift + N：随时快速记录一条想法
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        setQuickCaptureOpen(true)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -211,6 +219,22 @@ export default function App(): JSX.Element {
       setActiveId(tabs.length ? tabs[tabs.length - 1].paper.id : null)
     }
   }, [tabs, activeId])
+
+  // 回到研究台时重新读取文献：阅读位置（last_page）在关闭标签时才落库，否则首页会显示旧进度
+  useEffect(() => {
+    if (topMode === 'paper' && mode === 'home') void refreshPapers().catch(() => undefined)
+  }, [topMode, mode, refreshPapers])
+
+  // 阅读状态变更（研究台队列操作）：写入后同步本地列表与已开标签页
+  const setPaperStatus = useCallback(async (id: number, status: string): Promise<void> => {
+    try {
+      await window.api.setStatus(id, status)
+      setPapers((ps) => ps.map((x) => (x.id === id ? { ...x, status } : x)))
+      setTabs((ts) => ts.map((t) => (t.paper.id === id ? { ...t, paper: { ...t.paper, status } } : t)))
+    } catch (e) {
+      dlg.toast('阅读状态更新失败：' + String(e).replace(/^Error: /, '').slice(0, 120), 'error')
+    }
+  }, [])
 
   const refreshLlmChip = useCallback(async () => {
     if (!settings?.apiKey) {
@@ -370,8 +394,10 @@ export default function App(): JSX.Element {
     (e: React.DragEvent) => {
       e.preventDefault()
       setFloatBar(null)
-      if (importBusyRef.current) return
-      const paths = [...e.dataTransfer.files]
+      // 看板拖拽等内部拖放会冒泡到这里：没有文件列表时直接忽略
+      const files = e.dataTransfer?.files
+      if (!files || importBusyRef.current) return
+      const paths = [...files]
         .map((f) => window.api.pathForFile(f))
         .filter(Boolean)
         .filter((p) => p.toLowerCase().endsWith('.pdf'))
@@ -616,7 +642,9 @@ export default function App(): JSX.Element {
     {
       name: '视图',
       items: [
+        { label: '研究台', hint: 'Paper 首页', action: () => setMode('home') },
         { label: '命令面板…', hint: isMac ? '⌘K' : 'Ctrl+K', action: () => setPaletteOpen(true) },
+        { label: '快速记录…', hint: isMac ? '⇧⌘N' : 'Ctrl+Shift+N', action: () => setQuickCaptureOpen(true) },
         { sep: true, label: '' },
         { label: showLib ? '隐藏文献侧栏' : '显示文献侧栏', action: () => setShowLib((v) => !v) },
         { label: showSide ? '隐藏问答面板' : '显示问答面板', action: () => setShowSide((v) => !v) },
@@ -677,7 +705,7 @@ export default function App(): JSX.Element {
               <Icon.Library size={13} /> Paper
             </button>
           </div>
-          {topMode === 'paper' && (
+          {topMode === 'paper' && mode !== 'home' && (
             <button
               className={`icon-btn tb-toggle ${showLib ? 'on' : ''}`}
               title={showLib ? '隐藏 文献边栏' : '显示 文献边栏'}
@@ -706,9 +734,10 @@ export default function App(): JSX.Element {
         </div>
       </div>
 
-      {topMode==='paper'&&<WorkspaceNavigation mode={mode} libraryVisible={showLibraryHome || tabs.length===0} openCount={tabs.length}
-        onLibrary={()=>{setMode('read');setShowLibraryHome(true)}}
-        onResume={()=>{setMode('read');setShowLibraryHome(false)}}
+      {topMode==='paper'&&<WorkspaceNavigation mode={mode} libraryVisible={mode!=='home'&&(showLibraryHome||tabs.length===0)} openCount={tabs.length}
+        onHome={()=>{setMode('home');setFloatBar(null);setShowSide(false)}}
+        onLibrary={()=>{setMode('read');setShowLibraryHome(true);setShowLib(true);setFloatBar(null)}}
+        onResume={()=>{setMode('read');setShowLibraryHome(false);setFloatBar(null)}}
         onNavigate={next=>{setMode(next);setFloatBar(null)}}/>}
       <div className="body3">
         <div className={topMode === 'work' ? '' : 'pane-hidden'} style={{ display: 'flex', flex: 1, minWidth: 0 }}>
@@ -733,7 +762,7 @@ export default function App(): JSX.Element {
           />
         </div>
         <div className={`paper-workspace ${topMode==='paper'?'':'pane-hidden'}`}>
-        {showLib && (
+        {showLib && mode !== 'home' && (
           <>
             <LibraryPane
               width={libWidth}
@@ -764,6 +793,29 @@ export default function App(): JSX.Element {
           </>
         )}
         <div className="workspace">
+          {/* 研究台：今天做什么、读什么、记什么；数据全部来自当前工作区 */}
+          <div className={`ov-host rh-host ${mode === 'home' ? '' : 'pane-hidden'}`}>
+            <ResearchHub
+              papers={papers}
+              indexed={indexedCount}
+              visible={topMode==='paper' && mode==='home'}
+              onOpenPaper={openPaperFromTree}
+              onOpenLibrary={()=>{setMode('read');setShowLibraryHome(true);setShowLib(true)}}
+              onPaperStatus={setPaperStatus}
+              onOpenNotes={()=>setMode('notes')}
+              onOpenNote={(noteId)=>{setMode('notes');window.dispatchEvent(new CustomEvent(OPEN_NOTE_EVENT,{detail:{noteId}}))}}
+              onOpenChat={()=>setMode('chat')}
+              onOpenConversation={(conversationId)=>{
+                if(conversationId.startsWith('work:')){setTopMode('work');window.dispatchEvent(new CustomEvent(OPEN_WORK_CONVERSATION_EVENT,{detail:{conversationId:conversationId.slice(5)}}))}
+                else{setMode('chat');window.dispatchEvent(new CustomEvent(OPEN_CONVERSATION_EVENT,{detail:{conversationId}}))}
+              }}
+              onOpenCompare={()=>setMode('compare')}
+              onImport={addPapers}
+              onQuickCapture={()=>setQuickCaptureOpen(true)}
+              onOpenWork={()=>setTopMode('work')}
+              onOpenProjects={()=>{setTopMode('work');window.dispatchEvent(new CustomEvent('cspaper:work-open-projects'))}}
+            />
+          </div>
           {/* 阅读区：模式切换只隐藏不卸载，保留标签页与滚动状态 */}
           <div className={`main-win ${mode === 'read' ? '' : 'pane-hidden'}`}>
             <div className={`library-surface ${showLibraryHome || tabs.length===0?'':'pane-hidden'}`}><LibraryHome
@@ -949,6 +1001,7 @@ export default function App(): JSX.Element {
           onFinished={(outcomes) => void importDone(outcomes)}
         />
       )}
+      {quickCaptureOpen && <QuickCaptureDialog open onClose={() => setQuickCaptureOpen(false)} />}
       {zoteroOpen && <ZoteroImportDialog initialCats={cats} onClose={() => setZoteroOpen(false)} onFinished={() => void refreshPapers()} />}
       {recordsOpen && <RecordsDialog initialCats={cats} onClose={() => setRecordsOpen(false)} onFinished={() => void refreshPapers()} />}
       <OnlineAddDialog open={onlineOpen} cats={cats} onClose={() => setOnlineOpen(false)} onDone={() => void refreshPapers()} />
@@ -957,12 +1010,20 @@ export default function App(): JSX.Element {
           papers={papers}
           onClose={() => setPaletteOpen(false)}
           onOpenPaper={openPaperFromTree}
+          onOpenNote={(noteId)=>{setTopMode('paper');setMode('notes');window.dispatchEvent(new CustomEvent(OPEN_NOTE_EVENT,{detail:{noteId}}))}}
+          onOpenConversation={(conversationId)=>{
+            if(conversationId.startsWith('work:')){setTopMode('work');window.dispatchEvent(new CustomEvent(OPEN_WORK_CONVERSATION_EVENT,{detail:{conversationId:conversationId.slice(5)}}))}
+            else{setTopMode('paper');setMode('chat');window.dispatchEvent(new CustomEvent(OPEN_CONVERSATION_EVENT,{detail:{conversationId}}))}
+          }}
           commands={[
+            { id: 'home', label: '打开研究台', hint: '视图', run: () => setMode('home') },
+            { id: 'capture', label: '快速记录…', hint: isMac ? '⇧⌘N' : 'Ctrl+Shift+N', run: () => setQuickCaptureOpen(true) },
             { id: 'add', label: '导入 PDF 文献…', hint: '文件', run: addPapers },
             { id: 'online', label: '在线添加文献…', hint: 'DOI / arXiv / 链接 / 关键词', run: () => setOnlineOpen(true) },
-            { id: 'notes', label: '打开笔记中心', hint: '视图', run: () => setMode('notes') },
-            { id: 'web', label: '打开文献浏览器', hint: '知网 / arXiv 等站点', run: () => setMode('web') },
-            { id: 'stats', label: '打开统计仪表盘', hint: '视图', run: () => { setMode('overview'); setOverviewTab('stats') } },
+            { id: 'notes', label: '打开笔记中心', hint: '视图', run: () => { setTopMode('paper'); setMode('notes') } },
+            { id: 'web', label: '打开文献浏览器', hint: '知网 / arXiv 等站点', run: () => { setTopMode('paper'); setMode('web') } },
+            { id: 'projects', label: '打开 Work 项目与任务', hint: 'Work', run: () => { setTopMode('work'); window.dispatchEvent(new CustomEvent('cspaper:work-open-projects')) } },
+            { id: 'stats', label: '打开统计仪表盘', hint: '视图', run: () => { setTopMode('paper'); setMode('overview'); setOverviewTab('stats') } },
             { id: 'zotero', label: '从 Zotero 导入…', hint: '文件', run: () => setZoteroOpen(true) },
             { id: 'picklib', label: '选择文献库文件夹…', hint: '文件', run: () => void pickLibraryNow() },
             { id: 'reindex', label: '重建全库索引', hint: '文件', run: () => void window.api.rebuildIndex() },

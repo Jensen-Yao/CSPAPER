@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CSPAPER 在线演示 · 研究台 / 阅读器 / 问答 / Work</title>
+<meta name="description" content="CSPAPER 在线演示：研究台、PDF 阅读、可溯源问答、Work 智能体、项目看板、对比表与笔记中心。示例数据，可直接点击体验。">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light">
+<link rel="icon" type="image/png" href="../assets/favicon.png">
+<link rel="preload" as="font" type="font/woff2" href="../assets/fonts/sans-sc-400.woff2" crossorigin>
+<link rel="stylesheet" href="../assets/fonts.css">
+<link rel="stylesheet" href="./demo.css">
+</head>
+<body>
+<nav class="demo-bar" aria-label="演示视图">
+  <a class="brand" href="../"><img src="../assets/brand-128.png" width="22" height="22" alt="">CSPAPER</a>
+  <span class="demo-badge">在线演示 · 示例数据与预设回复</span>
+  <div class="demo-tabs" role="tablist" aria-label="切换演示视图">
+    <button role="tab" data-view="hub" aria-selected="true">研究台</button>
+    <button role="tab" data-view="reader" aria-selected="false">阅读器</button>
+    <button role="tab" data-view="chat" aria-selected="false">文献问答</button>
+    <button role="tab" data-view="work" aria-selected="false">Work</button>
+    <button role="tab" data-view="projects" aria-selected="false">项目</button>
+    <button role="tab" data-view="compare" aria-selected="false">对比表</button>
+    <button role="tab" data-view="notes" aria-selected="false">笔记</button>
+  </div>
+  <a class="demo-cta" href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">下载桌面版</a>
+</nav>
+<div class="stage">
+  <div class="app" id="app"></div>
+</div>
+<noscript><p style="padding:24px;text-align:center">在线演示需要启用 JavaScript；也可以直接 <a href="https://github.com/Jensen-Yao/CSPAPER/releases/latest">下载桌面版</a>。</p></noscript>
+<script src="./demo.js"></script>
+</body>
+</html>

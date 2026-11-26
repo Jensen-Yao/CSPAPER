@@ -1,194 +1,183 @@
 <div align="center">
 
-# <picture><source media="(prefers-color-scheme: dark)" srcset="docs/icon.png"><img src="docs/icon.png" width="96" alt="CSPAPER logo"></picture>
+<img src="docs/assets/brand-128.png" width="96" alt="CSPAPER">
 
 # CSPAPER
 
-### 面向中文科研场景的本地 AI 文献工作台
+**本地优先的科研文献工作台 · Research OS**
 
-**PDF 精读 · 可溯源问答 · 科研 Agent · 科研日历 · 阅读专注 · 多文献对比 · Zotero 迁移 · 知识网络**
+PDF 精读 · 可溯源问答 · 项目任务 · Work 智能体 · 科研日历 · 阅读专注 · 多文献对比 · Zotero 迁移
 
-[![Release](https://img.shields.io/github/v/release/Jensen-Yao/CSPAPER?style=flat-square&label=Release&color=a6093d)](https://github.com/Jensen-Yao/CSPAPER/releases)
+[![Release](https://img.shields.io/github/v/release/Jensen-Yao/CSPAPER?style=flat-square&color=1558c0)](https://github.com/Jensen-Yao/CSPAPER/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/Jensen-Yao/CSPAPER/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Jensen-Yao/CSPAPER/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/Jensen-Yao/CSPAPER?style=flat-square&color=1558c0)](LICENSE)
-[![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Android-本地优先-2b2b2b?style=flat-square)](https://jensen-yao.github.io/CSPAPER/)
+[![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Android-%E6%9C%AC%E5%9C%B0%E4%BC%98%E5%85%88-1c1915?style=flat-square)](https://jensen-yao.github.io/CSPAPER/)
 
-[![CSPAPER 0.21](docs/screenshots/home.png)](https://jensen-yao.github.io/CSPAPER/)
+[![CSPAPER · 文献读完，研究才刚开始](docs/assets/readme-banner.png)](https://jensen-yao.github.io/CSPAPER/)
 
-**[🌐 官网 / GitHub Pages](https://jensen-yao.github.io/CSPAPER/)** ·
-**[🎮 在线演示](https://jensen-yao.github.io/CSPAPER/demo.html)** ·
-**[⬇️ 下载安装包](https://github.com/Jensen-Yao/CSPAPER/releases/latest)** ·
-**[📋 实施状态](./docs/IMPLEMENTATION_STATUS.md)**
+**[官网](https://jensen-yao.github.io/CSPAPER/)** ·
+**[在线演示](https://jensen-yao.github.io/CSPAPER/demo/)** ·
+**[下载安装包](https://github.com/Jensen-Yao/CSPAPER/releases/latest)** ·
+**[更新说明](https://github.com/Jensen-Yao/CSPAPER/releases)**
 
 </div>
 
 ---
 
-## 0.21：从可审计 Agent 到完整科研工作台
+打开 CSPAPER 的第一屏是**研究台**：今天要推进什么、从哪一篇继续读、有哪些日程和到期任务、上次记下的笔记与对话——都在一屏里。读到的能立刻变成问得出的，问到的能变成记得住的，记下的能交给 Work 继续推进。文献、笔记和会话始终保存在你自己的电脑上。
 
-这一版把最核心的科研链路打通为**一个持久化运行引擎**：阅读侧栏、全屏对话、Work Agent、自动化任务和翻译都进入同一套会话、工具、审批、恢复与来源体系。模型回答不再只是聊天文本，而是能落到具体论文、页码、选区、笔记、Web 来源和对比产物。Work 现在同时提供今日科研台、科研日历和真实阅读专注汇总；PDF 内有读文献专属番茄钟、短/长休息、喝水与活动提醒。
+## 0.22：Research OS
 
-| 关键能力 | 现在的行为 |
+| | 现在的行为 |
 |---|---|
-| **可溯源对话** | 回答引用绑定到持久 Source；点击角标跳回论文页并高亮精确文本。代码、公式与已有链接不会被误判成引用。 |
-| **题录 / 原文状态** | Zotero 无 PDF 条目明确显示“题录 · 无原文”，不会伪装成全文；显式提问时使用元数据 Source，禁止推断全文结论。 |
-| **科研 Agent** | Work 支持计划确认、工具审批、失败修订、重试分支、产物入库与崩溃后恢复；运行中可继续发送跟进指令并持久排队。 |
-| **科研工作台** | 今日页汇总当天安排、临近截止、最近会话、可继续阅读 PDF 与真实专注数据；科研日历提供月 / 周 / 日 / 议程、具体时间和重复日程。 |
-| **阅读专注** | PDF 内提供阅读 / 短休 / 长休番茄钟，喝水与活动提醒独立计时；离开阅读自动暂停，专注流水按工作区隔离并进入今日汇总。 |
-| **多文献对比** | 三篇文献可精确绑定 ID 生成对比表，并把局限追加到对应笔记，重启后可继续追问。 |
-| **模型能力档案** | 思考等级跟随当前模型的 `reasoningLevels`，支持 `none / minimal / xhigh / max` 与自定义档位，不再固定四档。 |
-| **知识网络** | 相似网络、关键词共现、作者合作图支持鼠标滚轮缩放、空白拖拽平移与一键复位。 |
-| **工程可靠性** | 迁移 checksum、WAL 备份、操作日志、单实例、窗口销毁清理、强制崩溃恢复、NSIS 安装/升级/卸载矩阵纳入回归。 |
+| **研究台** | Paper 模式的新首页：继续阅读、阅读队列、今日日程、今日任务、最近笔记与会话、专注统计。全部来自当前工作区的真实记录，没有假数据。 |
+| **快速记录** | <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> 随时记下一条想法，保存为独立笔记并同步到研究台与笔记中心。 |
+| **全局搜索** | 命令面板同时搜索文献、独立笔记、会话与命令，键盘上下选择，回车直达。 |
+| **项目与任务** | Work 新增项目看板：待办 / 进行中 / 已完成，拖拽换列、截止日期、关联文献，一键“交给 Work”起草任务；今天到期的任务同时出现在研究台与今日页。 |
+| **对话快捷指令** | 总结这篇、找证据、对比方法、生成提纲、追问局限——随当前选中的文献或分类自动调整措辞。 |
+| **更稳的拖放** | 看板内拖动任务不再触发窗口级的“拖入 PDF 导入”。 |
 
 ## 它能做什么
 
-### 📖 阅读与写作
+### 读
 
-- **PDF 阅读**：多标签、缩略图、目录、页内查找、阅读进度、续读记忆、触控板缩放、读文献番茄钟与喝水/活动提醒。
-- **划词工具**：高亮、批注、术语翻译、解释、把精确选区加入统一对话。
-- **全文翻译**：当前页逐段中英对照，支持跟随翻页；未配置 Key 时仍可使用免费通道。
-- **笔记中心**：论文笔记、划词标注、独立笔记、模板、Markdown 导出、思维导图。
-- **引文生态**：内置 12 种常用 CSL，可扩展官方万种样式；Word / WPS 引文助手与 BibTeX 导出。
+- **PDF 精读**：多标签、缩略图、目录、页内查找、续读记忆；划词即翻译、解释或高亮，选区可直接加入对话。
+- **阅读专注**：读文献专属番茄钟（阅读 / 短休 / 长休），喝水与活动提醒独立计时；离开阅读自动暂停，专注流水按工作区汇总。
+- **笔记中心**：论文笔记、划词标注、独立笔记、模板、Markdown 导出与思维导图。
 
-### 📊 AI 对比表格
-- 表格支持按住后整体上下左右拖动浏览，不再依赖难以发现的滚动条。
-- 表头、序号列和标题列在滚动时保持可见；页码角标可直接回到原文。
-- 工具栏分组、表格密度、斑马层级、来源角标和空值状态重新设计，长文对比更易读。
+### 问
 
-### 🗂 左侧文献栏
-- 顶层固定提供 **全部文献 / 最近 / 分类** 三种浏览方式，默认直接显示全部文献。
-- 分类默认收起，需要时单组展开或全部展开；拖拽文献到分类头仍可移动。
-- **集合** 与 **标签** 是可独立折叠的附属筛选区，默认收起，不再挤压文献列表。
-- 左栏默认加宽到 304px，标题、状态、分类与操作使用统一的中文无衬线字体层级。
+- **可溯源问答**：对当前论文、选区、笔记、集合或全库提问。每个关键论断后紧跟引用，点角标跳回论文页并高亮精确文本。
+- **题录与原文分明**：没有 PDF 的 Zotero 条目标注“题录 · 无原文”，只用于元数据，不会被当成全文结论。
+- **多文献对比**：按维度从原文提取要点并标注页码，生成可整体拖动浏览、可导出的对比表。
 
-### 🔎 检索与综合
+### 交给 Work
 
-- **论文问答**：当前 PDF / 题录 / 选区 / 笔记 / Web 来源均可成为显式上下文。
-- **全库 RAG**：本地向量 + BM25 混合检索，段落级引用可回跳原文。
-- **AI 对比表**：自定义维度、页码出处、Markdown / CSV 导出、AI 填全表。
-- **知识网络**：相似网络、关键词共现、作者合作、主题星系、知识库五视图。
-- **统计仪表盘**：阅读时长、时间线、分类、标题词云与多套学术配色。
+- **先计划后执行**：给一个目标，智能体先列出可审阅的计划，再检索、读原文、写笔记、做对比表；每一步工具调用都能展开查看。
+- **可控与可恢复**：技能与模板、模型与思考强度、执行权限与逐工具审批；运行中可排队跟进，崩溃后从恢复点继续。
+- **科研工作台**：今日科研、项目看板、科研日历（月 / 周 / 日 / 议程、重复日程）、定时任务与插件市场（MCP）。
 
-### ⚡ Work 科研 Agent
+### 管好文献库
 
-给一个研究目标，CSPAPER 可以检索文献、读取指定页、生成对比表、追加笔记、整理综述、执行平台写入。所有高风险动作都有明确权限边界；工具调用、计划修订和执行结果持久化，可审计、可恢复。Work 左侧的“今日”汇总真实日程、截止、会话、PDF 与专注数据，“科研日历”提供月 / 周 / 日 / 议程视图和重复安排。Work 会话支持永久删除：运行中的任务必须先停止；删除会清理消息、运行、事件、来源与产物记录，但保留已写入文献库的真实笔记、对比表和文献。
+- **左侧文献栏**：全部文献 / 最近 / 分类三种浏览方式；分类、集合、标签都是可折叠的附属区；侧栏与助手栏可拖动调宽。
+- **Zotero 迁移**：分类、标签、笔记与 PDF 附件一键迁入；可按条目 key 精确修复原文，替换前自动备份。
+- **补全原文**：按 DOI / 标题探测开放获取原文，确认后才下载；支持 arXiv、DOI、IEEE、Springer、Wiley、PubMed、知网、万方等站点脚本与浏览器插件。
+- **引文生态**：内置常用 CSL 样式并可扩展官方样式，Word / WPS 引文助手与 BibTeX 导出。
 
-```text
-目标 → 模型计划 → 用户确认/修改 → 工具执行 → 来源与产物 → 会话/笔记/对比表
-```
+## 界面
 
-### 🧬 Zotero 与中文生态
+![研究台：继续阅读、阅读队列、今日安排与任务](docs/screenshots/hub.webp)
 
-- 本地 Zotero SQLite 迁移：条目、分类、标签、笔记、PDF、标注与元数据；云端 stored PDF 瞬时失败不推进增量游标；增量同步会扫描附件变更并补拉父条目，远端后补 PDF 可安全升级题录。
-- 题录/原文状态显式区分；`从 Zotero 修复原文`按条目 key 精确匹配 storage 附件，替换前自动备份且操作幂等。
-- `探测开放获取原文`按 DOI / 标题查询 OpenAlex，先列出可下载 OA PDF，确认后才下载；下载限制公网 HTTPS、100MB 与 PDF 头校验，替换走操作日志。
-- 无 PDF 条目保留为题录并明确标注，拿到原文后替换 `paper.pdf` 即可升级为全文。
-- 内置 arXiv、DOI、IEEE、ScienceDirect、Springer、Wiley、PubMed、知网、万方等 13 个站点脚本。
-- OpenAlex 被引更新、DOI / arXiv / 链接在线添加、浏览器插件一键保存。
-
-## 界面速览
-
-| 阅读与侧栏问答 | Work 科研 Agent |
+| 阅读器 · 划词高亮与侧栏问答 | 文献问答 · 表格与来源引用 |
 |---|---|
-| ![Reader](docs/screenshots/reader.png) | ![Work](docs/screenshots/work.png) |
+| ![阅读器](docs/screenshots/reader.webp) | ![问答](docs/screenshots/chat.webp) |
 
-| 模型与服务商 | 知识网络 | 对比表 |
-|---|---|---|
-| ![Models](docs/screenshots/providers.png) | ![Graph](docs/screenshots/graph.png) | ![Compare](docs/screenshots/compare.png) |
+| Work · 计划、工具调用与报告 | 项目看板 · 拖拽换列 |
+|---|---|
+| ![Work](docs/screenshots/work-dark.webp) | ![项目](docs/screenshots/projects.webp) |
+
+| 多文献对比表 | 今日科研 · 专注、日程与到期任务 |
+|---|---|
+| ![对比表](docs/screenshots/compare.webp) | ![今日](docs/screenshots/today.webp) |
+
+> 截图使用示例文献库与演示模型输出，文献与作者均为虚构。
 
 ## 下载与安装
 
 | 系统 | 安装包 |
 |---|---|
-| Windows 10/11 x64 | `CSPAPER Setup <version>.exe` |
-| macOS Apple Silicon / Intel | `CSPAPER-<version>-arm64.dmg` / `-x64.dmg` |
-| Android 7.0+ | `CSPAPER-Mobile-<version>.apk` |
+| Windows 10 / 11 x64 | <code>CSPAPER Setup &lt;version&gt;.exe</code> |
+| macOS Apple Silicon / Intel | <code>CSPAPER-&lt;version&gt;-arm64.dmg</code> / <code>-x64.dmg</code> |
+| Android 7.0+ | <code>CSPAPER-Mobile-&lt;version&gt;.apk</code> |
 
 从 [Releases](https://github.com/Jensen-Yao/CSPAPER/releases/latest) 下载。Windows 首次运行如遇 SmartScreen，选择“仍要运行”；macOS 首次打开可右键应用 →“打开”。
 
-```bash
-git clone https://github.com/Jensen-Yao/CSPAPER.git
+## 快速开始
+
+1. **选一个文件夹**作为文献库，或直接从 Zotero 导入。
+2. **配一次模型**：设置 → 模型服务，粘贴任意 OpenAI 兼容接口的 Key。内置智谱、DeepSeek、通义、Kimi、OpenAI、Gemini、OpenRouter、Ollama、LM Studio 等 18+ 预设；不配 Key 也能阅读、做笔记和整理文献。
+3. **打开一篇 PDF**：划词翻译或高亮，在右侧问它要答案；<kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>K</kbd> 搜索全库，<kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> 快速记录。
+
+<details>
+<summary>从源码运行（Node 20+）</summary>
+
+<pre><code>git clone https://github.com/Jensen-Yao/CSPAPER.git
 cd CSPAPER
 npm ci
 npm run rebuild
-npm run dev
-```
+npm run dev</code></pre>
+
+</details>
+
+<details>
+<summary>常用快捷键与命令</summary>
+
+| 位置 | 按键 / 命令 | 作用 |
+|---|---|---|
+| 全局 | <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>K</kbd> | 命令面板：搜索文献、笔记、会话与命令 |
+| 全局 | <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> | 快速记录 |
+| 阅读器 | <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>F</kbd> | 页内查找 |
+| 阅读器 | <kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>5</kbd> | 切换阅读状态 |
+| Work | <kbd>Ctrl</kbd> + <kbd>N</kbd> | 新建任务 |
+| Work | <code>/plan</code> <code>/goal</code> <code>/model</code> <code>/deep</code> | 只出计划、长期目标、切换模型与思考强度 |
+| Work | <code>/projects</code> <code>/today</code> <code>/calendar</code> <code>/skills</code> <code>/cron</code> | 打开项目、今日、日历、技能与自动化 |
+
+</details>
 
 ## 模型配置
 
-CSPAPER 支持任意 OpenAI 兼容接口，并内置智谱、DeepSeek、通义、Kimi、OpenAI、Gemini、OpenRouter、Ollama、LM Studio 等 18+ 预设。每个服务商独立保存 Key、Base URL、模型列表与能力档案；同一模型名可跨服务商精确绑定。思考等级来自每个模型的能力配置，可直接在对话中新增。
-
-默认无需上传数据：嵌入可使用本地 e5-small，也可切换智谱或 Ollama。
+CSPAPER 支持任意 OpenAI 兼容接口。每个服务商独立保存 Key、Base URL、模型列表与能力档案；同一模型名可跨服务商精确绑定。思考等级来自每个模型的能力档案（如 <code>none / minimal / xhigh / max</code>），可在对话里直接新增档位。嵌入默认可用本地模型，无需上传数据；也可切换智谱或 Ollama。
 
 ## 数据与隐私
 
 - 文献、PDF、SQLite、向量索引、高亮、笔记、会话和工具记录保存在本机。
-- 浏览器插件、Word 引文助手与桌面端只通过 `127.0.0.1` 本地桥接通信。
+- 浏览器插件、Word 引文助手与桌面端只通过 <code>127.0.0.1</code> 本地桥接通信。
 - API Key 存放在本机用户数据目录；本仓库不收集、不上传、不内置任何 Key。
 - 文件写入使用操作日志与备份恢复策略，崩溃后进入明确状态而不是静默重放。
 
-## 架构与验证
+## 架构
 
-```text
-Renderer App / Work / Reader Sidebar
+<pre><code>Renderer App / Work / Reader Sidebar
         ↓ typed preload contract
 Chat IPC → Runtime → Provider / Tools / Retrieval
         ↓               ↓
 SQLite conversations    Sources / Artifacts
-Markdown + CSL + PDF    Operation Journal
-```
+Markdown + CSL + PDF    Operation Journal</code></pre>
 
-当前本机发布验收：
+- [ARCHITECTURE.md](./docs/ARCHITECTURE.md) · [CHAT_PROTOCOL.md](./docs/CHAT_PROTOCOL.md) · [MIGRATIONS.md](./docs/MIGRATIONS.md)
+- [0.22 Research OS 计划](./docs/V022_RESEARCH_OS_PLAN.md) · [实施状态](./docs/IMPLEMENTATION_STATUS.md)
+
+## 验证
 
 | 检查 | 结果 |
 |---|---|
 | Typecheck | ✅ 通过 |
-| Core regression | ✅ 83 / 83 |
-| UI regression | ✅ 103 / 103，无 renderer 异常 |
-| Packaged app UI | ✅ 63 / 63 |
-| Lifecycle / crash | ✅ 单实例、窗口清理、操作崩溃、托盘恢复 |
-| Installer baseline | ✅ 0.20.0 首装、启动、升级、卸载、残留检查；0.21.0 安装包由推送后的 CI / Release 工作流构建 |
-| Real model | ✅ Agnes 两个模型严格 JSON；三文献任务 7 个工具、3 篇笔记、1 张对比表 |
-| 10k library | ✅ list 86.45ms，最大事件循环间隔 94.33ms（低于 100ms 预算） |
-| CSS gate | ✅ 圆角 18 档、字号 14 档、important 5 |
-| Mobile Web | ✅ 5 / 5，内存生成 cspack，离线翻译桩，无 renderer 错误 |
-| GitHub CI / Pages | ✅ main `a11d2c7` CI 与 Pages 构建通过 |
+| Core regression | ✅ 84 / 84（含迁移、项目/任务、工作区隔离与级联删除） |
+| UI regression | ✅ 126 / 126，真实 Electron，无 renderer 异常 |
+| CSS gate | ✅ 圆角 18 档、字号 14 档 |
+| Landing + demo | ✅ 首页、在线演示七视图与旧链接跳转 |
+| Lifecycle | CI：单实例、窗口清理、操作崩溃、托盘恢复 |
+| Installer | CI：Windows NSIS 首装、启动、升级、卸载矩阵 |
+| Mobile Web | CI：内存生成 cspack、离线翻译桩 |
 
-更多证据见 [`design-plans/work-upgrade-2026-10-29/`](./design-plans/work-upgrade-2026-10-29/) 与 [`design-plans/execution-review-2026-10-29/`](./design-plans/execution-review-2026-10-29/)。架构、协议、迁移和当前边界见：
-
-- [ARCHITECTURE.md](./docs/ARCHITECTURE.md)
-- [CHAT_PROTOCOL.md](./docs/CHAT_PROTOCOL.md)
-- [MIGRATIONS.md](./docs/MIGRATIONS.md)
-- [PLAN_ACCEPTANCE.md](./docs/PLAN_ACCEPTANCE.md)
-- [IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md)
+提交前运行 <code>npm run check</code>；涉及安装器或原生模块时另跑 <code>npm run dist:win</code> 与 <code>npm run test:installer</code>。
 
 ## 路线图
 
-- Zotero 附件补齐后的真实数据批量修复演练与结果报告。
-- 更多真实服务商矩阵。
-- CNKI 深度适配、iOS、WebDAV 同步、开放插件系统。
-- 真实长会话逐帧性能与无障碍全覆盖。
+- 研究台：阅读目标、周报与产物中心。
+- 项目：任务与会话、文献的更深层关联；跨项目视图。
+- Zotero 附件补齐后的真实数据批量修复演练。
+- 更多真实服务商矩阵；CNKI 深度适配、iOS、WebDAV 同步与开放插件系统。
 
 详见 [ROADMAP.md](./ROADMAP.md)。
 
 ## 参与贡献
 
-欢迎 Issue / PR。提交前请运行：
-
-```bash
-npm run check
-```
-
-涉及安装器或原生模块时，另跑：
-
-```bash
-npm run dist:win
-npm run test:installer
-```
+欢迎 Issue / PR。界面与文案请保持“宣纸 / 浓墨 / 朱砂”的既有视觉语言，新增视图需覆盖空状态、加载状态与窄窗布局。
 
 ## License
 
-Apache-2.0 License. PDF rendering by Mozilla pdf.js; AI runtime uses Vercel AI SDK; academic metadata uses Crossref / OpenAlex / arXiv public APIs.
+Apache-2.0 License. PDF rendering by Mozilla pdf.js；AI runtime 基于 Vercel AI SDK；学术元数据来自 Crossref / OpenAlex / arXiv 公开接口。官网与演示中的字体（Noto Serif SC、Noto Sans SC、Inter、DM Mono）以 SIL Open Font License 1.1 授权。
 
 <div align="center">
 
