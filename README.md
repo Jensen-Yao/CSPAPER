@@ -86,8 +86,8 @@ PDF 精读 · 可溯源问答 · 项目任务 · Work 智能体 · 科研日历 
 
 | 系统 | 安装包 |
 |---|---|
-| Windows 10 / 11 x64 | <code>CSPAPER Setup &lt;version&gt;.exe</code> |
-| macOS Apple Silicon / Intel | <code>CSPAPER-&lt;version&gt;-arm64.dmg</code> / <code>-x64.dmg</code> |
+| Windows 10 / 11 x64 | <code>CSPAPER-Setup-&lt;version&gt;.exe</code> |
+| macOS Apple Silicon / Intel | <code>CSPAPER-&lt;version&gt;-arm64.dmg</code> / <code>CSPAPER-&lt;version&gt;.dmg</code> |
 | Android 7.0+ | <code>CSPAPER-Mobile-&lt;version&gt;.apk</code> |
 
 从 [Releases](https://github.com/Jensen-Yao/CSPAPER/releases/latest) 下载。Windows 首次运行如遇 SmartScreen，选择“仍要运行”；macOS 首次打开可右键应用 →“打开”。
