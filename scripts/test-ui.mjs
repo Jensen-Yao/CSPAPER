@@ -569,8 +569,9 @@ try{
   check('Work opens with a real today dashboard',await page.locator('.wb-today').isVisible()&&await page.locator('.wb-today-metrics').isVisible())
   await shot('13-work')
   await page.locator('.wb-nav-item').filter({hasText:'科研日历'}).click()
-  await page.waitForSelector('.research-focus-summary')
-  check('calendar summarizes real reading focus records',(await page.locator('.research-focus-summary').innerText()).includes('25'))
+  // 汇总区块先以 0 渲染，专注数据异步到达：等真实数值出现再断言
+  await page.waitForFunction(()=>document.querySelector('.research-focus-summary')?.textContent.includes('25'),null,{timeout:15000})
+  check('calendar summarizes real reading focus records',true)
   for(const view of ['周','日','议程']){await page.locator('.research-calendar-views button').filter({hasText:view}).click();await wait(100)}
   check('calendar provides month, week, day and agenda views',await page.locator('.research-calendar-list').isVisible())
   await page.locator('.research-calendar-views button').filter({hasText:'月'}).click();await wait(100)
