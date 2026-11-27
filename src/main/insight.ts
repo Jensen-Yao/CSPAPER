@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { dialog, BrowserWindow } from 'electron'
 import { getDb, getSettings, scanLibraryAsync } from './db'
-import { chatStream } from './llm'
+import { modelJobText, streamModelJob } from './chat/jobs'
 import { comparisonPrompt, deepReadingPrompt, synthesisPrompt } from './chat/prompts'
 import { generateStructured, isEmptyField } from './chat/structured'
 import { z } from 'zod'
@@ -96,7 +96,8 @@ export function saveCompare(id: number, data: CompareData): CompareData {
 export async function generateCells(
   paperId: number,
   dimensions: string[],
-  send?: (ev: string, p: unknown) => void
+  send?: (ev: string, p: unknown) => void,
+  signal?: AbortSignal
 ): Promise<Record<string, CompareCell[]>> {
   const db = getDb()
   const paper = db.prepare('SELECT id, slug, title, path FROM active_papers WHERE id=?').get(paperId) as
@@ -111,23 +112,40 @@ export async function generateCells(
     pages = []
   }
   if (pages.length === 0) throw new Error('无法读取论文正文（题录占位页或 PDF 损坏）')
-  const selected = selectPages(pages, 90000)
-  const marked = selected.map((item) => `【第${item.page}页】\n${item.text}`).join('\n\n')
-  send?.('compare:progress', { paperId, phase: 'thinking' })
-  const prompt = comparisonPrompt(paper.title, dimensions)
-  const result = await generateStructured({ prompt: [...prompt.slice(0, 1), { role: 'user', content: marked }], schema: cellsSchema, stream: (messages, opts) => chatStream(messages, opts) })
-  send?.('compare:progress', { paperId, phase: 'parsing' })
-  const json: Record<string, unknown> = result.ok ? (result.value as Record<string, unknown>) : result.partial
-  const cells: Record<string, CompareCell[]> = {}
-  let filled = 0
-  for (const dim of dimensions) {
-    let raw: unknown = json[dim]
-    if (typeof raw === 'string') { try { raw = JSON.parse(raw) } catch { raw = [] } }
-    const arr = Array.isArray(raw) ? (raw as Array<{ t?: unknown; p?: unknown }>) : []
-    cells[dim] = arr.filter((x) => x && typeof x.t === 'string' && x.t.trim()).slice(0, 6).map((x) => ({ t: String(x.t).trim(), p: Number(x.p) > 0 ? Number(x.p) : null }))
-    if (cells[dim].length) filled++
+  // 长文分批：超出单次预算的论文按页切成多批（每批 ≤ 60k 字符）分别抽取，再按维度合并去重。
+  const all = pages.map((text, index) => ({ page: index + 1, text }))
+  const batches: Array<Array<{ page: number; text: string }>> = []
+  let batch: Array<{ page: number; text: string }> = [], size = 0
+  for (const item of all) {
+    if (batch.length && size + item.text.length > 60000) { batches.push(batch); batch = []; size = 0 }
+    batch.push(item); size += item.text.length
   }
-  if (!filled) throw new Error(result.ok ? 'AI 没有返回任何维度的要点' : `AI 未返回有效 JSON（已自动重试一次）：${result.error ?? ''}`.trim() + '；请重试或更换模型')
+  if (batch.length) batches.push(batch)
+  const cells: Record<string, CompareCell[]> = {}
+  const seen = new Map<string, Set<string>>()
+  for (const dim of dimensions) { cells[dim] = []; seen.set(dim, new Set()) }
+  for (const [index, part] of batches.entries()) {
+    send?.('compare:progress', { paperId, phase: 'thinking', batch: index + 1, batches: batches.length })
+    const marked = part.map((item) => `【第${item.page}页】\n${item.text}`).join('\n\n')
+    const prompt = comparisonPrompt(paper.title, dimensions)
+    const result = await generateStructured({ prompt: [...prompt.slice(0, 1), { role: 'user', content: marked }], schema: cellsSchema, stream: (messages, opts) => streamModelJob(messages, { kind: 'comparison_cells', title: `对比要点：${paper.title}`, signal: signal ?? opts?.signal }) })
+    const json: Record<string, unknown> = result.ok ? (result.value as Record<string, unknown>) : result.partial
+    for (const dim of dimensions) {
+      let raw: unknown = json[dim]
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw) } catch { raw = [] } }
+      const arr = Array.isArray(raw) ? (raw as Array<{ t?: unknown; p?: unknown }>) : []
+      for (const x of arr) {
+        if (!x || typeof x.t !== 'string' || !x.t.trim()) continue
+        const key = x.t.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').slice(0, 80)
+        if (seen.get(dim)!.has(key)) continue
+        seen.get(dim)!.add(key)
+        cells[dim].push({ t: x.t.trim(), p: Number(x.p) > 0 ? Number(x.p) : null })
+      }
+    }
+  }
+  send?.('compare:progress', { paperId, phase: 'parsing' })
+  for (const dim of dimensions) cells[dim] = cells[dim].slice(0, 8)
+  if (!dimensions.some(dim => cells[dim].length)) throw new Error('AI 没有返回任何维度的要点；请重试或更换模型')
   return cells
 }
 
@@ -160,7 +178,7 @@ export function getExtract(paperId: number): PaperExtract | null {
  * 深度精读：全文（预算 ~90k 字符，远超旧版 3 页 24k）一次调用，
  * 同时产出卡片小结（兼容 papers.summary）与 8 个结构化字段（入库 paper_extract）。
  */
-export async function extractPaper(paperId: number): Promise<{ summary: string; extract: PaperExtract | null }> {
+export async function extractPaper(paperId: number, signal?: AbortSignal): Promise<{ summary: string; extract: PaperExtract | null }> {
   const db = getDb()
   const paper = db.prepare('SELECT id, title, path, source_kind FROM active_papers WHERE id=?').get(paperId) as
     | { id: number; title: string; path: string; source_kind: 'pdf' | 'record' }
@@ -177,7 +195,7 @@ export async function extractPaper(paperId: number): Promise<{ summary: string; 
   const text = selected.map((item) => `【第${item.page}页】\n${item.text}`).join('\n\n')
   if (!text.trim()) throw new Error('无法读取论文正文')
   const prompt = deepReadingPrompt(paper.title, text)
-  const result = await generateStructured({ prompt, schema: extractSchema, stream: (messages, opts) => chatStream(messages, opts), labels: EXTRACT_LABELS })
+  const result = await generateStructured({ prompt, schema: extractSchema, stream: (messages, opts) => streamModelJob(messages, { kind: 'deep_reading', title: `深度精读：${paper.title}`, signal: signal ?? opts?.signal }), labels: EXTRACT_LABELS })
   const j: Record<string, string> = result.ok ? (result.value as unknown as Record<string, string>) : result.partial
   const f = (x: unknown): string => String(x ?? '').trim().replace(/\s*\n\s*/g, ' ').slice(0, 1200)
   const fields = { problem: f(j.problem), method: f(j.method), dataset: f(j.dataset), metrics: f(j.metrics), results: f(j.results), limitations: f(j.limitations), novelty: f(j.novelty), future: f(j.future) }
@@ -208,6 +226,46 @@ export async function extractPaper(paperId: number): Promise<{ summary: string; 
   ).run(ext)
   db.prepare('UPDATE papers SET summary=? WHERE id=?').run(summary.slice(0, 600), paperId)
   return { summary, extract: ext }
+}
+
+/** Single-field re-extraction: only the requested field is regenerated; the rest of the stored extract is kept. */
+export const EXTRACT_FIELDS:Record<string,{label:string;hint:string}> = {
+  problem:{label:'研究问题',hint:'作者要解决什么问题？1-2 句。'},
+  method:{label:'方法路线',hint:'技术路线 / 实验设计 / 关键模型或算法，2-3 句。'},
+  dataset:{label:'数据与对象',hint:'数据集、实验对象或案例，含规模。'},
+  metrics:{label:'评价指标',hint:'评价指标及其量级。'},
+  results:{label:'核心结果',hint:'2-3 条带关键数字的结果。'},
+  limitations:{label:'局限',hint:'作者自述或可推断的局限，1-2 条。'},
+  novelty:{label:'创新点',hint:'与已有工作的差异，1-2 句。'},
+  future:{label:'可跟进方向',hint:'值得跟进的研究方向，1-2 条。'}
+}
+export async function extractPaperField(paperId:number,field:string,signal?:AbortSignal):Promise<PaperExtract> {
+  const spec=EXTRACT_FIELDS[field]
+  if(!spec)throw new Error('未知的精读字段')
+  const db=getDb()
+  const paper=db.prepare('SELECT id, title, path, source_kind FROM active_papers WHERE id=?').get(paperId) as {id:number;title:string;path:string;source_kind:'pdf'|'record'}|undefined
+  if(!paper)throw new Error('论文不存在')
+  if(paper.source_kind==='record')throw new Error('该条目是 Zotero 题录占位，没有 PDF 全文')
+  let pages:string[]=[]
+  try{pages=await extractPagesCached(paper.path)}catch{pages=[]}
+  const text=selectPages(pages,90000).map(item=>`【第${item.page}页】\n${item.text}`).join('\n\n')
+  if(!text.trim())throw new Error('无法读取论文正文')
+  const out=await modelJobText([
+    {role:'system',content:`你是资深科研文献分析师。只根据给出的论文正文回答一个字段，输出纯文本（不要 JSON、不要思考过程、200 字内、不要换行）；论文未提及时只回答“未提及”。字段：${spec.label}（${spec.hint}）`},
+    {role:'user',content:`【标题】${paper.title}\n【正文】\n${text}`}
+  ],{kind:'field',title:`精读字段：${paper.title} · ${spec.label}`,signal})
+  const value=out.replace(/\s*\n\s*/g,' ').trim().slice(0,1200)||'未提及'
+  const current=getExtract(paperId)??{paper_id:paperId,problem:'',method:'',dataset:'',metrics:'',results:'',limitations:'',novelty:'',future:'',extracted_at:''}
+  const next:PaperExtract={...current,[field]:value,extracted_at:new Date().toISOString().slice(0,19).replace('T',' ')}
+  db.exec(`CREATE TABLE IF NOT EXISTS paper_extract(
+      paper_id INTEGER PRIMARY KEY,
+      problem TEXT, method TEXT, dataset TEXT, metrics TEXT, results TEXT,
+      limitations TEXT, novelty TEXT, future TEXT, extracted_at TEXT)`)
+  db.prepare(`INSERT INTO paper_extract(paper_id, problem, method, dataset, metrics, results, limitations, novelty, future, extracted_at)
+    VALUES(@paper_id, @problem, @method, @dataset, @metrics, @results, @limitations, @novelty, @future, @extracted_at)
+    ON CONFLICT(paper_id) DO UPDATE SET problem=excluded.problem, method=excluded.method, dataset=excluded.dataset,
+      metrics=excluded.metrics, results=excluded.results, limitations=excluded.limitations, novelty=excluded.novelty, future=excluded.future, extracted_at=excluded.extracted_at`).run(next)
+  return next
 }
 
 export async function summarizePaper(paperId: number): Promise<string> {
@@ -431,7 +489,7 @@ export async function synthesizePapers(
   if (parts.length < 2) throw new Error('至少需要 2 篇有正文的文献')
   const prompt=synthesisPrompt()
   let out = ''
-  for await (const d of chatStream([...prompt.slice(0,1),{role:'user',content:parts.join('\n\n')}])) out += d
+  out = await modelJobText([...prompt.slice(0,1),{role:'user',content:parts.join('\n\n')}],{kind:'synthesis',title:`综述：${ids.length} 篇`})
   if (!out.trim()) throw new Error('AI 未返回内容')
 
   // 写入 md → AI 知识库分类

@@ -217,7 +217,7 @@ export default function ChatView({
           <div className="chat-hero-steps" style={{display:'flex',gap:14,margin:'28px 0',flexWrap:'wrap'}}>
             {[['1','配一次 Key','设置 → 模型服务，粘贴 Key 即用'],['2','拖入 PDF','划词翻译、高亮和笔记立即可用'],['3','问它要答案','全文检索引用，答案带页码']].map(([n,title,desc])=>(
               <div key={n} style={{width:230,border:'1px solid var(--border)',borderRadius:12,padding:'16px 16px 14px',background:'var(--bg)'}}>
-                <div style={{display:'inline-flex',width:22,height:22,borderRadius:6,background:'var(--accent)',color:'#f8f4ec',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,marginBottom:8}}>{n}</div>
+                <div style={{display:'inline-flex',width:22,height:22,borderRadius:6,background:'var(--accent)',color:'var(--on-accent)',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,marginBottom:8}}>{n}</div>
                 <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>{title}</div>
                 <div style={{fontSize:12,color:'var(--text-dim)',lineHeight:1.6}}>{desc}</div>
               </div>

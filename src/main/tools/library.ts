@@ -65,8 +65,9 @@ export function registerLibraryTools(registry:ToolRegistry):void {
     schema:z.object({paperId:z.number().int().positive(),status:z.enum(['todo','unread','reading','read','paused'])}),
     execute:async(ctx,args)=>{
       const before=paperRow(args.paperId);if(!before)throw new Error('文献不存在或不可见')
+      const statusBefore=(getDb().prepare('SELECT status FROM active_papers WHERE id=?').get(args.paperId) as {status:string}|undefined)?.status
       setStatus(args.paperId,args.status)
-      return ok({paperId:args.paperId,status:args.status},`阅读状态已更新为 ${args.status}`,{changes:[{entity:'paper',entityId:String(args.paperId),action:'update',before:{status:before.category},after:{status:args.status},reversible:true}]})
+      return ok({paperId:args.paperId,status:args.status},`阅读状态已更新为 ${args.status}`,{changes:[{entity:'paper',entityId:String(args.paperId),action:'update',before:{status:statusBefore},after:{status:args.status},reversible:true}]})
     }
   })
   registry.register({

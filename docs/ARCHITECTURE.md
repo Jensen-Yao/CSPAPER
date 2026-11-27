@@ -36,6 +36,10 @@ Ask runs may call read-only tools before answering (`ASK_READ_TOOLS`: paper.read
 
 After the initial plan (and its single failure revision) completes, the planner is asked whether more steps are needed (`plannerContinuationPrompt`). Returned steps are validated, filtered against the stable `tool|args` keys of already executed steps, appended with a `plan.updated` event (`reason: 根据执行结果追加步骤`) and executed. The loop ends on an empty list, invalid output, no fresh steps, 30 executed steps or 6 rounds; approval pauses inside appended steps resume through the existing plan/revision mechanism.
 
+### Background jobs and recorded extraction
+
+`chat/jobs.ts` is the single model entry point for everything that is not a conversation turn: structured extraction (deep reading, comparison cells, synthesis), import metadata, reference parsing and the compatibility planner. Jobs are recorded runs in hidden `work`+`ask` conversations (excluded from lists), share the Paper model binding, honor caller cancellation and a timeout, and stream `message.delta` events. Translation without a configured model runs through the `free:translation` binding inside the normal runtime.
+
 ### Network and web reading
 
 `net.ts` is the single outbound path: Electron `net.fetch` (system proxy by default, optional `proxyUrl`), public-HTTPS-only URLs (`net-guard.ts`, shared with OpenAccess repair), per-hop redirect validation, bounded time (20s default) and size (20MB), readable failure reasons and an optional built-in-browser cookie session (`persist:cspaper-web`). `web-reader.ts` turns HTML into Markdown (Readability + Turndown with citation meta tags) and PDFs into page-marked text, caching snapshots in `web_snapshots` (migration 012). `web-search.ts` aggregates Bing, DuckDuckGo, Semantic Scholar, arXiv, PubMed plus the Crossref/OpenAlex translator scripts with DOI/URL deduplication. `web-import.ts` imports any link or rendered DOM (PDF → library, otherwise a record from page metadata); site translator scripts remain an enhancement.

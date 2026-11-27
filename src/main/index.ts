@@ -145,6 +145,7 @@ function createWindow(): void {
   })
   win.on('closed', () => {
     win = null
+    void import('./ipc/chat').then(module=>module.shutdownChat('窗口已关闭')).catch(()=>{})
   })
 }
 
@@ -230,6 +231,7 @@ app.whenReady().then(() => {
 // 设置里开启/关闭「关闭时最小化到托盘」时同步创建/保留托盘
 app.on('before-quit', () => {
   quitting = true
+  void import('./ipc/chat').then(module=>module.shutdownChat('应用退出')).catch(()=>{})
 })
 
 app.on('window-all-closed', () => {

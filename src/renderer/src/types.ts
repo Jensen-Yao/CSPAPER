@@ -75,6 +75,9 @@ export interface Settings {
   proxyUrl?: string
   webEnabled?: boolean
   webUseBrowserSession?: boolean
+  webSearchProvider?: '' | 'brave' | 'tavily' | 'exa' | 'serper'
+  webSearchKey?: string
+  webAcademicOnly?: boolean
   imageModel?: string
   readingFocus?: import('../../shared/calendar').ReadingFocusSettings
 }
@@ -431,6 +434,8 @@ declare global {
       paperDetail: (id: number) => Promise<PaperDetail | null>
       paperExtractGet: (id: number) => Promise<PaperExtract | null>
       paperExtractRun: (id: number) => Promise<{ summary: string; extract: PaperExtract | null }>
+      paperExtractCancel: (id: number) => Promise<boolean>
+      paperExtractField: (id: number, field: string) => Promise<PaperExtract>
       statsWeekly: () => Promise<string>
       updatePaperMeta: (id: number, patch: Partial<Record<'title' | 'authors' | 'year' | 'venue' | 'volume' | 'issue' | 'pages' | 'publisher' | 'doi' | 'language', string | number | null>>) => Promise<boolean>
       searchesList: () => Promise<Array<{ id: number; name: string; cond: Record<string, string> }>>
@@ -491,10 +496,6 @@ declare global {
       onImportFile: (cb: (o: ImportOutcome) => void) => () => void
       testLLM: (over?: { apiBase?: string; apiKey?: string; model?: string; provider?: string }) => Promise<{ ok: boolean; model?: string; latencyMs?: number; balance?: { amount: string; currency: string } | null; quota?: string; error?: string }>
       testEmbed: () => Promise<{ ok: boolean; dim?: number; error?: string }>
-      stream: (
-        args: Record<string, unknown>,
-        handlers: { onDelta: (t: string) => void; onEnd: () => void; onSources?: (s: SourceRef[]) => void }
-      ) => () => void
       chat: ChatApi
       onIndexProgress: (cb: (p: { done: number; total: number; phase: string; current?: string }) => void) => () => void
       onImportProgress: (cb: (p: { done: number; total: number; current: string }) => void) => () => void
@@ -520,7 +521,7 @@ declare global {
       webSearch: (input: { query: string; limit?: number; general?: boolean; academic?: boolean }) => Promise<import('../../shared/web').WebSearchResult>
       webFetch: (input: { url: string; forceRefresh?: boolean }) => Promise<import('../../shared/web').WebPageInfo>
       webImportHtml: (input: { url: string; html: string }) => Promise<{ ok: boolean; matched?: boolean; translator?: string; title?: string; error?: string }>
-      webSnapshots: (input: { query?: string; limit?: number }) => Promise<Array<import('../../shared/web').WebPageInfo & { id: number }>>
+      webSnapshots: (input: { query?: string; limit?: number }) => Promise<import('../../shared/web').WebSnapshotInfo[]>
       onOpenPaperRequest: (cb: (p: { paperId: number }) => void) => () => void
       translatorsImport: (payload: { csl: Record<string, unknown>; pdfPath?: string; category?: string; origin?: string }) => Promise<{ ok: boolean; slug?: string; error?: string }>
       translatorsSetDisabled: (ids: string[]) => Promise<boolean>
@@ -567,12 +568,24 @@ declare global {
       onZoteroSyncDone: (cb: (p: { ok: boolean; imported?: number; skipped?: number; failed?: number; fetched?: number; error?: string; errors?: string[] }) => void) => () => void
       agentMcpStatus: () => Promise<{ results: Array<{ server: string; ok: boolean; tools: number; error?: string }>; tools: Array<{ fullName: string; server: string; description: string }>; configPath: string }>
       agentMcpOpenConfig: () => Promise<boolean>
+      agentMcpServers: () => Promise<Array<{ name: string; def: { command: string; args?: string[]; env?: Record<string, string> } }>>
+      agentMcpPresets: () => Promise<Array<{ name: string; description: string; command: string; args: string[] }>>
+      agentMcpUpsert: (name: string, def: { command: string; args?: string[]; env?: Record<string, string> }) => Promise<Array<{ server: string; ok: boolean; tools: number; error?: string }>>
+      agentMcpRemove: (name: string) => Promise<Array<{ server: string; ok: boolean; tools: number; error?: string }>>
       agentSkills: () => Promise<Array<{ name: string; description: string; source: 'builtin' | 'user' }>>
       agentSkillsOpenDir: () => Promise<boolean>
+      agentSkillsSave: (input: { name: string; description?: string; body: string; originalName?: string }) => Promise<{ name: string; description: string; source: 'builtin' | 'user'; file: string; body: string }>
+      agentSkillsGet: (name: string) => Promise<{ name: string; description: string; source: 'builtin' | 'user'; file: string; body: string } | null>
+      agentSkillsDelete: (name: string) => Promise<boolean>
+      agentSkillsImport: () => Promise<Array<{ file: string; ok: boolean; name?: string; error?: string }>>
       agentAutoList: () => Promise<Array<{ id: number; name: string; goal: string; interval_minutes: number; enabled: number; last_run_at: string | null; last_result: string | null }>>
       agentAutoCreate: (name: string, goal: string, minutes: number) => Promise<unknown>
       agentAutoRemove: (id: number) => Promise<boolean>
       agentAutoToggle: (id: number, enabled: boolean) => Promise<boolean>
+      agentAutoUpdate: (id: number, patch: { name?: string; goal?: string; intervalMinutes?: number }) => Promise<{ id: number; name: string; goal: string; interval_minutes: number; enabled: number; last_run_at: string | null; last_result: string | null } | null>
+      agentAutoRunNow: (id: number) => Promise<{ ok: boolean; outcome?: { conversationId: string; runId: string; status: string; error?: string }; error?: string }>
+      agentAutoRuns: (id: number, limit?: number) => Promise<Array<{ id: number; schedule_id: number; started_at: string; finished_at: string | null; status: string; conversation_id: string | null; run_id: string | null; error: string | null }>>
+      agentAutoNext: (id: number) => Promise<string | null>
       calendarList: (start: string, end: string) => Promise<import('../../shared/calendar').CalendarEvent[]>
       calendarSave: (input: import('../../shared/calendar').CalendarInput, id?: number) => Promise<import('../../shared/calendar').CalendarEvent>
       calendarRemove: (id: number) => Promise<boolean>

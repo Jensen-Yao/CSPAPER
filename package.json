@@ -1,6 +1,6 @@
 {
   "name": "cspaper",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "CSPAPER — 本地优先的科研文献工作台：PDF 精读、可溯源问答、项目任务与 Work 智能体",
   "main": "out/main/index.js",
   "productName": "CSPAPER",

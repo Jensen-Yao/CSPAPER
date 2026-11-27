@@ -110,3 +110,29 @@
 /* 会话分组：问答在前，Work 任务带标记 */
 .chat-conversation-group { padding: 8px 6px 4px; font-size: 11px; color: var(--text-dim); letter-spacing: 0.04em; }
 .chat-conversation-badge { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 999px; background: var(--bg-elev, rgba(0,0,0,0.06)); font-size: 11px; line-height: 16px; color: var(--text-dim); vertical-align: 1px; }
+
+/* 工具时间线：耗时、写入差异与撤销 */
+.chat-tool-ms { flex: none; font-size: 11px; color: var(--text-dim); font-family: var(--mono, Consolas, monospace); }
+.chat-tool-change { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.04); }
+.chat-tool-change b { display: block; margin-bottom: 2px; }
+.chat-tool-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.chat-tool-actions button { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-size: 11px; }
+.chat-tool-undo-msg { font-size: 11px; color: var(--text-dim); }
+.chat-approval-actions { display: flex; gap: 8px; margin-top: 6px; }
+.chat-plan li.done span, .chat-plan li.fail span { font-weight: 600; }
+.chat-plan li.fail small:last-child { color: var(--danger); }
+
+/* 产物卡：打开 / 内嵌预览 */
+.chat-result-card { border: 1px solid var(--border-lit); background: var(--bg2); border-radius: var(--radius-sm); padding: 8px 12px; min-width: 200px; max-width: 100%; }
+.chat-result-head { display: flex; align-items: center; gap: 8px; }
+.chat-result-open { flex: 1; min-width: 0; border: 0; background: none; text-align: left; cursor: pointer; padding: 2px 0; color: var(--text); }
+.chat-result-open b { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-result-open small { color: var(--text-dim); font-size: 11px; }
+.chat-result-preview-btn { flex: none; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-size: 11px; }
+.chat-result-preview { margin-top: 8px; font-size: 12px; max-height: 260px; overflow: auto; }
+.chat-result-preview table { border-collapse: collapse; width: 100%; font-size: 11px; }
+.chat-result-preview th, .chat-result-preview td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; vertical-align: top; }
+.chat-result-empty { color: var(--text-dim); font-size: 11px; padding: 4px 0; }
+
+.chat-source-web { display: inline-flex; gap: 6px; align-items: center; }
+.chat-source-ext { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 4px; }

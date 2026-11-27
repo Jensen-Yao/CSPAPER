@@ -44,7 +44,7 @@ try {
   await jsClick('.wb-nav-item', '自动化')
   await wait(1500)
   await shot('w3-work-auto')
-  await jsClick('.wb-nav-item', '插件市场')
+  await jsClick('.wb-nav-item', '插件 · MCP')
   await wait(1500)
   await shot('w4-work-mcp')
 

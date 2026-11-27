@@ -17,8 +17,10 @@ import { registerPlatformTools } from '../tools/platform'
 import { collectionPapers } from '../collection-service'
 import { callMcpTool, listMcpTools } from '../mcp'
 import { snapshotModelBinding } from '../model-config'
+import { configureModelJobs } from '../chat/jobs'
+import { freeTranslate } from '../free-translate'
 import { invalidateSkills, listSkills, snapshotSkills } from '../skills'
-import { idSchema, createConversationRequestSchema, listConversationsRequestSchema, loadMessagesRequestSchema, submitTurnRequestSchema, cancelRunRequestSchema, approveToolRequestSchema, subscribeRequestSchema, retryTurnRequestSchema, editAndResubmitRequestSchema } from '../../shared/chat-ipc'
+import { undoToolRequestSchema, idSchema, createConversationRequestSchema, listConversationsRequestSchema, loadMessagesRequestSchema, submitTurnRequestSchema, cancelRunRequestSchema, approveToolRequestSchema, subscribeRequestSchema, retryTurnRequestSchema, editAndResubmitRequestSchema } from '../../shared/chat-ipc'
 import type { IpcCtx } from './context'
 
 let repository:ChatRepository
@@ -68,6 +70,8 @@ export function registerChatIpc(ctx:IpcCtx):void {
     if(paperIds?.length===0)paperIds=undefined
     return retrieveSources({...request,paperId:paperIds&&paperIds.length?undefined:paperId,paperIds,category,refs:details?.context.refs??[]})
   },toolRegistry,'auto')
+  runtime.freeTranslation=(text,signal)=>freeTranslate(text,getSettings().translateTarget).then(result=>{signal.throwIfAborted();return result})
+  configureModelJobs(repository,new SystemChatProvider(),bus)
   runtime.recover()
   bus.subscribe({listener:event=>{for(const subscriber of eventSubscribers)if(!subscriber.isDestroyed())subscriber.send('chat:event',event)}})
   ipcMain.handle('chat:event-subscribe',event=>{
@@ -106,10 +110,17 @@ export function registerChatIpc(ctx:IpcCtx):void {
     if(request.skills?.length)invalidateSkills()
     const skills=request.skills?.length?snapshotSkills(request.skills,listSkills()):undefined
     const context=buildContextSnapshot({conversationId:request.conversationId,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:request.permission,promptKind:request.promptKind,researchGoal:request.mode==='act'?getSettings().agentGoal:undefined,skills,inheritContext:request.inheritContext})
-    const modelBinding=snapshotModelBinding(getSettings(),request.modelBindingId,request.reasoning,request.mode)
+    let modelBinding
+    try { modelBinding=snapshotModelBinding(getSettings(),request.modelBindingId,request.reasoning,request.mode) }
+    catch(error) {
+      // 未配置模型时划词翻译仍可用：走免费翻译通道，但保持同一套有记录的运行。
+      if(request.promptKind!=='translation')throw error
+      modelBinding={bindingId:'free:translation',profileId:'free',provider:'free',model:'free',capabilities:['text' as const],reasoning:'default' as const}
+    }
     return runtime.submitTurn({conversationId:request.conversationId,clientMessageId:request.clientMessageId,parentMessageId:request.parentMessageId??null,text:request.text,context,modelBinding,mode:request.mode})
   })
   ipcMain.handle('chat:approve-tool',(_e,input:unknown)=>{const request=parse(approveToolRequestSchema,input),call=repository.getToolCall(request.toolCallId);if(!call)throw new Error('工具调用不存在');ownedRun(call.run_id);return runtime.approveTool(request)})
+  ipcMain.handle('chat:undo-tool',(_e,input:unknown)=>{const request=parse(undoToolRequestSchema,input),call=repository.getToolCall(request.toolCallId);if(!call)throw new Error('工具调用不存在');ownedRun(call.run_id);return runtime.undoTool(request.toolCallId)})
   ipcMain.handle('chat:resume',(_e,input:unknown)=>{
     const request=parse(cancelRunRequestSchema,input),run=repository.getRun(request.runId)
     if(!run||repository.getConversation(run.conversationId)?.workspaceId!==activeWorkspaceId())throw new Error('运行不属于当前工作区')
@@ -135,6 +146,11 @@ export function registerChatIpc(ctx:IpcCtx):void {
     const context=buildContextSnapshot({conversationId:conversation.id,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:original?.context.permission,promptKind:original?.context.promptKind,researchGoal:original?.context.researchGoal,skills:original?.context.skills})
     return runtime.editAndResubmit({conversationId:conversation.id,messageId:message.id,text:request.text,context,modelBinding:original?.modelBinding})
   })
+}
+
+/** Window closed / app quitting: stop every queued or running turn so no provider request outlives the window. */
+export function shutdownChat(reason='窗口已关闭'):void {
+  runtime?.cancelAll(reason)
 }
 
 export function refreshChatMcpTools():void {

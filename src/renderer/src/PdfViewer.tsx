@@ -37,6 +37,8 @@ interface Props {
   onPageContext: (text: string) => void
   // 当前页码变化（全文翻译的页码指示用）
   onPageChange?: (n: number) => void
+  /** Collapse the thumbnail / outline rail when the assistant panel is open so the page keeps its width. */
+  suppressNavi?: boolean
   // 工具栏「全文翻译」按钮：打开侧栏全文对照
   onOpenFulltext?: () => void
   onSelect: (text: string, x: number, y: number) => void
@@ -64,7 +66,7 @@ interface FindHit {
 }
 
 const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
-  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, onEditHighlight, visible, initialPage, findSignal },
+  { tabs, activeId, onActivate, onCloseTab, pendingJump, onJumped, onPageContext, onPageChange, onOpenFulltext, onSelect, onDeleteHighlight, onEditHighlight, visible, initialPage, findSignal, suppressNavi },
   ref
 ): JSX.Element {
   const dlg = useDialog()
@@ -85,6 +87,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
   const [numPages, setNumPages] = useState(0)
   // 侧边导航：页面缩略图 / 文档目录
   const [navi, setNavi] = useState<'none' | 'thumbs' | 'toc'>('none')
+  useEffect(() => { if (suppressNavi) setNavi('none') }, [suppressNavi])
   const [outline, setOutline] = useState<Array<{ title: string; page: number; depth: number }>>([])
   // ===== 阅读进度（W2）=====
   // 会话内每篇论文的最新阅读页（tab 来回切换时恢复位置用，优先于 initialPage）
@@ -853,7 +856,7 @@ const PdfViewer = forwardRef<ViewerHandle, Props>(function PdfViewer(
                 void dlg.prompt({ title: '添加便签', placeholder: '备注内容（贴在页面此位置）' }).then((comment) => {
                   if (!comment) return
                   void window.api
-                    .addHighlight(active.paper.id, page, [{ x: x - 0.015, y: y - 0.012, w: 0.03, h: 0.024 }], `📌 ${comment.slice(0, 200)}`, 'yellow')
+                    .addHighlight(active.paper.id, page, [{ x: x - 0.015, y: y - 0.012, w: 0.03, h: 0.024 }], `[批注]  ${comment.slice(0, 200)}`, 'yellow')
                     .then(() => {
                       void window.api
                         .listHighlights(active.paper.id)

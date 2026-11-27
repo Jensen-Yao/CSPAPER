@@ -16,6 +16,7 @@ interface Props {
   onRefresh: () => void
   // v0.6 外部标签筛选（如左栏标签区联动传入）；与内部下拉叠加（内部优先）
   externalTagFilter?: string | null
+  focusCategory?: string | null
 }
 
 type SortKey = 'title' | 'authors' | 'year' | 'venue' | 'category' | 'status' | 'cited'
@@ -47,7 +48,7 @@ const WIN_OVERSCAN = 20
 const PALETTE = ['#5b4a3a', '#1558c0', '#1c7a2e', '#b06a00', '#6b21a8', '#0e7490', '#be185d', '#4d7c0f']
 
 // 纵览：Zotero 式文献总表 + 知识网络（同类/同作者/共现关联的力导向图）
-export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh, externalTagFilter }: Props): JSX.Element {
+export default function OverviewView({ papers, visible, tab, onTabChange, onOpen, onRefresh, externalTagFilter, focusCategory }: Props): JSX.Element {
   const dlg = useDialog()
   const [sortKey, setSortKey] = useState<SortKey>('title')
   const [asc, setAsc] = useState(true)
@@ -678,7 +679,7 @@ export default function OverviewView({ papers, visible, tab, onTabChange, onOpen
           </div>
         </>
       ) : tab === 'graph' ? (
-        <KnowledgeView papers={papers} visible={visible} onOpen={onOpen} />
+        <KnowledgeView papers={papers} visible={visible} onOpen={onOpen} focusCategory={focusCategory} />
       ) : (
         <StatsView visible={visible && tab === 'stats'} onOpen={(id) => { const p = papers.find((x) => x.id === id); if (p) onOpen(p) }} />
       )}

@@ -1,0 +1,16 @@
+{
+  "id": "baidu-scholar-search",
+  "name": "百度学术检索",
+  "version": 1,
+  "type": "search",
+  "note": "中英文文献检索（百度学术结果页；可在设置中启用浏览器登录态）。",
+  "steps": [
+    { "op": "fetch", "url": "https://xueshu.baidu.com/s?wd={q}&ie=utf-8&sc_hit=1" },
+    {
+      "op": "csslist",
+      "selector": "div.result",
+      "map": { "title": "h3 a|text", "url": "h3 a|href", "abstract": "div.c_abstract|text", "_info": ".sc_info|text", "year": ".sc_info .sc_info_year|text" },
+      "rowTransform": "const year = (t.year || (t._info || '').match(/(19|20)\\d{2}/) || [''])[0]\nconst info = (t._info || '').replace(/\\s+/g, ' ')\nconst authors = info.split(/\\s{2,}|\\s-\\s/)[0] || ''\nreturn { title: t.title, url: t.url, abstract: t.abstract, authors, year, venue: info.slice(authors.length, authors.length + 60) }"
+    }
+  ]
+}

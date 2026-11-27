@@ -45,6 +45,35 @@ export function writeConfig(cfg: McpConfig): void {
   fs.writeFileSync(mcpConfigPath(), JSON.stringify(cfg, null, 2))
 }
 
+export interface McpServerDef { command:string;args?:string[];env?:Record<string,string> }
+export const MCP_PRESETS:Array<{name:string;description:string;command:string;args:string[];env?:Record<string,string>}> = [
+  { name:'filesystem', description:'让智能体读写指定文件夹（官方 filesystem 服务器，需 Node）', command:'npx', args:['-y','@modelcontextprotocol/server-filesystem','.'] },
+  { name:'fetch', description:'把网页抓取为 Markdown 交给模型（官方 fetch 服务器，需 uv）', command:'uvx', args:['mcp-server-fetch'] },
+  { name:'memory', description:'跨会话的知识图谱记忆（官方 memory 服务器，需 Node）', command:'npx', args:['-y','@modelcontextprotocol/server-memory'] },
+  { name:'arxiv', description:'arXiv 检索与下载（社区 arxiv-mcp-server，需 uv）', command:'uvx', args:['arxiv-mcp-server'] }
+]
+
+/** Add or replace a server definition in mcp.json (name is sanitized like the tool namespace). */
+export function upsertMcpServer(name:string, def:McpServerDef):McpConfig {
+  const cfg=readConfig(), key=sanitize(name)
+  if(!key)throw new Error('服务器名称无效')
+  cfg.mcpServers={...(cfg.mcpServers??{}),[key]:{command:def.command.trim(),...(def.args?.length?{args:def.args}:{}) , ...(def.env&&Object.keys(def.env).length?{env:def.env}:{})}}
+  writeConfig(cfg)
+  return cfg
+}
+
+export function removeMcpServer(name:string):boolean {
+  const cfg=readConfig(), key=sanitize(name)
+  if(!cfg.mcpServers?.[key])return false
+  delete cfg.mcpServers[key]
+  writeConfig(cfg)
+  return true
+}
+
+export function readMcpServers():Array<{name:string;def:McpServerDef}> {
+  return Object.entries(readConfig().mcpServers??{}).map(([name,def])=>({name,def}))
+}
+
 function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
 }

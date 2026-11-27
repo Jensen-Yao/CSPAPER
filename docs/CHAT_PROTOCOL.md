@@ -51,6 +51,14 @@ Tools return `success`, `partial`, `failed`, or `cancelled`; include sources, ar
 
 `src/main/chat/prompts.ts` owns ask, act, translation, explain, full-paper, RAG, deep reading, comparison and synthesis prompts. Compatibility functions in `llm.ts` and insight services delegate to these templates instead of maintaining independent system prompts.
 
+## Background model jobs
+
+Deep reading, comparison cells, synthesis, import metadata, reference parsing and the compatibility planner no longer call a separate `chatStream`. They run through `chat/jobs.ts`: a hidden conversation (`entry='work'`, `mode='ask'`, title prefixed `后台：`) owns a recorded run with the current Paper model binding, a 5-minute timeout, caller cancellation and `message.delta` events. Job conversations are excluded from every conversation list. Abandoned jobs (consumer stopped early) end in `cancelled`, never in `generating`. Translation turns without a configured model use the `free:translation` binding and the same recorded run shape.
+
+## Undo and run-scoped approval
+
+`tool.completed` events carry `durationMs` and the `changes` array. `chat:undo-tool` replays the recorded changes in reverse for reversible entities (notes, standalone notes, paper status / metadata / tags, tasks, projects, calendar events, comparisons, collections, synthesis, exported files) and reports what could not be reverted. `approveTool` accepts `allowForRun`, which adds the tool to a per-run allow list so later calls of the same tool in that run execute without another prompt (destructive tools still require confirmation).
+
 ## Release gate
 
 Implemented locally: interrupted-run recovery, retry/edit branches, provider-ID model binding, record/collection evidence, version-aware citations, cancellation, migration rollback, real Agnes JSON and the three-paper task. GitHub Actions CI must pass after push before a release tag is promoted.

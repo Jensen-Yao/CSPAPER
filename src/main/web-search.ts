@@ -1,8 +1,9 @@
 // 联网检索（v0.23）：通用搜索（必应 / DuckDuckGo 结果页）+ 学术源（Semantic Scholar、arXiv、PubMed、Crossref、OpenAlex），
 // 按 DOI 与规范化 URL 去重，失败的单源不影响其他来源。
 import * as cheerio from 'cheerio'
-import { fetchText, webEnabled, NetworkError } from './net'
+import { fetchText, netFetch, webEnabled, NetworkError } from './net'
 import { searchAll } from './translators'
+import { getSettings } from './db'
 
 import type { WebHit, WebHitSource, WebSearchResult } from '../shared/web'
 export type { WebHit, WebHitSource, WebSearchResult } from '../shared/web'
@@ -109,6 +110,25 @@ async function searchScholarlyScripts(query:string):Promise<WebHit[]> {
   })
 }
 
+/** Optional search API configured in settings (Brave / Tavily / Exa / Serper); returns undefined when none is configured. */
+async function searchProviderApi(query:string,limit:number,signal?:AbortSignal):Promise<WebHit[]|undefined> {
+  const settings=getSettings(),key=(settings.webSearchKey??'').trim(),provider=settings.webSearchProvider
+  if(!key||!provider)return undefined
+  const headers:Record<string,string>={'Content-Type':'application/json'}
+  let url='',body=''
+  if(provider==='brave') { url=`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${Math.min(limit,20)}`;headers['X-Subscription-Token']=key }
+  else if(provider==='tavily') { url='https://api.tavily.com/search';body=JSON.stringify({api_key:key,query,max_results:Math.min(limit,20)}) }
+  else if(provider==='exa') { url='https://api.exa.ai/search';headers['x-api-key']=key;body=JSON.stringify({query,numResults:Math.min(limit,20),contents:{text:true}}) }
+  else { url='https://google.serper.dev/search';headers['X-API-KEY']=key;body=JSON.stringify({q:query,num:Math.min(limit,20)}) }
+  const response=await netFetch(url,{method:body?'POST':'GET',headers,body:body||undefined,signal,timeoutMs:15000,maxBytes:4*1024*1024})
+  const json=JSON.parse(response.buffer.toString('utf8')) as Record<string,unknown>
+  const pick=(value:unknown):string=>String(value??'').replace(/\s+/g,' ').trim()
+  if(provider==='brave')return ((json.web as {results?:Array<{title?:string;url?:string;description?:string}>}|undefined)?.results??[]).map(item=>({title:pick(item.title),url:pick(item.url),snippet:pick(item.description),source:'brave'}))
+  if(provider==='tavily')return ((json.results as Array<{title?:string;url?:string;content?:string}>|undefined)??[]).map(item=>({title:pick(item.title),url:pick(item.url),snippet:pick(item.content),source:'tavily'}))
+  if(provider==='exa')return ((json.results as Array<{title?:string;url?:string;text?:string}>|undefined)??[]).map(item=>({title:pick(item.title),url:pick(item.url),snippet:pick(item.text),source:'exa'}))
+  return ((json.organic as Array<{title?:string;link?:string;snippet?:string}>|undefined)??[]).map(item=>({title:pick(item.title),url:pick(item.link),snippet:pick(item.snippet),source:'serper'}))
+}
+
 async function settle<T>(source:string,run:()=>Promise<T>,errors:WebSearchResult['errors']):Promise<T|undefined> {
   try { return await run() } catch(error) { errors.push({source,message:error instanceof NetworkError?error.message:String(error).slice(0,160)});return undefined }
 }
@@ -119,8 +139,12 @@ export async function webSearch(query:string,options:WebSearchOptions={}):Promis
   if(!q)return {hits:[],sources:[],errors:[{source:'input',message:'检索词为空'}]}
   if(!webEnabled())return {hits:[],sources:[],errors:[{source:'policy',message:'联网已在设置中关闭'}]}
   const limit=Math.max(1,Math.min(30,options.limit??10)),errors:WebSearchResult['errors']=[]
-  const scholarly=options.academic??true,general=options.general??!scholarly
-  const [bing,ddg,s2,arxiv,pubmed,scripts]=await Promise.all([
+  const scholarly=options.academic??true
+  // “仅学术 API”模式下不访问通用搜索引擎与第三方搜索接口
+  const academicOnly=getSettings().webAcademicOnly===true
+  const general=(options.general??!scholarly)&&!academicOnly
+  const [api,bing,ddg,s2,arxiv,pubmed,scripts]=await Promise.all([
+    general?settle('search_api',()=>searchProviderApi(q,limit,options.signal),errors):Promise.resolve(undefined),
     general?settle('bing',()=>searchBing(q,limit,options.signal),errors):Promise.resolve(undefined),
     general?settle('duckduckgo',()=>searchDuckDuckGo(q,limit,options.signal),errors):Promise.resolve(undefined),
     scholarly?settle('semantic_scholar',()=>searchSemanticScholar(q,limit,options.signal),errors):Promise.resolve(undefined),
@@ -129,7 +153,7 @@ export async function webSearch(query:string,options:WebSearchOptions={}):Promis
     scholarly?settle('crossref/openalex',()=>searchScholarlyScripts(q),errors):Promise.resolve(undefined)
   ])
   // Interleave sources so each contributes its best results before any single source dominates.
-  const buckets=[s2,arxiv,pubmed,scripts,bing,ddg].filter((bucket):bucket is WebHit[]=>Array.isArray(bucket)&&bucket.length>0)
+  const buckets=[api,s2,arxiv,pubmed,scripts,bing,ddg].filter((bucket):bucket is WebHit[]=>Array.isArray(bucket)&&bucket.length>0)
   const seenUrl=new Set<string>(),seenDoi=new Set<string>(),hits:WebHit[]=[]
   for(let rank=0;hits.length<limit*3;rank++) {
     let added=false

@@ -20,7 +20,7 @@ export const SLASH_CMDS: SlashCmd[] = [
   { name: 'today', desc: '打开今日科研台', group: '导航' },
   { name: 'calendar', desc: '打开科研日历', group: '导航' },
   { name: 'skills', desc: '打开技能面板', group: '导航' },
-  { name: 'mcp', desc: '打开插件市场（MCP 服务器）', group: '导航' },
+  { name: 'mcp', desc: '打开插件（MCP 服务器）', group: '导航' },
   { name: 'cron', desc: '打开自动化面板（定时任务）', group: '导航' },
   { name: 'fetch', args: '网址 [问题]', desc: '读取网页正文并加入对话上下文', group: '任务' },
   { name: 'web', args: '检索词', desc: '联网搜索并把结果加入对话上下文', group: '任务' },

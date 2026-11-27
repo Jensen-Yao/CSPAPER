@@ -1,4 +1,6 @@
 import { persistNote, readNoteDraft, rememberNoteDraft } from './lib/note-storage'
+import MarkdownContent from './features/chat/MarkdownContent'
+import * as Icon from './Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Highlight, Paper } from './types'
 import { useDialog } from './Dialog'
@@ -414,7 +416,8 @@ interface CardProps {
 
 function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft, onOpenPaper, onAsk, onExportOne }: CardProps): JSX.Element {
   const preview = useMemo(() => mdToPlain(row.note), [row.note])
-  const clipped = preview.length > 300 ? `${preview.slice(0, 300)}…` : preview
+  const [expanded, setExpanded] = useState(false)
+  const long = preview.length > 300 || row.note.split('\n').length > 8
   return (
     <div className={`note-card ${editing ? 'editing' : ''}`}>
       <div className="note-card-head">
@@ -430,16 +433,10 @@ function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft,
               完成
             </button>
           ) : (
-            <button className="cmp-mini" onClick={onEdit} title="就地编辑我的笔记（自动保存）">
-              编辑
-            </button>
+            <button className="note-icon" onClick={onEdit} title="就地编辑我的笔记（自动保存）" aria-label="编辑笔记"><Icon.Edit size={13}/></button>
           )}
-          <button className="cmp-mini" onClick={onAsk} title="把这篇笔记和标注加入统一对话上下文">
-            问这篇笔记
-          </button>
-          <button className="cmp-mini" onClick={onExportOne} title="导出此笔记为 Markdown 文件">
-            导出此笔记
-          </button>
+          <button className="note-icon" onClick={onAsk} title="把这篇笔记和标注加入统一对话" aria-label="问这篇笔记"><Icon.Chat size={13}/></button>
+          <button className="note-icon" onClick={onExportOne} title="导出此笔记为 Markdown 文件" aria-label="导出此笔记"><Icon.Save size={13}/></button>
         </div>
       </div>
 
@@ -456,7 +453,8 @@ function NoteCard({ row, editing, draft, saveHint, onEdit, onCloseEdit, onDraft,
         />
       ) : (
         <>
-          {clipped && <div className="note-preview">{clipped}</div>}
+          {preview && <div className={`note-preview markdown ${expanded?'':'clipped'}`}><MarkdownContent text={row.note} onCitation={()=>{}}/></div>}
+          {preview && long && <button className="note-expand" onClick={()=>setExpanded(v=>!v)}>{expanded?'收起':'展开全文'}</button>}
           {row.highlights.length > 0 && (
             <div className="note-hls">
               {row.highlights.map((h) => (

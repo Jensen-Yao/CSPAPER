@@ -1147,7 +1147,7 @@ export default function StatsView({ visible, onOpen }: Props): JSX.Element | nul
         <div className="st2-status">
           {(ov?.statuses ?? []).map((s) => (
             <span key={s.status} className="st2-status-item">
-              <span className="st2-dot" style={{ background: STATUS_META[s.status]?.color ?? '#98a2ab' }} />
+              <span className="st2-dot" style={{ background: STATUS_META[s.status]?.color ?? 'var(--text-dim)' }} />
               {STATUS_META[s.status]?.label ?? s.status} · {s.count}
             </span>
           ))}

@@ -1380,15 +1380,19 @@ const SUBTABS: Array<{ key: SubTab; label: string }> = [
 export default function KnowledgeView({
   papers,
   visible,
-  onOpen
+  onOpen,
+  focusCategory
 }: {
   papers: Paper[]
   visible: boolean
   onOpen: (p: Paper) => void
+  /** Coming from a category in the library tree focuses the network on that category. */
+  focusCategory?: string | null
 }): JSX.Element | null {
   const [sub, setSub] = useState<SubTab>('sim')
   const cats = useMemo(() => [...new Set(papers.map((p) => p.category))].sort((a, b) => a.localeCompare(b)), [papers])
-  const [cat, setCat] = useState('')
+  const [cat, setCat] = useState(focusCategory ?? '')
+  useEffect(() => { if (focusCategory) setCat(focusCategory) }, [focusCategory])
   const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers])
   const catPapers = useMemo(() => (cat ? papers.filter((p) => p.category === cat) : papers), [papers, cat])
 

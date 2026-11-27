@@ -85,6 +85,8 @@ const api = {
   paperDetail: (id: number) => ipcRenderer.invoke('papers:detail', id),
   paperExtractGet: (id: number) => ipcRenderer.invoke('papers:extract-get', id),
   paperExtractRun: (id: number) => ipcRenderer.invoke('papers:extract-run', id),
+  paperExtractCancel: (id: number) => ipcRenderer.invoke('papers:extract-cancel', id),
+  paperExtractField: (id: number, field: string) => ipcRenderer.invoke('papers:extract-field', id, field),
   statsWeekly: () => ipcRenderer.invoke('stats:weekly'),
   updatePaperMeta: (id: number, patch: Record<string, string | number | null>) => ipcRenderer.invoke('papers:update-meta', id, patch),
   searchesList: () => ipcRenderer.invoke('searches:list'),
@@ -199,30 +201,6 @@ const api = {
   testLLM: (over?: { apiBase?: string; apiKey?: string; model?: string; provider?: string }) => ipcRenderer.invoke('llm:test', over),
   testEmbed: () => ipcRenderer.invoke('embed:test'),
 
-  // 兼容旧流式接口：返回停止句柄；新对话入口必须使用 window.api.chat
-  stream: (args: Record<string, unknown>, handlers: { onDelta: (t: string) => void; onEnd: () => void; onSources?: (s: unknown[]) => void }) => {
-    const reqId = Date.now() + Math.floor(Math.random() * 1e6)
-    const deltaCh = `llm:delta:${reqId}`
-    const endCh = `llm:end:${reqId}`
-    const srcCh = `llm:sources:${reqId}`
-    const onDelta = (_e: unknown, t: string) => handlers.onDelta(t)
-    const onEnd = () => {
-      cleanup()
-      handlers.onEnd()
-    }
-    const onSources = (_e: unknown, s: unknown[]) => handlers.onSources?.(s)
-    function cleanup(): void {
-      ipcRenderer.removeListener(deltaCh, onDelta)
-      ipcRenderer.removeListener(endCh, onEnd)
-      ipcRenderer.removeListener(srcCh, onSources)
-    }
-    ipcRenderer.on(deltaCh, onDelta)
-    ipcRenderer.on(endCh, onEnd)
-    ipcRenderer.on(srcCh, onSources)
-    ipcRenderer.send('llm:stream', { reqId, ...args })
-    return () => ipcRenderer.send('llm:cancel', reqId)
-  },
-
   chat: {
     workspace: () => ipcRenderer.invoke('chat:workspace'),
     createConversation: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:conversations-create', input),
@@ -236,7 +214,8 @@ const api = {
     submitTurn: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:submit', input),
     cancelRun: (runId: string, reason?: string) => ipcRenderer.invoke('chat:cancel', { runId, reason }),
     resumeRun: (runId: string) => ipcRenderer.invoke('chat:resume', { runId }),
-    approveTool: (toolCallId: string, approved: boolean) => ipcRenderer.invoke('chat:approve-tool', { toolCallId, approved }),
+    approveTool: (toolCallId: string, approved: boolean, allowForRun?: boolean) => ipcRenderer.invoke('chat:approve-tool', { toolCallId, approved, allowForRun }),
+    undoTool: (toolCallId: string) => ipcRenderer.invoke('chat:undo-tool', { toolCallId }),
     retryTurn: (runId: string, reuseContext = true) => ipcRenderer.invoke('chat:retry', { runId, reuseContext }),
     editAndResubmit: (input: Record<string, unknown>) => ipcRenderer.invoke('chat:edit-and-resubmit', input),
     getRun: (runId: string) => ipcRenderer.invoke('chat:run', runId),
@@ -385,12 +364,24 @@ const api = {
   // ---------- 技能 / 自动化 / MCP（v0.10） ----------
   agentMcpStatus: () => ipcRenderer.invoke('agent:mcp-status'),
   agentMcpOpenConfig: () => ipcRenderer.invoke('agent:mcp-open-config'),
+  agentMcpServers: () => ipcRenderer.invoke('agent:mcp-servers'),
+  agentMcpPresets: () => ipcRenderer.invoke('agent:mcp-presets'),
+  agentMcpUpsert: (name: string, def: { command: string; args?: string[]; env?: Record<string, string> }) => ipcRenderer.invoke('agent:mcp-upsert', name, def),
+  agentMcpRemove: (name: string) => ipcRenderer.invoke('agent:mcp-remove', name),
   agentSkills: () => ipcRenderer.invoke('agent:skills'),
   agentSkillsOpenDir: () => ipcRenderer.invoke('agent:skills-open-dir'),
+  agentSkillsSave: (input: { name: string; description?: string; body: string; originalName?: string }) => ipcRenderer.invoke('agent:skills-save', input),
+  agentSkillsGet: (name: string) => ipcRenderer.invoke('agent:skills-get', name),
+  agentSkillsDelete: (name: string) => ipcRenderer.invoke('agent:skills-delete', name),
+  agentSkillsImport: () => ipcRenderer.invoke('agent:skills-import'),
   agentAutoList: () => ipcRenderer.invoke('agent:auto-list'),
   agentAutoCreate: (name: string, goal: string, minutes: number) => ipcRenderer.invoke('agent:auto-create', name, goal, minutes),
   agentAutoRemove: (id: number) => ipcRenderer.invoke('agent:auto-remove', id),
   agentAutoToggle: (id: number, enabled: boolean) => ipcRenderer.invoke('agent:auto-toggle', id, enabled),
+  agentAutoUpdate: (id: number, patch: { name?: string; goal?: string; intervalMinutes?: number }) => ipcRenderer.invoke('agent:auto-update', id, patch),
+  agentAutoRunNow: (id: number) => ipcRenderer.invoke('agent:auto-run-now', id),
+  agentAutoRuns: (id: number, limit?: number) => ipcRenderer.invoke('agent:auto-runs', id, limit),
+  agentAutoNext: (id: number) => ipcRenderer.invoke('agent:auto-next', id),
   calendarList: (start: string, end: string) => ipcRenderer.invoke('calendar:list', start, end),
   calendarSave: (input: unknown, id?: number) => ipcRenderer.invoke('calendar:save', input, id),
   calendarRemove: (id: number) => ipcRenderer.invoke('calendar:remove', id),

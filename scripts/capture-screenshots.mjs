@@ -325,7 +325,7 @@ try {
   const zoomOut = page.locator('.reader-surface button').filter({ hasText: /^−$/ }).first()
   await zoomOut.click().catch(() => {}); await wait(400)
   await zoomOut.click().catch(() => {}); await wait(600)
-  await page.locator('.side-rail button[title="问答"]').click()
+  await page.locator('.side-tab').filter({hasText:'问答'}).click()
   await page.waitForSelector('.side .chat-input', { timeout: 10000 })
   await wait(400)
   await page.locator('.side .chat-input').fill('这篇论文的核心发现是什么？恢复实验是怎么设计的？')

@@ -89,7 +89,10 @@ export default function CalendarPane({conversationId,onStartTask,onOpenConversat
         {loading&&<p className="research-calendar-empty">正在加载日程…</p>}
         {!loading&&view==='month'&&<><div className="research-calendar-grid research-calendar-week">{['一','二','三','四','五','六','日'].map(day=><span key={day}>周{day}</span>)}</div>
           <div className="research-calendar-grid">
-            {days.map(date=>{const day=localDate(date),items=dayItems(day);return <button key={day} className={`research-calendar-day ${day===selected?'selected':''} ${date.getMonth()!==anchor.getMonth()?'outside':''}`} aria-label={day+(items.length?`，${items.length} 条日程`:'')} aria-pressed={day===selected} onClick={()=>choose(date)}><span>{date.getDate()}</span>{day===today&&<small>今天</small>}{items.length>0&&<i>{items.length} 条</i>}</button>})}
+            {days.map(date=>{const day=localDate(date),items=dayItems(day);return <div key={day} className={`research-calendar-day ${day===selected?'selected':''} ${date.getMonth()!==anchor.getMonth()?'outside':''}`} role="gridcell" aria-label={day+(items.length?`，${items.length} 条日程`:'')} aria-selected={day===selected} onClick={()=>choose(date)}>
+              <div className="research-calendar-day-head"><span>{date.getDate()}</span>{day===today&&<small>今天</small>}</div>
+              <div className="research-calendar-day-events">{items.slice(0,3).map(item=><button type="button" key={`${item.id}-${day}`} className={`research-calendar-bar ${item.kind} ${item.completed?'done':''}`} title={`${timeText(item.startTime)}${item.endTime?` ~ ${item.endTime}`:''} · ${item.title}`} onClick={event=>{event.stopPropagation();choose(date);openEditor(item)}}>{timeText(item.startTime)!=='全天'?timeText(item.startTime)+' ':''}<span className="ellipsis">{item.title}</span></button>)}{items.length>3&&<small className="research-calendar-more">+{items.length-3}</small>}</div>
+            </div>})}
           </div></>}
         {!loading&&view==='week'&&<div className="research-calendar-week-view">{weekDays.map(date=>{const day=localDate(date);return <section key={day}><header className={day===today?'today':''}><button onClick={()=>{setView('day');choose(date)}}>{day.slice(5)}</button><span>{day===today?'今天':''}</span></header>{dayItems(day).map(item=><button key={`${item.id}-${day}`} onClick={()=>choose(date)}><strong>{timeText(item.startTime)}</strong><span>{item.title}</span></button>)}</section>})}</div>}
         {!loading&&(view==='day'||view==='agenda')&&<div className="research-calendar-list">{(view==='day'?selectedItems:agendaItems).map((item,key)=>(
@@ -114,7 +117,7 @@ export default function CalendarPane({conversationId,onStartTask,onOpenConversat
           {item.notes&&<p>{item.notes}</p>}
           <div className="research-calendar-event-actions"><button onClick={()=>onStartTask(item)}>交给 Work</button>{item.conversationId&&<button onClick={()=>onOpenConversation(item.conversationId!)}>打开关联会话</button>}<button onClick={()=>openEditor(item)}>编辑</button><button onClick={()=>void remove(item)}>删除</button></div>
         </article>)}
-        {draft&&<form className="research-calendar-form" onSubmit={e=>{e.preventDefault();void save()}}>
+        {draft&&<div className="modal-mask" onMouseDown={event=>{if(event.target===event.currentTarget)setDraft(null)}}><form className="research-calendar-form modal" onMouseDown={event=>event.stopPropagation()} onSubmit={e=>{e.preventDefault();void save()}}>
           <h3>{editId?'编辑日程':'新建日程'}</h3>
           <label>标题<input required maxLength={200} value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></label>
           <div className="research-calendar-form-row">
@@ -132,7 +135,7 @@ export default function CalendarPane({conversationId,onStartTask,onOpenConversat
           <label>备注<textarea rows={3} maxLength={5000} value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></label>
           {draft.conversationId&&<small>已关联当前 Work 会话</small>}
           <div><button type="submit" className="wb-run" disabled={saving||!draft.title.trim()}>{saving?'保存中…':'保存日程'}</button><button type="button" className="wb-mini" onClick={()=>setDraft(null)}>取消</button></div>
-        </form>}
+        </form></div>}
         {error&&<p className="chat-message-error" role="alert">{error}</p>}
       </aside>
     </div>

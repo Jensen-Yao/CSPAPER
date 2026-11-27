@@ -14,6 +14,7 @@ import { ToolExecutor } from '../tools/executor'
 import { getSettings } from '../db'
 import type { ToolRegistry } from '../tools/registry'
 import type { PermissionMode } from '../tools/policy'
+import { undoToolCall } from '../tools/undo'
 import type { ToolResult } from '../../shared/tools'
 import type { Source } from '../../shared/sources'
 
@@ -67,6 +68,10 @@ export class ChatRuntime {
   private readonly queue:string[]=[]
   private readonly waiters=new Set<()=>void>()
   private readonly resumptions=new Map<string,{plan?:PlanStepRecord[];approvedCallId?:string;revision?:number}>()
+  /** Tools the user allowed for the rest of a run (“本任务内允许”). */
+  private readonly runAllow=new Map<string,Set<string>>()
+  /** Translation channel used when no model is configured (binding `free:translation`). */
+  freeTranslation?:(text:string,signal:AbortSignal)=>Promise<string>
 
   constructor(private readonly repository:ChatRepository,private readonly provider:ChatProvider,private readonly events:ChatEventBus,private readonly maxConcurrent=2,private readonly retrieve?:(input:{query:string;runId:string;workspaceId:string;refs:ContextSnapshot['refs'];signal:AbortSignal})=>Promise<Source[]>,private readonly toolRegistry?:ToolRegistry,private readonly permission:'auto'|'confirm'|'readonly'='auto',private readonly limits:{timeoutMs?:number;actTimeoutMs?:number;maxSteps?:number;maxContinuations?:number}={}) {}
 
@@ -132,6 +137,12 @@ export class ChatRuntime {
       modelBinding:input.modelBinding??details?.modelBinding??{bindingId:'unknown',profileId:'unknown',provider:'unknown',model:'unknown',capabilities:[],reasoning:'default'},
       mode:details?.run.mode??'ask'
     })
+  }
+
+  /** Stop everything that is queued or running (window closed / app quitting). */
+  cancelAll(reason='窗口已关闭'):void {
+    for(const runId of [...this.queue]){this.queue.splice(this.queue.indexOf(runId),1);this.resumptions.delete(runId);this.finishCancelled(runId,reason)}
+    for(const [runId,active] of this.active)active.controller.abort(new Error(reason))
   }
 
   cancelRun(runId:string,reason='用户停止'):boolean {
@@ -326,7 +337,7 @@ export class ChatRuntime {
       const step=state.steps[index]
       controller.signal.throwIfAborted()
       const toolCallId='call_'+runId+'_'+(state.revision?'r'+state.revision+'_':'')+index
-      const output=await input.executor.execute({runId,workspaceId:input.workspaceId,toolCallId,tool:step.tool,args:step.args,signal:controller.signal,repository:this.repository,events:this.events,permission:input.permission,approvalGranted:input.approvedCallId===toolCallId})
+      const output=await input.executor.execute({runId,workspaceId:input.workspaceId,toolCallId,tool:step.tool,args:step.args,signal:controller.signal,repository:this.repository,events:this.events,permission:input.permission,approvalGranted:input.approvedCallId===toolCallId,allowTools:[...(this.runAllow.get(runId)??[])]})
       if(output.status==='approval_required'){
         this.repository.updateRunStatus(runId,'awaiting_approval')
         this.events.appendAndPublish(runId,'approval.required',{toolCallId:output.toolCallId,stepId:step.id,stepIndex:index,tool:step.tool,args:step.args,reason:output.reason,impact:output.impact})
@@ -360,9 +371,21 @@ export class ChatRuntime {
     return null
   }
 
-  async approveTool(input:{toolCallId:string;approved:boolean;revision?:unknown}):Promise<boolean> {
+  /** Undo the reversible writes of a finished tool call. */
+  undoTool(toolCallId:string):{undone:string[];skipped:string[]} {
+    const call=this.repository.getToolCall(toolCallId)
+    if(!call)throw new Error('工具调用不存在')
+    const workspaceId=this.repository.getConversation(this.repository.getRun(call.run_id)?.conversationId??'')?.workspaceId??''
+    return undoToolCall(this.repository,toolCallId,workspaceId)
+  }
+
+  async approveTool(input:{toolCallId:string;approved:boolean;revision?:unknown;allowForRun?:boolean}):Promise<boolean> {
     const call=this.repository.getToolCall(input.toolCallId)
     if(!call||call.status!=='awaiting_approval')return false
+    if(input.approved&&input.allowForRun) {
+      const run=this.repository.getRun(call.run_id)
+      if(run) { const set=this.runAllow.get(run.id)??new Set<string>();set.add(call.tool);this.runAllow.set(run.id,set) }
+    }
     const run=this.repository.getRun(call.run_id)
     if(!run||run.status!=='awaiting_approval')return false
     const settling=this.active.get(run.id)
@@ -434,6 +457,17 @@ export class ChatRuntime {
         this.repository.updateMessage(details.run.assistantMessageId,{parts:[{type:'error',code:'retrieval_empty',message:'未检索到可引用来源。可更换更具体的关键词、在上下文选择器添加论文或集合；若索引未完成，请先重建索引。'}]})
       }
       let text=''
+      if(details.run.mode==='ask'&&context.promptKind==='translation'&&details.modelBinding.bindingId==='free:translation'&&this.freeTranslation) {
+        const answer=await this.freeTranslation(question,controller.signal)
+        text+=answer
+        this.repository.appendMessageText(details.run.assistantMessageId,answer)
+        this.events.appendAndPublish(runId,'message.delta',{delta:answer},details.run.assistantMessageId)
+        this.repository.updateMessage(details.run.assistantMessageId,{status:'complete'})
+        this.repository.updateRunStatus(runId,'completed')
+        this.events.appendAndPublish(runId,'message.completed',{length:text.length,sources:0},details.run.assistantMessageId)
+        this.events.appendAndPublish(runId,'run.completed',{status:'completed'})
+        return
+      }
       const actResult=details.run.mode==='act'
         ?await this.executeAct(runId,question,context,workspaceId,details.modelBinding,controller,resumption?.plan,0,context.permission??this.permission,resumption?.approvedCallId,resumption?.revision??0)
         :undefined

@@ -43,6 +43,53 @@ function parseSkillFile(file: string): SkillInfo | null {
   }
 }
 
+const safeSkillName=(name:string):string=>name.trim().replace(/[<>:"/\\|?*#\n\r]/g,' ').replace(/\s+/g,'-').slice(0,80)||'未命名技能'
+
+/** Create or update a user skill (frontmatter + Markdown body) in the user skills directory. */
+export function saveUserSkill(input:{name:string;description?:string;body:string;originalName?:string}):SkillInfo {
+  const dir=userDir()
+  fs.mkdirSync(dir,{recursive:true})
+  const name=safeSkillName(input.name)
+  if(input.originalName&&input.originalName!==name) {
+    const old=path.join(dir,safeSkillName(input.originalName)+'.md')
+    if(fs.existsSync(old))fs.rmSync(old,{force:true})
+  }
+  const file=path.join(dir,name+'.md')
+  const description=(input.description??'').replace(/\r?\n/g,' ').trim()
+  // frontmatter 解析器按原样读取 name / description，因此不能写成 JSON 字符串
+  fs.writeFileSync(file,`---\nname: ${name}\ndescription: ${description}\n---\n\n${input.body.trim()}\n`,'utf8')
+  cache=null
+  return parseSkillFile(file)!
+}
+
+export function readUserSkill(name:string):SkillInfo|null {
+  const file=path.join(userDir(),safeSkillName(name)+'.md')
+  return fs.existsSync(file)?parseSkillFile(file):null
+}
+
+export function deleteUserSkill(name:string):boolean {
+  const file=path.join(userDir(),safeSkillName(name)+'.md')
+  if(!fs.existsSync(file))return false
+  fs.rmSync(file,{force:true});cache=null
+  return true
+}
+
+/** Copy external .md skill files into the user skills directory. */
+export function importUserSkills(files:string[]):Array<{file:string;ok:boolean;name?:string;error?:string}> {
+  const dir=userDir()
+  fs.mkdirSync(dir,{recursive:true})
+  return files.map(file=>{
+    try {
+      const parsed=parseSkillFile(file)
+      if(!parsed)return {file,ok:false,error:'文件缺少有效的技能名称'}
+      const target=path.join(dir,safeSkillName(parsed.name)+'.md')
+      fs.copyFileSync(file,target)
+      cache=null
+      return {file,ok:true,name:parsed.name}
+    } catch(error) { return {file,ok:false,error:String(error).slice(0,160)} }
+  })
+}
+
 let cache: SkillInfo[] | null = null
 
 export function listSkills(): SkillInfo[] {

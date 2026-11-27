@@ -16,6 +16,7 @@
   --text: #221f1a;        /* 浓墨 */
   --text-dim: #7d766a;    /* 淡墨 */
   --accent: #9e3b2f;      /* 朱砂（印章红） */
+  --on-accent: #f8f4ec;   /* 强调色上的文字 */
   --accent2: #7c2d24;
   --accent-soft: rgba(158, 59, 47, 0.09);
   --ok: #4a7c59;       /* 竹青 */

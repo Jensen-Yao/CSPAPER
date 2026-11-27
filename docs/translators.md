@@ -52,6 +52,7 @@ CSPAPER 的「从网站抓题录」能力不硬编码在主程序里，而是由
 | `json` | `path`、`as` | 从已 fetch 的 JSON 取点路径，如 `message.title.0` |
 | `jsonraw` | `path`、`as` | 同 `json`，但保留原始 JSON 字符串（给 transform 解析复杂结构用） |
 | `jsonlist` | `path`、`map`、`rowTransform` | 把 JSON 数组映射成结果列表（search 型脚本核心）；`map` 为 `结果字段: 列表项点路径` |
+| `csslist` | `selector`、`map`、`rowTransform` | 把 HTML 列表映射成结果列表（每个匹配元素一行）；`map` 为 `结果字段: 子选择器|text/html/属性名`，子选择器可省略 |
 | `regex` | `from`、`re`、`group`、`as` | 对某字段（默认整个 HTML）跑正则，取第 group 组（默认 1） |
 | `template` | `as`、`value` | 模板串插值后写入字段 |
 | `download` | `url` | 下载附件并校验 `%PDF` 头；成功后随题录一起入库 |

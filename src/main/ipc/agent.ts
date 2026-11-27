@@ -1,11 +1,11 @@
 // 工作台 Agent 域 IPC（v0.9）：计划 / 执行 / 中止 / 任务列表与回放
 import { ipcMain } from 'electron'
 import { planTask, updatePlan, cancelTask, listTasks, getTask, removeTask, setNotifier, recoverInterruptedTasks, type PlanStep, type AgentTask } from '../agent'
-import { shell } from 'electron'
+import { shell, dialog } from 'electron'
 import fs from 'node:fs'
-import { connectAll, listMcpTools, mcpConfigPath } from '../mcp'
-import { listSkills, invalidateSkills, skillDir } from '../skills'
-import { listSchedules, createSchedule, removeSchedule, toggleSchedule, startScheduler } from '../automation'
+import { connectAll, disconnectAll, listMcpTools, mcpConfigPath, upsertMcpServer, removeMcpServer, readMcpServers, MCP_PRESETS } from '../mcp'
+import { listSkills, invalidateSkills, skillDir, saveUserSkill, readUserSkill, deleteUserSkill, importUserSkills } from '../skills'
+import { listSchedules, createSchedule, removeSchedule, toggleSchedule, startScheduler, updateSchedule, runScheduleNow, listScheduleRuns, nextRunAt } from '../automation'
 import { attachTaskToConversation, mirrorLegacyEvent } from '../chat/legacy-agent'
 import { buildContextSnapshot } from '../chat/context'
 import type { PlanStepRecord } from '../chat/planning'
@@ -45,6 +45,8 @@ function legacyStatus(status:string|undefined|null):AgentTask['status']|null {
   if(status==='queued'||status==='preparing'||status==='generating'||status==='executing_tools'||status==='awaiting_approval')return 'running'
   if(status==='completed')return 'done';if(status==='partial')return 'partial';if(status==='failed'||status==='interrupted')return 'error';if(status==='cancelled')return 'cancelled';return null
 }
+
+function sanitizeName(name:string):string { return name.replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,40) }
 
 export function registerAgentIpc(ctx: IpcCtx): void {
   const calendar=new ResearchCalendar(getDb())
@@ -105,6 +107,23 @@ export function registerAgentIpc(ctx: IpcCtx): void {
     const results = await connectAll()
     return { results, tools: listMcpTools().map((t) => ({ fullName: t.fullName, server: t.server, description: t.description.slice(0, 100) })), configPath: mcpConfigPath() }
   })
+  ipcMain.handle('agent:mcp-servers', () => readMcpServers())
+  ipcMain.handle('agent:mcp-presets', () => MCP_PRESETS)
+  ipcMain.handle('agent:mcp-upsert', async (_e, name: string, def: { command: string; args?: string[]; env?: Record<string, string> }) => {
+    const key=sanitizeName(String(name ?? ''))
+    upsertMcpServer(key, { command:String(def?.command??''), args:Array.isArray(def?.args)?def.args.map(String):[], env:def?.env&&typeof def.env==='object'?Object.fromEntries(Object.entries(def.env).map(([k,v])=>[String(k),String(v)])):undefined })
+    await disconnectAll().catch(()=>{})
+    const results=await connectAll()
+    void import('./chat').then(module=>module.refreshChatMcpTools()).catch(()=>{})
+    return results
+  })
+  ipcMain.handle('agent:mcp-remove', async (_e, name: string) => {
+    removeMcpServer(String(name ?? ''))
+    await disconnectAll().catch(()=>{})
+    const results=await connectAll()
+    void import('./chat').then(module=>module.refreshChatMcpTools()).catch(()=>{})
+    return results
+  })
   ipcMain.handle('agent:mcp-open-config', async () => {
     const p = mcpConfigPath()
     if (!fs.existsSync(p)) fs.writeFileSync(p, JSON.stringify({ mcpServers: {} }, null, 2))
@@ -114,6 +133,14 @@ export function registerAgentIpc(ctx: IpcCtx): void {
   ipcMain.handle('agent:skills', () => {
     invalidateSkills()
     return listSkills().map((x) => ({ name: x.name, description: x.description, source: x.source }))
+  })
+  ipcMain.handle('agent:skills-save', (_e, input: { name: string; description?: string; body: string; originalName?: string }) => saveUserSkill({ name: String(input?.name ?? ''), description: String(input?.description ?? ''), body: String(input?.body ?? ''), originalName: input?.originalName ? String(input.originalName) : undefined }))
+  ipcMain.handle('agent:skills-get', (_e, name: string) => readUserSkill(String(name)))
+  ipcMain.handle('agent:skills-delete', (_e, name: string) => deleteUserSkill(String(name)))
+  ipcMain.handle('agent:skills-import', async () => {
+    const picked=await dialog.showOpenDialog({title:'导入技能（Markdown）',properties:['openFile','multiSelections'],filters:[{name:'Markdown 技能',extensions:['md']}]})
+    if(picked.canceled)return []
+    return importUserSkills(picked.filePaths)
   })
   ipcMain.handle('agent:skills-open-dir', async () => {
     fs.mkdirSync(skillDir(), { recursive: true })
@@ -129,6 +156,10 @@ export function registerAgentIpc(ctx: IpcCtx): void {
     removeSchedule(Number(id))
     return true
   })
+  ipcMain.handle('agent:auto-update', (_e, id: number, patch: { name?: string; goal?: string; intervalMinutes?: number }) => updateSchedule(Number(id), patch ?? {}))
+  ipcMain.handle('agent:auto-run-now', async (_e, id: number) => runScheduleNow(Number(id)))
+  ipcMain.handle('agent:auto-runs', (_e, id: number, limit?: number) => listScheduleRuns(Number(id), Number(limit) || 8))
+  ipcMain.handle('agent:auto-next', (_e, id: number) => { const schedule=listSchedules().find(item=>item.id===Number(id)); const next=schedule?nextRunAt(schedule):new Date(NaN); return Number.isNaN(next.getTime())?null:next.toISOString() })
   ipcMain.handle('agent:auto-toggle', (_e, id: number, enabled: boolean) => {
     toggleSchedule(Number(id), enabled)
     return true

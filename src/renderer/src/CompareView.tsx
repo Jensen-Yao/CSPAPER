@@ -33,6 +33,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
   const [showAddDim, setShowAddDim] = useState(false)
   const [dimSource, setDimSource] = useState<'builtin' | 'custom'>('builtin')
   const [picked, setPicked] = useState<Set<number>>(new Set())
+
   const [checkedFields, setCheckedFields] = useState<Set<string>>(new Set())
   const [checkedDims, setCheckedDims] = useState<Set<string>>(new Set())
   const [customDim, setCustomDim] = useState('')
@@ -93,6 +94,13 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
   }, [])
 
   const active = tables.find((t) => t.id === activeId) ?? null
+  // 添加文献：上百篇时按关键词与分类缩小范围
+  const [pickQuery, setPickQuery] = useState('')
+  const [pickCat, setPickCat] = useState('')
+  const pickCandidates = useMemo(() => {
+    const needle = pickQuery.trim().toLocaleLowerCase()
+    return papers.filter((p) => !active?.data.paperIds.includes(p.id)).filter((p) => !pickCat || p.category === pickCat).filter((p) => !needle || [p.title, p.authors, p.year, p.venue, ...(p.tags ?? [])].join(' ').toLocaleLowerCase().includes(needle))
+  }, [papers, active, pickQuery, pickCat])
   useEffect(()=>{
     const handle=(event:Event)=>{
       const action=(event as CustomEvent<WorkspaceAction>).detail
@@ -371,14 +379,20 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
                 ✕
               </button>
             </div>
+            <div className="cmp-pick-tools">
+              <input className="set-input" aria-label="搜索要添加的文献" placeholder="搜索标题、作者、标签…" value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} autoFocus />
+              <select className="set-input" aria-label="按分类筛选" value={pickCat} onChange={(e) => setPickCat(e.target.value)}>
+                <option value="">全部分类</option>
+                {[...new Set(papers.map((p) => p.category))].sort().map((c) => <option key={c} value={c}>{c.replace(/^\d+-/, '')}</option>)}
+              </select>
+            </div>
             <div className="cmp-pick-list">
-              {papers.filter((p) => !active.data.paperIds.includes(p.id)).length === 0 && (
+              {pickCandidates.length === 0 && (
                 <div className="cmp-empty" style={{ padding: 16 }}>
-                  库里的文献都已加入
+                  {papers.filter((p) => !active.data.paperIds.includes(p.id)).length === 0 ? '库里的文献都已加入' : '没有匹配的文献'}
                 </div>
               )}
-              {papers
-                .filter((p) => !active.data.paperIds.includes(p.id))
+              {pickCandidates
                 .map((p) => (
                   <label key={p.id} className="cmp-pick-row">
                     <input
@@ -425,7 +439,7 @@ export default function CompareView({ papers, onJump }: Props): JSX.Element {
               <div className="dim-sub">从预设维度中选择，快速添加常用学术维度</div>
               <div className="dim-src-row">
                 <button className={`dim-src ${dimSource === 'builtin' ? 'on' : ''}`} onClick={() => setDimSource('builtin')}>
-                  <b>🗂 内置维度</b>
+                  <b><Icon.Table size={12}/> 内置维度</b>
                   <span>基础字段直接提取，分析维度由 AI 生成</span>
                 </button>
                 <button className={`dim-src ${dimSource === 'custom' ? 'on' : ''}`} onClick={() => setDimSource('custom')}>

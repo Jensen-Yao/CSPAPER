@@ -30,7 +30,8 @@ export interface ChatApi {
   submitTurn(input: SubmitTurnInput): Promise<TurnResult>
   cancelRun(runId: string, reason?: string): Promise<boolean>
   resumeRun(runId:string):Promise<boolean>
-  approveTool(toolCallId: string, approved: boolean): Promise<boolean>
+  approveTool(toolCallId: string, approved: boolean, allowForRun?: boolean): Promise<boolean>
+  undoTool(toolCallId: string): Promise<{ undone: string[]; skipped: string[] }>
   retryTurn(runId: string, reuseContext?: boolean): Promise<TurnResult>
   editAndResubmit(input: { conversationId: string; messageId: string; text: string; context: SubmitTurnInput['context'] }): Promise<TurnResult>
   getRun(runId: string): Promise<RunDetails>

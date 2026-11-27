@@ -1,5 +1,6 @@
 import { modelSettings } from './model-config'
-import { chatStream } from './llm'
+import { modelJobText } from './chat/jobs'
+import { parseModelJsonObject } from './chat/planning'
 import { getDb, getSettings } from './db'
 import { listMcpTools } from './mcp'
 import { listSkills } from './skills'
@@ -64,11 +65,11 @@ export async function planTask(goal:string):Promise<AgentTask> {
   const settings=getSettings(),model=settings.agentModel||settings.model
   let raw=''
   try {
-    for await(const delta of chatStream([
+    raw=await modelJobText([
       {role:'system',content:'你是科研工作流规划器。只输出 JSON：{"steps":[{"tool":"工具名","args":{},"purpose":"目的"}]}。使用给定工具名，不要发明工具。\\n'+toolMenu()},
       {role:'user',content:goal}
-    ],{endpoint:modelSettings(settings,model)}))raw+=delta
-    const parsed=JSON.parse(raw.replace(/^```json\\s*|```\\s*$/g,'').trim()) as {steps?:PlanStep[]}
+    ],{kind:'agent_plan',title:'兼容任务规划'})
+    const parsed=parseModelJsonObject(raw) as {steps?:PlanStep[]}
     task.plan=(parsed.steps??[]).filter(step=>step&&step.tool)
     if(!task.plan.length)throw new Error('empty plan')
   }catch(error) {

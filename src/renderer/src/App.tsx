@@ -11,6 +11,7 @@ import SetupWizard from './SetupWizard'
 import CommandPalette from './CommandPalette'
 import ResizeHandle from './ResizeHandle'
 import BrandIcon from './BrandIcon'
+import TopBar from './TopBar'
 import ChatView from './ChatView'
 import RefViewer from './RefViewer'
 import ImportDialog from './ImportDialog'
@@ -22,6 +23,7 @@ import OverviewView from './OverviewView'
 import NotesView from './NotesView'
 import OnlineAddDialog from './OnlineAddDialog'
 import WebSearchView from './WebSearchView'
+import WebReaderView from './WebReaderView'
 import WorkbenchView from './WorkbenchView'
 import * as Icon from './Icon'
 import { useDialog } from './Dialog'
@@ -34,49 +36,9 @@ export interface Tab {
   paper: Paper
 }
 
-const SidebarIcon = (): JSX.Element => <Icon.Sidebar size={15} />
-const PanelIcon = (): JSX.Element => <Icon.Panel size={15} />
-const GearIcon = (): JSX.Element => <Icon.Gear size={15} />
 
 type MenuItem = { label: string; hint?: string; action?: () => void; sep?: boolean }
 
-const MenuBar = ({ menus, openMenu, setOpenMenu }: { menus: Array<{ name: string; items: MenuItem[] }>; openMenu: string | null; setOpenMenu: (m: string | null) => void }): JSX.Element => (
-  <div className="app-menu">
-    {menus.map((m) => (
-      <div key={m.name} className="menu-wrap">
-        <button
-          className={`menu-btn ${openMenu === m.name ? 'on' : ''}`}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setOpenMenu(openMenu === m.name ? null : m.name)}
-          onMouseEnter={() => openMenu && setOpenMenu(m.name)}
-        >
-          {m.name}
-        </button>
-        {openMenu === m.name && (
-          <div className="menu-dropdown" onMouseDown={(e) => e.stopPropagation()}>
-            {m.items.map((it, i) =>
-              it.sep ? (
-                <div key={i} className="menu-sep" />
-              ) : (
-                <button
-                  key={i}
-                  className="menu-item"
-                  onClick={() => {
-                    setOpenMenu(null)
-                    it.action?.()
-                  }}
-                >
-                  <span>{it.label}</span>
-                  {it.hint && <span className="menu-hint">{it.hint}</span>}
-                </button>
-              )
-            )}
-          </div>
-        )}
-      </div>
-    ))}
-  </div>
-)
 
 const PROVIDER_LABEL: Record<string, string> = {
   zhipu: '智谱',
@@ -99,6 +61,9 @@ export default function App(): JSX.Element {
   const [showLib, setShowLib] = useState(true)
   const [showSide,setShowSide]=useState(false)
   const [showLibraryHome,setShowLibraryHome]=useState(true)
+  // 专注模式：收起文献栏与助手栏、隐藏导航，只留 PDF（Esc 退出）
+  const [focusMode,setFocusMode]=useState(false)
+  useEffect(()=>{if(focusMode){setShowLib(false);setShowSide(false)}},[focusMode])
   const [indexInfo, setIndexInfo] = useState<{ done: number; total: number; phase: string } | null>(null)
   const [importInfo, setImportInfo] = useState('')
   const [cats, setCats] = useState<string[]>([])
@@ -118,6 +83,9 @@ export default function App(): JSX.Element {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
+  const [webReaderUrl, setWebReaderUrl] = useState<string|null>(null)
+  // 文献库合一：左栏的分类 / 集合 / 标签 / 最近决定主区显示什么
+  const [libraryScope, setLibraryScope] = useState<{ view: 'all' | 'recent'; category: string | null; collectionId: number | null; tag: string | null }>({ view: 'all', category: null, collectionId: null, tag: null })
   const [mode, setMode] = useState<'home' | 'read' | 'chat' | 'compare' | 'overview' | 'notes' | 'web'>('home')
   const [topMode, setTopMode] = useState<'work' | 'paper'>('paper')
   const [overviewTab, setOverviewTab] = useState<'table' | 'graph' | 'stats'>('table')
@@ -133,6 +101,7 @@ export default function App(): JSX.Element {
     const onKey = (e: KeyboardEvent): void => {
       // Esc 关闭最上层弹窗：各弹窗的遮罩点击即关闭，这里向遮罩派发同样的 mousedown
       if (e.key === 'Escape') {
+        setFocusMode(false)
         const masks = Array.from(document.querySelectorAll<HTMLElement>('.modal-mask'))
         const top = masks.at(-1)
         if (top) top.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
@@ -318,6 +287,8 @@ export default function App(): JSX.Element {
       setTabs((ts) => (ts.some((t) => t.paper.id === p.id) ? ts : [...ts, { paper: p }]))
       setActiveId(p.id)
       setShowLibraryHome(false)
+      // 打开 PDF 时自动收起文献栏，把宽度让给正文（可用顶栏按钮重新展开）
+      if(window.innerWidth<1500)setShowLib(false)
       setPendingJump(jumpPage ? { slug: p.slug, page: jumpPage, snippet, probe } : null)
       // 「最近」视图排序依据：与 sqlite datetime('now') 同格式（UTC）
       void window.api.markOpened(p.id)
@@ -354,6 +325,8 @@ export default function App(): JSX.Element {
     setTabs((ts) => ts.map((t) => (t.paper.id === p.id ? { ...t, paper: { ...t.paper, status: next } } : t)))
   }, [])
 
+  const activePaperRef = useRef<Paper | null>(null)
+  activePaperRef.current = papers.find((item) => item.id === activeId) ?? null
   const onSelect = useCallback((text: string, x: number, y: number) => {
     setFloatBar({ x, y, text })
   }, [])
@@ -381,6 +354,20 @@ export default function App(): JSX.Element {
     setShowSide(true)
     sideControl.current?.explain(text, pageCtxRef.current)
   }, [])
+  // 划词直接“加入任务”：落到默认（或第一个进行中的）项目，备注带文献与页码
+  const addSelectionToTask = useCallback(async (text: string) => {
+    setFloatBar(null)
+    try {
+      const projects = await window.api.projectsList()
+      const project = projects.find((item) => item.status === 'active') ?? projects[0] ?? await window.api.projectsSave({ name: '研究任务', description: '阅读时划词加入的待办', color: '#9e3b2f', status: 'active', dueDate: null })
+      const paper = activePaperRef.current
+      const page = pageNo
+      const title = `跟进：${text.replace(/\s+/g, ' ').slice(0, 60)}${text.length > 60 ? '…' : ''}`
+      await window.api.tasksSave({ projectId: project.id, title, notes: `${paper ? `来自《${paper.title}》${page ? `第 ${page} 页` : ''}：\n` : ''}${text.slice(0, 2000)}`, status: 'todo', priority: 'medium', dueDate: null, paperId: paper?.id ?? null, conversationId: null })
+      window.dispatchEvent(new Event('cspaper:tasks-changed'))
+      dlg.toast(`已加入项目「${project.name}」：${title}`)
+    } catch (error) { dlg.toast('加入任务失败：' + String(error).replace(/^Error: /, '').slice(0, 140), 'error') }
+  }, [dlg, pageNo])
   const onEditHighlight = useCallback((hid: number, patch: { color?: string; comment?: string }) => {
     viewerRef.current?.patchHighlightLocal(hid, patch) // 正文划线即时变色
     void window.api.updateHighlight(hid, patch)
@@ -542,6 +529,7 @@ export default function App(): JSX.Element {
         if(action.artifact.kind==='comparison')setMode('compare')
         else if(action.artifact.kind==='note'||action.artifact.kind==='synthesis')setMode('notes')
       } else if(action.kind==='chat') { setTopMode('paper');setMode('chat');if(action.fresh)setRefView(null) }
+      else if(action.kind==='web') setWebReaderUrl(action.url)
       else if(action.kind==='citation')openCite(action.slug,action.page,action.snippet,action.probe,{documentVersion:action.documentVersion} as SourceRef)
       else if(action.kind==='paper') {
         const paper=papers.find(item=>item.id===action.paperId)
@@ -690,7 +678,7 @@ export default function App(): JSX.Element {
 
   return (
     <div
-      className={`shell ${showSide?'with-assistant':''}`}
+      className={`shell ${showSide?'with-assistant':''} ${focusMode?'focus-mode':''}`}
       onMouseDown={() => {
         setFloatBar(null)
         setOpenMenu(null)
@@ -698,49 +686,15 @@ export default function App(): JSX.Element {
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
     >
-      <div className="titlebar">
-        {!isMac && (
-          <MenuBar menus={menus} openMenu={openMenu} setOpenMenu={setOpenMenu} />
-        )}
-        <div className="tb-side tb-left">
-          <div className="top-switch">
-            <button className={topMode === 'work' ? 'on' : ''} title="科研工作台：给目标，agent 执行" onClick={() => setTopMode('work')}>
-              <Icon.Zap size={13} /> Work
-            </button>
-            <button className={topMode === 'paper' ? 'on' : ''} title="文献库：阅读 / 对话 / 纵览 / 笔记" onClick={() => setTopMode('paper')}>
-              <Icon.Library size={13} /> Paper
-            </button>
-          </div>
-          {topMode === 'paper' && mode !== 'home' && (
-            <button
-              className={`icon-btn tb-toggle ${showLib ? 'on' : ''}`}
-              title={showLib ? '隐藏 文献边栏' : '显示 文献边栏'}
-              onClick={() => setShowLib((v) => !v)}
-            >
-              <SidebarIcon />
-            </button>
-          )}
-        </div>
-        <div className="tb-drag" />
-        <div className="tb-title"><BrandIcon /><span className="tb-title-name">CSPAPER</span></div>
-        <div className="tb-drag" />
-        <div className="tb-side tb-right">
-          {topMode==='paper' && mode === 'read' && !showLibraryHome && (
-            <button
-              className={`icon-btn tb-toggle ${showSide ? 'on' : ''}`}
-              title={showSide ? '隐藏 问答·翻译面板' : '显示 问答·翻译面板'}
-              onClick={() => setShowSide((v) => !v)}
-            >
-              <PanelIcon />
-            </button>
-          )}
-          <button className="icon-btn" title="设置" onClick={() => setShowSettings(true)}>
-            <GearIcon />
-          </button>
-        </div>
-      </div>
+      <TopBar
+        isMac={isMac} menus={menus} openMenu={openMenu} setOpenMenu={setOpenMenu}
+        topMode={topMode} onTopMode={setTopMode} mode={mode} showLib={showLib} onToggleLib={() => setShowLib((v) => !v)}
+        showSide={showSide} onToggleSide={() => setShowSide((v) => !v)} showLibraryHome={showLibraryHome} tabsCount={tabs.length}
+        focusMode={focusMode} onToggleFocus={() => setFocusMode((v) => !v)} onOpenSettings={() => setShowSettings(true)}
+      />
+      {focusMode && <button className="focus-exit" onClick={() => setFocusMode(false)} title="退出专注模式（Esc）"><Icon.Exit size={13}/> 退出专注</button>}
 
-      {topMode==='paper'&&<WorkspaceNavigation mode={mode} libraryVisible={mode!=='home'&&(showLibraryHome||tabs.length===0)} openCount={tabs.length}
+      {topMode==='paper'&&!focusMode&&<WorkspaceNavigation mode={mode} libraryVisible={mode!=='home'&&(showLibraryHome||tabs.length===0)} openCount={tabs.length}
         onHome={()=>{setMode('home');setFloatBar(null);setShowSide(false)}}
         onLibrary={()=>{setMode('read');setShowLibraryHome(true);setShowLib(true);setFloatBar(null)}}
         onResume={()=>{setMode('read');setShowLibraryHome(false);setFloatBar(null)}}
@@ -765,6 +719,7 @@ export default function App(): JSX.Element {
               setMode('notes')
             }}
             onOpenSettings={() => setShowSettings(true)}
+            activePaperId={activeId}
           />
         </div>
         <div className={`paper-workspace ${topMode==='paper'?'':'pane-hidden'}`}>
@@ -794,6 +749,9 @@ export default function App(): JSX.Element {
               mode={mode}
               onModeChange={setMode}
               onPapersChanged={refreshPapers}
+              scope={libraryScope}
+              onScopeChange={patch => setLibraryScope(current => ({ ...current, ...patch }))}
+              hideList={showLibraryHome && mode === 'read'}
             />
             <ResizeHandle id="library" label="文献栏宽度" width={libWidth} min={240} max={560} defaultWidth={304} storageKey="pl.libW" edge="right" onWidthChange={setLibWidth} />
           </>
@@ -827,6 +785,10 @@ export default function App(): JSX.Element {
             <div className={`library-surface ${showLibraryHome || tabs.length===0?'':'pane-hidden'}`}><LibraryHome
                 papers={papers}
                 activeId={activeId}
+                scope={libraryScope}
+                onScopeChange={patch => setLibraryScope(current => ({ ...current, ...patch }))}
+                query={q}
+                onQueryChange={setQ}
                 onOpen={openPaperFromTree}
                 onAddPapers={addPapers}
                 onOpenRecords={() => setRecordsOpen(true)}
@@ -853,6 +815,7 @@ export default function App(): JSX.Element {
                 visible={topMode==='paper' && mode==='read' && !showLibraryHome}
                 onPageChange={setPageNo}
                 onOpenFulltext={() => sideControl.current?.openFulltext()}
+                suppressNavi={showSide && !showLibraryHome}
               /></div>
             {showSide && !showLibraryHome && tabs.length>0 && (
               <ResizeHandle id="assistant" label="助手栏宽度" width={sideWidth} min={300} max={700} defaultWidth={380} storageKey="pl.sideW" edge="left" onWidthChange={setSideWidth} />)}
@@ -879,38 +842,9 @@ export default function App(): JSX.Element {
                 onAddThinkingLevel={addThinkingLevel}
                 fs={chatFs}
                 onFs={changeFs}
+                onOpenSettings={() => setShowSettings(true)}
               />
-              {tabs.length > 0 && <div className="side-rail">
-                {([['chat', <Icon.Chat size={14} />, '问答'], ['translate', <Icon.Globe size={14} />, '翻译'], ['full', <Icon.Doc size={14} />, '全文翻译'], ['notes', <Icon.Highlight size={14} />, '划词标注'], ['refs', <Icon.Book size={14} />, '参考文献'], ['info', <Icon.Info size={14} />, '文献详情']] as const).map(
-                  ([k, ico, tip]) => (
-                    <button
-                      key={k}
-                      className={`side-rail-btn ${sideTab === k && showSide ? 'on' : ''}`}
-                      title={tip}
-                      onClick={() => {
-                        if(!tabs.length) {
-                          if(k==='chat') setMode('chat')
-                          else {
-                            setTopMode('paper')
-                            setMode('read')
-                            setShowLibraryHome(true)
-                            setShowSide(false)
-                            dlg.toast('请先打开一篇文献，再使用'+tip)
-                          }
-                          return
-                        }
-                        setTopMode('paper')
-                        setMode('read')
-                        setShowLibraryHome(false)
-                        setShowSide(true)
-                        sideControl.current?.openTab(k)
-                      }}
-                    >
-                      {ico}
-                    </button>
-                  )
-                )}
-              </div>}
+              
             </div>
           </div>
           {/* 对话区：同样常驻，保留对话历史 */}
@@ -948,7 +882,7 @@ export default function App(): JSX.Element {
           </div>
           {/* 纵览区：文献总表 + 知识网络 + 统计 */}
           <div className={`ov-host ${mode === 'overview' ? '' : 'pane-hidden'}`}>
-            <OverviewView papers={papers} visible={topMode==='paper' && mode==='overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} onRefresh={refreshPapers} />
+            <OverviewView papers={papers} visible={topMode==='paper' && mode==='overview'} tab={overviewTab} onTabChange={setOverviewTab} onOpen={openPaperFromTree} onRefresh={refreshPapers} focusCategory={libraryScope.category} />
           </div>
           {/* 笔记中心：全库我的笔记 + 划词标注聚合（W3） */}
           <div className={`ov-host ${mode === 'notes' ? '' : 'pane-hidden'}`}>
@@ -980,7 +914,7 @@ export default function App(): JSX.Element {
       {floatBar && (
         <div
           className="float-bar"
-          style={{ left: Math.min(floatBar.x, window.innerWidth - 210), top: Math.min(floatBar.y + 8, window.innerHeight - 50) }}
+          style={{ left: Math.min(floatBar.x, window.innerWidth - 260), top: Math.min(floatBar.y + 24, window.innerHeight - 50) }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <span className="fbdots">
@@ -991,6 +925,7 @@ export default function App(): JSX.Element {
           </span>
           <button onClick={() => doTranslate(floatBar.text)}>翻译</button>
           <button onClick={() => doExplain(floatBar.text)}>解释</button>
+          <button title="把这段内容加入科研任务（可在 Work → 项目查看）" onClick={() => void addSelectionToTask(floatBar.text)}>加入任务</button>
         </div>
       )}
       {showSettings && settings && (
@@ -1008,6 +943,7 @@ export default function App(): JSX.Element {
         />
       )}
       {quickCaptureOpen && <QuickCaptureDialog open onClose={() => setQuickCaptureOpen(false)} />}
+      {webReaderUrl && <WebReaderView url={webReaderUrl} onClose={() => setWebReaderUrl(null)} />}
       {zoteroOpen && <ZoteroImportDialog initialCats={cats} onClose={() => setZoteroOpen(false)} onFinished={() => void refreshPapers()} />}
       {recordsOpen && <RecordsDialog initialCats={cats} onClose={() => setRecordsOpen(false)} onFinished={() => void refreshPapers()} />}
       <OnlineAddDialog open={onlineOpen} cats={cats} onClose={() => setOnlineOpen(false)} onDone={() => void refreshPapers()} />

@@ -173,6 +173,20 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
       setRepairBusy(false)
     }
   }
+  const [fieldBusy, setFieldBusy] = useState('')
+  // 单字段重跑：只重新生成这一项，其余字段保留
+  const rerunField = async (field: string): Promise<void> => {
+    if (!paper?.id || fieldBusy) return
+    setFieldBusy(field)
+    setExtErr('')
+    try {
+      setExt(await window.api.paperExtractField(paper.id, field))
+    } catch (e) {
+      setExtErr(String(e).replace(/^Error: /, '').slice(0, 220))
+    } finally {
+      setFieldBusy('')
+    }
+  }
   const runExtract = async (): Promise<void> => {
     if (!paper?.id || isRecord) return
     setExtBusy(true)
@@ -461,6 +475,11 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     </div>
   )
 
+  // 深度解读字段：有内容的直接展示，未提及的折叠并支持单独提取
+  const DEEP_FIELDS = [['problem', '研究问题'], ['method', '方法路线'], ['dataset', '数据与对象'], ['metrics', '评价指标'], ['results', '核心结果'], ['novelty', '创新点'], ['limitations', '局限'], ['future', '可跟进方向']] as const
+  const deepRows = ext ? DEEP_FIELDS.map(([key, k]) => ({ key, k, v: String(ext[key] ?? '').trim() })) : []
+  const deepPresent = deepRows.filter((row) => row.v && row.v !== '未提及')
+  const deepMissing = deepRows.filter((row) => !row.v || row.v === '未提及')
   const statusKeys = STATUS_KEYS.includes(status) ? STATUS_KEYS : [status, ...STATUS_KEYS]
   const statusMeta = STATUS_META[status] ?? STATUS_META.todo
 
@@ -510,7 +529,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                 </div>
                 <div className="pd-colls">
                   <span className="pd-flabel" style={{ minWidth: 32 }}>集合</span>
-                  {colls.length === 0 && <span className="pd-dim">暂无集合（左栏「集合」区可新建，一篇文献可挂多个）</span>}
+                  {colls.length === 0 && <span className="pd-dim" title="在左侧文献栏的「集合」区新建；一篇文献可挂多个集合">还没有集合</span>}
                   {colls.map((c) => {
                     const on = myCollIds.has(c.id)
                     return (
@@ -618,16 +637,33 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                   )
                 )}
                 {field('期刊 / 来源', editable('venue', detail.venue || ''))}
+                {/* 只展示有值的字段；空字段收进“补充题录信息”，避免整屏“—” */}
                 <div className="pd-grid2">
-                  {field('年份', editable('year', detail.year != null ? String(detail.year) : ''))}
-                  {field('DOI', editable('doi', detail.doi ?? ''))}
-                  {field('卷', editable('volume', detail.volume ?? ''))}
-                  {field('期', editable('issue', detail.issue ?? ''))}
-                  {field('页码', editable('pages', detail.pages ?? ''))}
-                  {field('出版社', editable('publisher', detail.publisher ?? ''))}
-                  {field('语言', editable('language', detail.language ?? ''))}
+                  {detail.year != null && field('年份', editable('year', String(detail.year)))}
+                  {detail.doi && field('DOI', editable('doi', detail.doi))}
+                  {detail.volume && field('卷', editable('volume', detail.volume))}
+                  {detail.issue && field('期', editable('issue', detail.issue))}
+                  {detail.pages && field('页码', editable('pages', detail.pages))}
+                  {detail.publisher && field('出版社', editable('publisher', detail.publisher))}
+                  {detail.language && field('语言', editable('language', detail.language))}
                   {field('添加日期', (detail.added_at || '').slice(0, 10))}
                 </div>
+                {(() => {
+                  const empty: Array<[string, JSX.Element]> = []
+                  if (detail.year == null) empty.push(['年份', editable('year', '')])
+                  if (!detail.doi) empty.push(['DOI', editable('doi', '')])
+                  if (!detail.volume) empty.push(['卷', editable('volume', '')])
+                  if (!detail.issue) empty.push(['期', editable('issue', '')])
+                  if (!detail.pages) empty.push(['页码', editable('pages', '')])
+                  if (!detail.publisher) empty.push(['出版社', editable('publisher', '')])
+                  if (!detail.language) empty.push(['语言', editable('language', '')])
+                  return empty.length ? (
+                    <details className="pd-more-fields">
+                      <summary>补充题录信息 · {empty.length} 项空缺</summary>
+                      <div className="pd-grid2">{empty.map(([label, control]) => field(label, control))}</div>
+                    </details>
+                  ) : null
+                })()}
               </>
             )}
             {sec(
@@ -664,25 +700,26 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               '深度解读',
               ext ? (
                 <div className="pd-deep">
-                  {(
-                    [
-                      ['研究问题', ext.problem],
-                      ['方法路线', ext.method],
-                      ['数据与对象', ext.dataset],
-                      ['评价指标', ext.metrics],
-                      ['核心结果', ext.results],
-                      ['创新点', ext.novelty],
-                      ['局限', ext.limitations],
-                      ['可跟进方向', ext.future]
-                    ] as const
-                  )
-                    .filter(([, v]) => v && v !== '未提及')
-                    .map(([k, v]) => (
-                      <div key={k} className="pd-deep-row">
+                  {deepPresent
+                    .map(({ key, k, v }) => (
+                      <div key={key} className="pd-deep-row">
                         <span className="pd-deep-k">{k}</span>
                         <span className="pd-deep-v">{v}</span>
+                        <button type="button" className="pd-deep-field" title={`重新提取「${k}」`} disabled={!!fieldBusy || extBusy} onClick={() => void rerunField(key)}>{fieldBusy === key ? '…' : <Icon.Refresh size={11} />}</button>
                       </div>
                     ))}
+                  {deepMissing.length ? (
+                      <details className="pd-deep-missing">
+                        <summary>未提及 · {deepMissing.length} 项</summary>
+                        {deepMissing.map(({ key, k }) => (
+                          <div key={key} className="pd-deep-row empty">
+                            <span className="pd-deep-k">{k}</span>
+                            <span className="pd-deep-v">未提及</span>
+                            <button type="button" className="pd-deep-field always" title={`单独提取「${k}」`} disabled={!!fieldBusy || extBusy} onClick={() => void rerunField(key)}>{fieldBusy === key ? '…' : <Icon.Refresh size={11} />}</button>
+                          </div>
+                        ))}
+                      </details>
+                  ) : null}
                   {extErr && <div className="sum-err">{extErr}</div>}
                   <div className="pd-deep-meta">抽取于 {ext.extracted_at} · <button className="pd-deep-redo" disabled={extBusy} onClick={() => void runExtract()}>{extBusy ? '重新精读中…' : '重新精读'}</button></div>
                 </div>
@@ -694,6 +731,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                   <button className="sum-gen" disabled={extBusy} onClick={() => void runExtract()}>
                     {extBusy ? '深度精读中（读全文，约需 1-2 分钟）…' : '深度精读全文（研究问题 / 方法 / 数据 / 指标 / 结果 / 局限）'}
                   </button>
+                  {extBusy && <button className="cmp-mini" onClick={() => void window.api.paperExtractCancel(paper.id)}>停止</button>}
                   {extErr && <div className="sum-err">{extErr}</div>}
                 </div>
               ),
@@ -889,7 +927,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                 <div className="pd-files">
                   {detail.files.map((f) => (
                     <div key={f} className="pd-file ellipsis" title={f}>
-                      📄 {f}
+                      <Icon.Doc size={12}/> {f}
                     </div>
                   ))}
                 </div>

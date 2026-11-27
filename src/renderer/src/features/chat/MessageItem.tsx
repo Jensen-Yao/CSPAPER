@@ -6,7 +6,7 @@ import type { RunDetails } from '../../../../shared/chat-api'
 import MarkdownContent from './MarkdownContent'
 import SourcePopover from './SourcePopover'
 import ResultCards from './ResultCards'
-import { openWorkspaceArtifact } from '../../workspace-actions'
+import { dispatchWorkspaceAction, openWorkspaceArtifact } from '../../workspace-actions'
 import { friendlyRunError, needsSettings } from './errors'
 
 export function messageText(message:Message):string {
@@ -35,7 +35,7 @@ export default memo(function MessageItem({message,sources: fallback=[],details,r
     {details?.run?.status==='queued'&&<div className="chat-message-actions"><button type="button" onClick={()=>void window.api.chat.cancelRun(details.run!.id).catch(error=>setActionError(String(error)))}>取消排队</button></div>}
     {message.role==='assistant'&&sources.length>0&&<details className="chat-evidence"><summary>参考来源 · {sources.length}</summary><div className="chat-sources">{sources.map((source,index)=><div className="chat-source-card" key={ordered[index]?.id??source.n}>
       {ordered[index]?<SourcePopover source={ordered[index]}/>:<b>{source.title}</b>}
-      {source.versionChanged&&<span className="source-badge record small" title="来源保存时的文档版本与当前文件不同，定位可能漂移">版本变化</span>}{ordered[index]?.kind==='web'?<button type="button" title={ordered[index]!.locator.uri} onClick={()=>void window.api.openExternal(ordered[index]!.locator.uri??'')}>打开网页 [{source.n}]{ordered[index]!.createdAt?` · 读取于 ${ordered[index]!.createdAt.slice(0,10)}`:''}</button>:<button type="button" onClick={()=>jump(source.slug,source.page,source.snippet,text,source)}>打开原文 [{source.n}] · 第 {source.page} 页</button>}
+      {source.versionChanged&&<span className="source-badge record small" title="来源保存时的文档版本与当前文件不同，定位可能漂移">版本变化</span>}{ordered[index]?.kind==='web'?<span className="chat-source-web"><button type="button" title={ordered[index]!.locator.uri} onClick={()=>void dispatchWorkspaceAction({kind:'web',url:ordered[index]!.locator.uri??''})}>阅读网页 [{source.n}]{ordered[index]!.createdAt?` · 读取于 ${ordered[index]!.createdAt.slice(0,10)}`:''}</button><button type="button" className="chat-source-ext" title="在浏览器中打开" onClick={()=>void window.api.openExternal(ordered[index]!.locator.uri??'')}>↗</button></span>:<button type="button" onClick={()=>jump(source.slug,source.page,source.snippet,text,source)}>打开原文 [{source.n}] · 第 {source.page} 页</button>}
     </div>)}</div></details>}
     {details&&<ResultCards artifacts={details.artifacts} onOpen={openWorkspaceArtifact}/>}
     {editing&&userRun&&<form className="chat-edit-form" onSubmit={event=>{event.preventDefault();void window.api.chat.editAndResubmit({conversationId:message.conversationId,messageId:message.id,text:draft,context:userRun.context?.refs??[]}).then(()=>setEditing(false)).catch(error=>setActionError(String(error)))}}><textarea value={draft} rows={3} onChange={event=>setDraft(event.target.value)} /><button type="submit">作为新分支重发</button></form>}

@@ -71,15 +71,14 @@ try {
   }
   if(!page)throw new Error('renderer page missing')
   await page.waitForLoadState('domcontentloaded',{timeout:30000})
-  await page.evaluate(()=>new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>reject(new Error('stream did not start')),5000)
-    window.__streamEnded=false
-    window.api.stream({mode:'chat',messages:[{role:'user',content:'window cleanup slow request'}]},{
-      onDelta:()=>{},
-      onEnd:()=>{window.__streamEnded=true;clearTimeout(timer);resolve(true)}
-    })
-    setTimeout(()=>resolve(true),100)
-  }))
+  // 统一运行时：提交一轮慢请求，关闭窗口后主进程应取消运行并释放模型连接
+  await page.evaluate(async()=>{
+    const settings=await window.api.getSettings()
+    const profile=settings.profiles[0]
+    const workspace=await window.api.chat.workspace()
+    const conversation=await window.api.chat.createConversation({workspaceId:workspace.workspaceId})
+    await window.api.chat.submitTurn({conversationId:conversation.id,clientMessageId:'window-cleanup-'+Date.now(),text:'window cleanup slow request',context:[],modelBindingId:profile.id+':'+profile.models[0],reasoning:'default',mode:'ask',promptKind:'ask',permission:'readonly'})
+  })
   const deadline=Date.now()+10000
   while(!modelRequestSeen&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,100))
   if(!modelRequestSeen)throw new Error('model request never arrived')

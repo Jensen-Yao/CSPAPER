@@ -3,7 +3,8 @@
 // 二次打开直接命中缓存。单条参考文献可一键导入为库内题录（复用 importTranslated 管线）。
 import { getDb, getSettings } from './db'
 import { extractPagesCached } from './ingest'
-import { chatStream } from './llm'
+import { jobModelBinding, modelJobText } from './chat/jobs'
+import { parseModelJsonObject } from './chat/planning'
 import { fieldsToCsl, importTranslated } from './translators'
 
 export interface RefEntry {
@@ -70,7 +71,7 @@ function splitEntries(region: string): string[] {
 
 // ---------- LLM 批量结构化（一次调用，失败整体降级为 raw 拆分） ----------
 async function structureWithLlm(entries: string[]): Promise<Array<Partial<RefEntry>> | null> {
-  if (!getSettings().apiKey) return null
+  try { jobModelBinding() } catch { return null }
   const list = entries.map((raw, i) => `[${i + 1}] ${raw.slice(0, 500)}`).join('\n')
   const prompt =
     '你是文献题录解析助手。下面是一篇论文的参考文献列表（已按条目编号）。' +
@@ -80,14 +81,11 @@ async function structureWithLlm(entries: string[]): Promise<Array<Partial<RefEnt
     '3）authors 用「, 」分隔、保持原文写法；4）某字段解析不出来就留空字符串，不要编造；' +
     '5）title 不要带编号前缀。\n\n' + list
   try {
-    let out = ''
-    for await (const d of chatStream([
+    const out = await modelJobText([
       { role: 'system', content: prompt },
       { role: 'user', content: '请输出 JSON 数组。' }
-    ])) {
-      out += d
-    }
-    const json = JSON.parse(out.replace(/^```json\s*/i, '').replace(/```\s*$/g, '')) as unknown
+    ], { kind: 'references', title: '参考文献结构化' })
+    const json = parseModelJsonObject('[' + out.slice(out.indexOf('[') + 1, out.lastIndexOf(']')) + ']') as unknown
     if (!Array.isArray(json)) return null
     return json.slice(0, entries.length).map((x) => {
       const o = (x ?? {}) as Record<string, unknown>

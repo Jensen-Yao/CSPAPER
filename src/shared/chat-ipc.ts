@@ -46,9 +46,11 @@ export const submitTurnRequestSchema = z.object({
 export const cancelRunRequestSchema = z.object({ runId: idSchema, reason: z.string().max(500).optional() })
 export const approveToolRequestSchema = z.object({
   toolCallId: idSchema,
+  allowForRun:z.boolean().optional(),
   approved: z.boolean(),
   revision: z.unknown().optional()
 })
+export const undoToolRequestSchema = z.object({ toolCallId: idSchema }).strict()
 export const retryTurnRequestSchema = z.object({ runId: idSchema, reuseContext: z.boolean().default(true) })
 export const editAndResubmitRequestSchema = z.object({
   conversationId: idSchema,

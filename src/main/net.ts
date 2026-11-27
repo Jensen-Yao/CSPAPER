@@ -16,7 +16,7 @@ export class NetworkError extends Error {
   constructor(code:NetworkErrorCode,message:string,status?:number){super(message);this.code=code;this.status=status}
 }
 
-export interface NetFetchOptions { timeoutMs?:number;maxBytes?:number;signal?:AbortSignal;headers?:Record<string,string>;browserSession?:boolean;maxRedirects?:number }
+export interface NetFetchOptions { timeoutMs?:number;maxBytes?:number;signal?:AbortSignal;headers?:Record<string,string>;browserSession?:boolean;maxRedirects?:number;method?:'GET'|'POST';body?:string }
 export interface NetResponse { url:string;status:number;contentType:string;buffer:Buffer;headers:Record<string,string>;bytes:number }
 
 let appliedProxy:string|undefined
@@ -65,11 +65,25 @@ function toNetworkError(error:unknown,timeoutMs:number):NetworkError {
   return new NetworkError('network',message.replace(/^Error:\s*/,'').slice(0,160)||'网络请求失败')
 }
 
-/** Fetch a public HTTPS URL with bounded redirects, time and size. `browserSession` reuses the built-in browser's cookies. */
+const MAX_CONCURRENT=4
+let activeRequests=0
+const waiting:Array<()=>void>=[]
+async function acquireSlot():Promise<()=>void> {
+  if(activeRequests>=MAX_CONCURRENT)await new Promise<void>(resolve=>waiting.push(resolve))
+  activeRequests++
+  return ()=>{activeRequests--;waiting.shift()?.()}
+}
+
+/** Fetch a public HTTPS URL with bounded redirects, time, size and concurrency. `browserSession` reuses the built-in browser's cookies. */
 export async function netFetch(rawUrl:string,options:NetFetchOptions={}):Promise<NetResponse> {
   const first=safePublicHttpsUrl(rawUrl)
   if(!first)throw new NetworkError('invalid_url','仅支持公网 HTTPS 链接（不接受内网、本机或非 http(s) 地址）')
   applyProxySettings()
+  const release=await acquireSlot()
+  try { return await netFetchInner(first,options) } finally { release() }
+}
+
+async function netFetchInner(first:string,options:NetFetchOptions):Promise<NetResponse> {
   const timeoutMs=options.timeoutMs??DEFAULT_TIMEOUT_MS,maxBytes=options.maxBytes??DEFAULT_MAX_BYTES,maxRedirects=options.maxRedirects??5
   const timeout=AbortSignal.timeout(timeoutMs)
   const signal=options.signal?AbortSignal.any([options.signal,timeout]):timeout
@@ -81,13 +95,17 @@ export async function netFetch(rawUrl:string,options:NetFetchOptions={}):Promise
     const headers:Record<string,string>={'User-Agent':USER_AGENT,Accept:'text/html,application/xhtml+xml,application/json,application/pdf,*/*;q=0.8,application/xml;q=0.9', 'Accept-Language':'zh-CN,zh;q=0.9,en;q=0.8',...(options.headers??{})}
     let response:Response
     try {
-      const init:RequestInit={method:'GET',headers,signal,redirect:'manual',credentials:'include'}
+      const init:RequestInit={method:options.method??'GET',headers,body:options.body,signal,redirect:'manual',credentials:'include'}
       if(options.browserSession||useBrowserSession())response=await session.fromPartition(BROWSER_PARTITION).fetch(current,init)
       else if(app.isReady())response=await net.fetch(current,init)
       else response=await fetch(current,init)
     } catch(error) {
       if(options.signal?.aborted)throw new NetworkError('aborted','请求已取消')
       throw toNetworkError(error,timeoutMs)
+    }
+    if(response.status>=300&&response.status<400&&options.method&&options.method!=='GET') {
+      await response.body?.cancel().catch(()=>{})
+      throw new NetworkError('http','接口返回了重定向（'+response.status+'），请检查接口地址',response.status)
     }
     if(response.status>=300&&response.status<400) {
       const location=response.headers.get('location')

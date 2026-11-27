@@ -247,6 +247,9 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
     }
   }
 
+  const [snapshots,setSnapshots]=useState<import('../../shared/web').WebSnapshotInfo[]>([])
+  const loadSnapshots=():void=>{void window.api.webSnapshots({limit:8}).then(setSnapshots).catch(()=>setSnapshots([]))}
+  useEffect(()=>{if(visible)loadSnapshots()},[visible])
   const openHit = (h: AggHit): void => {
     const target = h.url || (h.doi ? `https://doi.org/${h.doi}` : '')
     if (target) nav(target)
@@ -407,7 +410,7 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
             </div>
           )}
 
-          {searching && <div className="ws-searching">正在检索 Crossref / OpenAlex …</div>}
+          {searching && <div className="ws-searching">正在检索 Crossref / OpenAlex / Semantic Scholar / arXiv / PubMed …</div>}
           {searchErr && <div className="ws-search-err">{searchErr}</div>}
 
           {hits && hits.length > 0 && (
@@ -449,6 +452,9 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
                     >
                       问
                     </button>
+                    <button className="ws-open" title="以阅读版式读取网页正文（可划词提问）" onClick={() => dispatchWorkspaceAction({kind:'web',url:h.url||(h.doi?`https://doi.org/${h.doi}`:'')})}>
+                      读
+                    </button>
                     <button className="ws-open" title="在内置浏览器打开原文/详情页" onClick={() => openHit(h)}>
                       原文
                     </button>
@@ -458,6 +464,13 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
               <div className="ws-results-foot">入库后进入「未分类」，可在库内移动；也可点「原文」到源页面查看全文。</div>
             </div>
           )}
+          {snapshots.length>0&&<div className="ws-snapshots">
+            <div className="ws-results-head">最近读取的网页 · {snapshots.length}<button className="ws-chip" title="刷新快照列表" onClick={()=>void loadSnapshots()}><Icon.Refresh size={13}/></button></div>
+            {snapshots.map(snapshot=><div key={snapshot.id} className="ws-snapshot" onClick={()=>dispatchWorkspaceAction({kind:'web',url:snapshot.finalUrl||snapshot.url})} title={snapshot.finalUrl||snapshot.url}>
+              <span className="ws-snapshot-title ellipsis">{snapshot.title||snapshot.url}</span>
+              <span className="ws-snapshot-meta">{new URL(snapshot.finalUrl||snapshot.url).hostname} · {snapshot.fetchedAt.slice(0,10)}</span>
+            </div>)}
+          </div>}
         </div>
       )}
 

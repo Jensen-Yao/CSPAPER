@@ -6,7 +6,8 @@ import path from 'node:path'
 import { shell } from 'electron'
 import { getDb, getSettings, scanLibraryAsync, setExtraCats, getExtraCats } from './db'
 import { extractPages } from './ingest'
-import { chatStream } from './llm'
+import { modelJobText } from './chat/jobs'
+import { parseModelJsonObject } from './chat/planning'
 import { enqueueSummaries } from './insight'
 import { renameWithRetry } from './fs-retry'
 
@@ -92,20 +93,17 @@ async function classify(firstPages: string): Promise<{
     `如果都不合适，提议一个新的英文短分类（kebab-case，不超过 4 个单词）。` +
     `只输出 JSON，格式：{"title":"英文标题","authors":"A, B, C et al.","year":2024,"venue":"期刊/会议或arXiv","category_slug":"tsfm-foundations","paper_slug":"2024-短名-kebab"}。` +
     `paper_slug 以年份开头，不超过 5 个单词。不要输出任何其他内容。`
-  let out = ''
-  for await (const d of chatStream([
+  const out = await modelJobText([
     { role: 'system', content: prompt },
     { role: 'user', content: firstPages.slice(0, 4000) }
-  ])) {
-    out += d
-  }
+  ], { kind: 'metadata', title: '导入题录识别' })
   try {
-    const json = JSON.parse(out.replace(/^```json\s*|```\s*$/g, ''))
+    const json = parseModelJsonObject(out) as Record<string, unknown>
     if (!json.title || !json.category_slug) return null
     return {
       title: String(json.title),
       authors: String(json.authors ?? ''),
-      year: parseInt(json.year) || null,
+      year: parseInt(String(json.year ?? '')) || null,
       venue: String(json.venue ?? ''),
       categorySlug: slugify(String(json.category_slug)),
       paperSlug: String(json.paper_slug ?? '')

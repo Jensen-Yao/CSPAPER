@@ -87,6 +87,9 @@ export interface Settings {
   proxyUrl?: string
   webEnabled?: boolean
   webUseBrowserSession?: boolean
+  webSearchProvider?: '' | 'brave' | 'tavily' | 'exa' | 'serper'
+  webSearchKey?: string
+  webAcademicOnly?: boolean
   readingFocus?: import('../shared/calendar').ReadingFocusSettings
 }
 
@@ -123,6 +126,9 @@ const DEFAULTS: Settings = {
   proxyUrl: '',
   webEnabled: true,
   webUseBrowserSession: false,
+  webSearchProvider: '',
+  webSearchKey: '',
+  webAcademicOnly: false,
   readingFocus: { focusMinutes:25, shortBreakMinutes:5, longBreakMinutes:15, waterMinutes:30, activityMinutes:45, notify:true }
 }
 

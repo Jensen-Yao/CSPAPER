@@ -1,9 +1,8 @@
 // AI 域 IPC：深度搜索 / 小结 / 对比表 / 详情 / 图谱 / 笔记 / LLM 流式
 import { ipcMain } from 'electron'
 import * as dbmod from '../db'
-import { hybridSearch, extractPagesCached } from '../ingest'
-import { chatStream, translateMessages, explainMessages, ragMessages, paperFullMessages, testLLM, type ChatMessage } from '../llm'
-import { freeTranslate } from '../free-translate'
+import { hybridSearch } from '../ingest'
+import { testLLM } from '../llm'
 import { embed } from '../embed'
 import {
   listCompare,
@@ -17,6 +16,7 @@ import {
   paperDetail,
   getExtract,
   extractPaper,
+  extractPaperField,
   getMyNotesText,
   saveMyNotesText,
   knowledgeGraph,
@@ -27,11 +27,6 @@ import type { IpcCtx } from './context'
 
 export function registerAiIpc(ctx: IpcCtx): void {
   const { send } = ctx
-  const requests=new Map<number,{controller:AbortController;sender:number}>()
-  ipcMain.on('llm:cancel',(event,reqId:number)=>{
-    const request=requests.get(reqId)
-    if(request?.sender===event.sender.id) request.controller.abort()
-  })
 
   // 深度搜索：正文（FTS）+ 划词笔记
   ipcMain.handle('search:deep', (_e, q: string) => deepSearch(q))
@@ -48,7 +43,6 @@ export function registerAiIpc(ctx: IpcCtx): void {
   ipcMain.handle('compare:export', (_e, id: number, format: 'md' | 'csv') => exportCompare(id, format, ctx.getWin()))
   ipcMain.handle('papers:detail', (_e, id: number) => paperDetail(id))
   ipcMain.handle('papers:extract-get', (_e, id: number) => getExtract(id))
-  ipcMain.handle('papers:extract-run', (_e, id: number) => extractPaper(id))
   ipcMain.handle('papers:similar', async (_e, id: number) => {
     const db = dbmod.getDb()
     const p = db.prepare('SELECT id, title, abstract, summary FROM papers WHERE id=?').get(id) as
@@ -109,96 +103,13 @@ export function registerAiIpc(ctx: IpcCtx): void {
     }
   })
 
-  // LLM 流式：reqId 关联渲染端回调
-  ipcMain.on(
-    'llm:stream',
-    async (
-      _e,
-      args: {
-        reqId: number
-        mode: 'chat' | 'translate' | 'explain' | 'rag'
-        messages?: ChatMessage[]
-        text?: string
-        context?: string
-        question?: string
-        scopePaperId?: number
-        category?: string
-        paperTitle?: string
-        history?: Array<{ role: 'user' | 'assistant'; content: string }>
-      }
-    ) => {
-      const controller=new AbortController()
-      requests.set(args.reqId,{controller,sender:_e.sender.id})
-      const onDestroyed=():void=>controller.abort()
-      _e.sender.once('destroyed',onDestroyed)
-      try {
-        let msgs: ChatMessage[]
-        let sources: import('../ingest').RetrievedChunk[] = []
-        if (args.mode === 'translate') {
-          const s = dbmod.getSettings()
-          // 免 Key 开箱即用：未配置 API Key 时划词翻译走免费通道，不要求用户先配模型
-          if (!s.apiKey || !s.apiKey.trim()) {
-            try {
-              send(`llm:delta:${args.reqId}`, await freeTranslate(args.text!, s.translateTarget))
-            } catch (err) {
-              send(`llm:delta:${args.reqId}`, `⚠️ ${String(err)}`)
-            }
-            send(`llm:end:${args.reqId}`, null)
-            return
-          }
-          msgs = translateMessages(args.text!, args.context ?? '', s.translateTarget)
-        } else if (args.mode === 'explain') msgs = explainMessages(args.text!, args.context ?? '')
-        else if (args.mode === 'rag') {
-          if (args.scopePaperId) {
-            // 整篇模式：完整论文正文进提示词（按页标记，引用为 [页码]）
-            const paper = dbmod
-              .getDb()
-              .prepare('SELECT id, slug, title, path FROM papers WHERE id=?')
-              .get(args.scopePaperId) as { id: number; slug: string; title: string; path: string } | undefined
-            if (!paper) throw new Error('论文不存在')
-            let pages: string[] = []
-            try {
-              pages = await extractPagesCached(paper.path)
-            } catch {
-              pages = []
-            }
-            if (pages.length > 0) {
-              sources = pages.map((t, i) => ({ paperId: paper.id, slug: paper.slug, title: paper.title, page: i + 1, text: t, score: 1, snippet: '' }))
-              msgs = paperFullMessages(args.question!, pages, paper.title, undefined, args.history)
-            } else {
-              sources = await hybridSearch(args.question!, args.scopePaperId, 10, args.category)
-              msgs = ragMessages(args.question!, sources.map((s, i) => ({ label: `${s.title} (p.${s.page})`, text: s.text })), paper.title, args.history)
-            }
-          } else {
-            sources = await hybridSearch(args.question!, undefined, 16, args.category)
-            if (sources.length === 0) {
-              send(`llm:delta:${args.reqId}`, '⚠️ 检索不到相关片段（可能索引尚未建好），请先重建索引。')
-              send(`llm:end:${args.reqId}`, null)
-              return
-            }
-            msgs = ragMessages(
-              args.question!,
-              sources.map((s, i) => ({ label: `${s.title} (p.${s.page})`, text: s.text })),
-              args.paperTitle,
-              args.history
-            )
-          }
-        } else msgs = args.messages ?? []
-
-        for await (const delta of chatStream(msgs,{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(300000)])})) send(`llm:delta:${args.reqId}`, delta)
-        if (args.mode === 'rag')
-          send(
-            `llm:sources:${args.reqId}`,
-            sources.map((s, i) => ({ n: i + 1, slug: s.slug, title: s.title, page: s.page, snippet: s.snippet || undefined }))
-          )
-        send(`llm:end:${args.reqId}`, null)
-      } catch (err) {
-        if(!controller.signal.aborted) send(`llm:delta:${args.reqId}`, `\n\n❌ ${String(err)}`)
-        send(`llm:end:${args.reqId}`, null)
-      } finally {
-        requests.delete(args.reqId)
-        _e.sender.removeListener('destroyed',onDestroyed)
-      }
-    }
-  )
+  // 深度精读走统一的后台模型任务（有运行记录、可取消、支持单字段重跑）
+  const extraction=new Map<number,AbortController>()
+  ipcMain.handle('papers:extract-run',(_e,id:number)=>{
+    extraction.get(id)?.abort(new Error('重新精读'))
+    const controller=new AbortController();extraction.set(id,controller)
+    return extractPaper(id,controller.signal).finally(()=>{if(extraction.get(id)===controller)extraction.delete(id)})
+  })
+  ipcMain.handle('papers:extract-cancel',(_e,id:number)=>{extraction.get(id)?.abort(new Error('用户停止精读'));return true})
+  ipcMain.handle('papers:extract-field',(_e,id:number,field:string)=>extractPaperField(id,String(field)))
 }

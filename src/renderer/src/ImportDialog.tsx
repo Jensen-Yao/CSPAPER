@@ -338,7 +338,7 @@ export default function ImportDialog({ initialFiles, initialCats, hasApiKey, onB
               {folders.length > 0 && (
                 <div className="import-row folder">
                   <span className="import-row-name ellipsis" title={folders.join('\n')}>
-                    📁 {folders.length} 个文件夹{previewing ? '（识别中…）' : '（已展开为单篇）'}
+                    <Icon.Folder size={13}/> {folders.length} 个文件夹{previewing ? '（识别中…）' : '（已展开为单篇）'}
                   </span>
                 </div>
               )}

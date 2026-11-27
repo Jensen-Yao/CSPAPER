@@ -15,7 +15,7 @@ import { getSettings, getDb, getMeta, setMeta } from './db'
 import { decodeBuffer, netFetch } from './net'
 
 // ---------- 类型 ----------
-export type TranslatorOp = 'fetch' | 'meta' | 'css' | 'json' | 'jsonraw' | 'regex' | 'template' | 'download' | 'jsonlist'
+export type TranslatorOp = 'fetch' | 'meta' | 'css' | 'csslist' | 'json' | 'jsonraw' | 'regex' | 'template' | 'download' | 'jsonlist'
 
 export interface TranslatorStep {
   op: TranslatorOp
@@ -306,6 +306,25 @@ async function applyStep(step: TranslatorStep, ctx: ExecCtx): Promise<void> {
       })
       const v = step.multi ? vals.filter(Boolean).slice(0, 80).join(', ') : (vals[0] ?? '')
       if (v) setField(ctx, step.as, v, step)
+      return
+    }
+    case 'csslist': {
+      // HTML 列表：每个匹配元素一行；字段值为「子选择器|text/html/属性名」
+      if (!ctx.html || !step.selector || !step.map) return
+      const $ = cheerio.load(ctx.html)
+      $(step.selector).slice(0, 20).each((_i, el) => {
+        const node = $(el)
+        const row: Record<string, string> = {}
+        for (const [field, spec] of Object.entries(step.map??{})) {
+          if (!spec) continue
+          const [selector, attr] = spec.split('|')
+          const target = selector ? node.find(selector).first() : node
+          const kind = attr ?? 'text'
+          const raw = kind === 'text' ? target.text().trim() : kind === 'html' ? (target.html() ?? '').trim() : (target.attr(kind) ?? '').trim()
+          if (raw) row[field] = raw
+        }
+        if (row.title) ctx.results.push(step.rowTransform ? (runTransform(row, step.rowTransform) as Record<string, string>) : row)
+      })
       return
     }
     case 'json': {

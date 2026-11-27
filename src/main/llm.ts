@@ -1,9 +1,8 @@
 import { getSettings } from './db'
 
-import { streamModel, generateModel, type PromptMessage } from './models/provider'
+import { generateModel, type PromptMessage } from './models/provider'
 import type { ModelBindingSnapshot } from '../shared/models'
 import { presetCaps } from '../shared/model-caps-presets'
-import { explainPrompt, paperFullPrompt, ragPrompt } from './chat/prompts'
 export type ChatMessage=PromptMessage
 export type ThinkingLevel=string
 export interface LlmEndpoint {apiBase?:string;apiKey?:string;model?:string;provider?:string;thinkingLevel?:ThinkingLevel}
@@ -12,31 +11,6 @@ function endpointSnapshot(over?:LlmEndpoint):{binding:ModelBindingSnapshot;apiKe
   const saved=getSettings(),endpoint={...saved,...over},caps=presetCaps(endpoint.model)
   return {binding:{bindingId:'compatibility',profileId:saved.modelBindingId?.split(':')[0]??'compatibility',provider:endpoint.provider,model:endpoint.model,apiBase:endpoint.apiBase.replace(/\/+$/,''),capabilities:['text','streaming'],reasoning:endpoint.thinkingLevel,reasoningLevels:caps?.reasoningLevels},apiKey:endpoint.apiKey}
 }
-export async function* chatStream(messages:ChatMessage[],opts:{temperature?:number;signal?:AbortSignal;endpoint?:LlmEndpoint}={}):AsyncGenerator<string> {
-  const snapshot=endpointSnapshot(opts.endpoint)
-  yield* streamModel(messages,snapshot.binding,{apiKey:snapshot.apiKey,signal:opts.signal,temperature:opts.temperature??0.3})
-}
-
-export function translateMessages(text: string, context: string, target: string): ChatMessage[] {
-  return [
-    {
-      role: 'system',
-      content:
-        `你是电力电子与 AI 交叉领域的资深学术翻译。将用户给出的文本翻译为${target}，要求：` +
-        `1）术语准确（如 bond wire→键合线、junction temperature→结温、DC-link→母线电容、TSEP→热敏电参数）；` +
-        `2）保持学术语气与原文逻辑；3）公式、变量名、引用标记保留原样；4）只输出译文。`
-    },
-    {
-      role: 'user',
-      content: `【所在页面上下文（仅供理解术语，不要翻译）】\n${context || '（无）'}\n\n【待翻译文本】\n${text}`
-    }
-  ]
-}
-
-export function explainMessages(text: string, context: string): ChatMessage[] {
-  return explainPrompt(text,context) as ChatMessage[]
-}
-
 export async function chatOnce(messages:ChatMessage[],over?:LlmEndpoint):Promise<{latencyMs:number;reply:string}> {
   const snapshot=endpointSnapshot(over),start=Date.now()
   const reply=await generateModel(messages,snapshot.binding,{apiKey:snapshot.apiKey,temperature:0.3})
@@ -85,26 +59,7 @@ export async function testLLM(over?: LlmEndpoint): Promise<TestResult> {
 }
 
 // 整篇模式：全文按页标记进提示词，引用格式为 [页码]
-export function paperFullMessages(
-  question: string,
-  pages: string[],
-  title: string,
-  budget = 120000,
-  history?: Array<{ role: 'user' | 'assistant'; content: string }>
-): ChatMessage[] {
-  return paperFullPrompt(question,pages,title,budget,history) as ChatMessage[]
-}
 
-export function ragMessages(
-  question: string,
-  sources: Array<{ label: string; text: string }>,
-  paperTitle?: string,
-  history?: Array<{ role: 'user' | 'assistant'; content: string }>
-): ChatMessage[] {
-  return ragPrompt(question,sources,paperTitle,history) as ChatMessage[]
-}
-
-// ---------- 上游模型列表（v0.16.2）：GET /models 拉取可用模型名 ----------
 export async function fetchModelList(apiBase: string, apiKey: string): Promise<string[]> {
   const base = apiBase.replace(/\/$/, '')
   const url = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`

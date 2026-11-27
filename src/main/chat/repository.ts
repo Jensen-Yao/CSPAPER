@@ -6,6 +6,7 @@ import type { ContextSnapshot } from '../../shared/context'
 import type { ModelBindingSnapshot } from '../../shared/models'
 import type { ArtifactRef, DomainChange, ToolError } from '../../shared/tools'
 import type { Source } from '../../shared/sources'
+import { summarizeTaskTitle } from '../../shared/title'
 import { ensureWorkspace, type Workspace } from '../workspaces'
 
 export interface ConversationRow {
@@ -54,7 +55,7 @@ export class ChatRepository {
     const limit=Math.max(1,Math.min(100,input.limit??50))
     const rows=this.db.prepare(`
       SELECT c.* FROM conversations c
-      WHERE c.workspace_id=? AND (? = 0 OR c.archived_at IS NULL) AND (? = 1 OR NOT (c.entry='reader' AND c.mode='ask')) AND (? IS NULL OR c.mode=?)
+      WHERE c.workspace_id=? AND (? = 0 OR c.archived_at IS NULL) AND (? = 1 OR NOT (c.mode='ask' AND c.entry IN ('reader','work'))) AND (? IS NULL OR c.mode=?)
         AND (? IS NULL OR c.updated_at < (SELECT x.updated_at FROM conversations x WHERE x.id=?)
              OR (c.updated_at = (SELECT x.updated_at FROM conversations x WHERE x.id=?) AND c.id < ?))
       ORDER BY c.updated_at DESC,c.id DESC LIMIT ?
@@ -178,7 +179,7 @@ export class ChatRepository {
       this.db.prepare(`INSERT INTO chat_runs(id,conversation_id,user_message_id,assistant_message_id,mode,status,model_binding_json,context_snapshot_json,created_at) VALUES(?,?,?,?,?,'queued',?,?,?)`)
         .run(runId,input.conversationId,userId,assistantId,input.mode??conversation.mode,JSON.stringify(input.modelBinding),JSON.stringify(context),now)
       this.db.prepare('UPDATE conversations SET active_leaf_id=?,updated_at=? WHERE id=?').run(assistantId,now,input.conversationId)
-      if(conversation.title==='新会话')this.db.prepare('UPDATE conversations SET title=? WHERE id=?').run(input.text.replace(/\s+/g,' ').slice(0,80),input.conversationId)
+      if(conversation.title==='新会话')this.db.prepare('UPDATE conversations SET title=? WHERE id=?').run(summarizeTaskTitle(input.text),input.conversationId)
     })()
     return { run:this.getRun(runId)!,userMessage:this.getMessage(userId)!,assistantMessage:this.getMessage(assistantId)!,reused:false }
   }

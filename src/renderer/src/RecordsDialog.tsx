@@ -81,7 +81,7 @@ export default function RecordsDialog({ initialCats, onClose, onFinished }: Prop
                 </button>
               </div>
               {error && (
-                <div style={{ marginTop: 12, color: '#b44' }}>
+                <div style={{ marginTop: 12, color: 'var(--danger)' }}>
                   {error}
                 </div>
               )}
@@ -161,7 +161,7 @@ export default function RecordsDialog({ initialCats, onClose, onFinished }: Prop
             <>
               <span className="hint" style={{ flex: 1 }}>
                 {summary}
-                {error && <span style={{ color: '#b44' }}>{error}</span>}
+                {error && <span style={{ color: 'var(--danger)' }}>{error}</span>}
               </span>
               <button
                 className="btn"

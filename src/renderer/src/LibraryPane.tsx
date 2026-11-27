@@ -30,6 +30,11 @@ interface Props {
   // 筛选变化通过 onTagFilter 通知（App 侧可据此联动纵览/卡片墙）
   activeTag?: string | null
   onTagFilter?: (tag: string | null) => void
+  /** Shared library scope: the tree drives the main grid instead of keeping a duplicate list. */
+  scope?: { view: 'all' | 'recent'; category: string | null; collectionId: number | null; tag: string | null }
+  onScopeChange?: (patch: Partial<{ view: 'all' | 'recent'; category: string | null; collectionId: number | null; tag: string | null }>) => void
+  /** Hide the pane's own paper list (the main grid shows the papers); keep the tree, collections and tags as filters. */
+  hideList?: boolean
 }
 
 // 标签预设色板（8 色，暖墨优先，与纵览分类配色一致）
@@ -86,7 +91,10 @@ export default function LibraryPane({
   width,
   onPapersChanged,
   activeTag,
-  onTagFilter
+  onTagFilter,
+  scope,
+  onScopeChange,
+  hideList = false
 }: Props): JSX.Element {
   // ---------- 标签系统（v0.6） ----------
   const dlg = useDialog()
@@ -112,6 +120,7 @@ export default function LibraryPane({
   const applyTagFilter = (t: string | null): void => {
     setInnerTag(t)
     onTagFilter?.(t)
+    onScopeChange?.({ tag: t })
   }
 
   // 按标签过滤后的视图（最近 / 分类树 / 搜索结果共用）
@@ -256,6 +265,8 @@ export default function LibraryPane({
       else next.add(c)
       return next
     })
+  // 点击分类标题 = 筛选主区并展开其内联清单；只有箭头负责单独收起 / 展开
+  const expandOnly = (c: string): void => setExpanded((current) => (current.has(c) ? current : new Set([...current, c])))
   const allCollapsed = tree.length > 0 && tree.every(([category]) => !expanded.has(category))
   const setAllCategories = (expand: boolean): void =>
     setExpanded(expand ? new Set(tree.map(([category]) => category)) : new Set())
@@ -485,18 +496,18 @@ export default function LibraryPane({
           <>
             <div className="lib-view-toggle" role="tablist" aria-label="文献浏览方式">
               <div className="lib-view-seg">
-                <button className={view === 'all' ? 'on' : ''} onClick={() => setView('all')} title="显示当前筛选下的全部文献">
+                <button className={view === 'all' ? 'on' : ''} onClick={() => { setView('all'); onScopeChange?.({ view: 'all' }) }} title="全部文献（主区按当前分类 / 集合 / 标签筛选）">
                   全部文献
                 </button>
-                <button className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')} title="最近导入 / 最近打开">
+                <button className={view === 'recent' ? 'on' : ''} onClick={() => { setView('recent'); onScopeChange?.({ view: 'recent' }) }} title="最近导入 / 最近打开">
                   最近
                 </button>
-                <button className={view === 'cats' ? 'on' : ''} onClick={() => setView('cats')} title="按分类浏览，分类默认收起">
+                <button className={view === 'cats' ? 'on' : ''} onClick={() => { setView('cats'); onScopeChange?.({ view: 'all' }) }} title="按分类浏览，点分类即筛选主区">
                   分类
                 </button>
               </div>
             </div>
-            {view === 'cats' && (
+            {(view === 'cats' || hideList) && (
               <div className="lib-tree-tools">
                 <button
                   type="button"
@@ -537,7 +548,21 @@ export default function LibraryPane({
             window.api.blankMenu(e.clientX, e.clientY)
           }}
         >
-          {searching ? (
+          {searching && hideList && extraDeep.length > 0 && (
+            <>
+              <div className="lib-section">正文 / 笔记匹配 · {extraDeep.length}</div>
+              {extraDeep.map((h) => {
+                const p = papers.find((x) => x.id === h.id)
+                return (
+                  <div key={`${h.id}-${h.page}-${h.from}`} className="paper-item deep" onClick={() => p && onOpen(p)} title={h.snippet}>
+                    <div className="t">{p?.title ?? h.title}</div>
+                    <div className="deep-snip">{h.from === 'note' ? <Icon.Highlight size={11} /> : <Icon.Doc size={11} />} {h.page ? `p.${h.page} · ` : ''}{h.snippet}</div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+          {searching && !hideList ? (
             <>
               <div className="lib-section">搜索结果 · {papersView.filter(match).length}</div>
               {papersView.filter(match).map((p) => paperRow(p, undefined, deepMap.get(p.id)))}
@@ -564,7 +589,7 @@ export default function LibraryPane({
                 </>
               )}
             </>
-          ) : view === 'all' ? (
+          ) : view === 'all' && !hideList ? (
             <>
               <div className="lib-section">全部文献 · {allPapers.length}</div>
               {allPapers.map((p) =>
@@ -579,7 +604,7 @@ export default function LibraryPane({
                 )
               )}
             </>
-          ) : view === 'recent' ? (
+          ) : view === 'recent' && !hideList ? (
             <>
               <div className="lib-section">最近导入 / 打开</div>
               {recent.map((p) =>
@@ -599,10 +624,10 @@ export default function LibraryPane({
               <div key={c}>
                 <button
                   type="button"
-                  className={`cat-item ${dragCat === c ? 'drop-on' : ''}`}
+                  className={`cat-item ${dragCat === c ? 'drop-on' : ''} ${scope?.category === c ? 'scope-on' : ''}`}
                   aria-expanded={expanded.has(c)}
-                  aria-label={`${catLabel(c)}，${list.length} 篇文献`}
-                  onClick={() => toggle(c)}
+                  aria-label={`${c} · ${catLabel(c)}，${list.length} 篇文献`}
+                  onClick={() => { expandOnly(c); onScopeChange?.({ category: scope?.category === c ? null : c }) }}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -619,7 +644,7 @@ export default function LibraryPane({
                   onDrop={(e) => onCatDrop(e, c)}
                   title="点击展开 / 收起；右键重命名、导出；拖文献到此移动"
                 >
-                  <span aria-hidden className={`cat-chevron ${expanded.has(c) ? 'open' : ''}`}><Icon.ChevronR size={13} /></span>
+                  <span aria-hidden className={`cat-chevron ${expanded.has(c) ? 'open' : ''}`} title="展开 / 收起该分类的文献清单" onClick={(e) => { e.stopPropagation(); toggle(c) }}><Icon.ChevronR size={13} /></span>
                   <span className="ellipsis cat-title">{catLabel(c)}</span>
                   <span className="cat-count">{list.length}{expanded.has(c) ? ' 篇' : ''}</span>
                 </button>
@@ -661,20 +686,20 @@ export default function LibraryPane({
           </div>
           {!closedSections.has('collections') && (
             <div className="tag-section-body">
-              {colls.length === 0 && <div className="tag-empty">暂无集合——集合是跨分类的逻辑分组（如「导师书单」「综述素材」），一篇文献可同时挂多个</div>}
+              {colls.length === 0 && <div className="tag-empty" title="集合是跨分类的逻辑分组（如「导师书单」「综述素材」），一篇文献可同时挂多个">还没有集合，点右上角 ＋ 新建</div>}
               {colls.filter((c) => c.parent_id == null).map((c) => (
                 <div key={c.id}>
                   <button
                     type="button"
                     className={`cat-item collection ${selColl === c.id ? 'drop-on' : ''}`}
                     aria-pressed={selColl === c.id}
-                    onClick={() => setSelColl(selColl === c.id ? null : c.id)}
+                    onClick={() => { const next = selColl === c.id ? null : c.id; setSelColl(next); onScopeChange?.({ collectionId: next }) }}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       void dlg.confirm({ title: `删除集合「${c.name}」？`, message: '只解除挂接，不动文献与文件。', okText: '删除', danger: true }).then((ok) => {
                         if (ok) {
                           void window.api.collectionsRemove(c.id).then(() => {
-                            if (selColl === c.id) setSelColl(null)
+                            if (selColl === c.id) { setSelColl(null); onScopeChange?.({ collectionId: null }) }
                             refreshColls()
                           })
                         }

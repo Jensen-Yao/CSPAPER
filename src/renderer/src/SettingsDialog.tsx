@@ -497,7 +497,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               <div className="section">
                 <div className="section-title">工作区</div>
                 <div className="ws-row">
-                  <div className="ws-icon">📁</div>
+                  <div className="ws-icon"><Icon.Folder size={18}/></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="ws-name">{workspaceName(form.libraryPath)}</div>
                     <div className="hint">导入、归类、索引全自动；iCloud / OneDrive 同步自动重扫。</div>
@@ -527,7 +527,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 </div>
                 <div className="section-title" style={{ marginTop: 24 }}>数据存储位置</div>
                 <div className="ws-row">
-                  <div className="ws-icon">💽</div>
+                  <div className="ws-icon"><Icon.Package size={18}/></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="ws-name ellipsis" title={dataDir}>{dataDir}</div>
                     <div className="hint">数据库、索引与设置所在位置；更改后自动迁移，重启生效。</div>
@@ -554,7 +554,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 </label>
                 <div className="hint" style={{ marginTop: 4 }}>开启后点关闭只是隐藏到托盘（托盘图标右键退出），导入与索引不中断。</div>
                 <div className="hint" style={{ marginTop: 12 }}>
-                  💡 已有 Zotero 文献库？「文件 → 从 Zotero 导入」一键迁移；知网题录用「文件 → 导入题录文件」。
+                  <Icon.Info size={12}/> 已有 Zotero 文献库？「文件 → 从 Zotero 导入」一键迁移；知网题录用「文件 → 导入题录文件」。
                 </div>
               </div>
             )}
@@ -569,6 +569,33 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                   <span className={`set-switch ${form.webUseBrowserSession ? 'on' : ''}`} role="switch" aria-checked={!!form.webUseBrowserSession} title="读取网页时携带内置浏览器的 Cookie，适用于登录后才能访问的站点" style={{ cursor: 'pointer' }} onClick={() => set({ webUseBrowserSession: !form.webUseBrowserSession })} />
                   <span style={{ fontSize: 12.5 }}>读取网页时使用内置浏览器登录态（知网、出版社页面）</span>
+                </div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <span className={`set-switch ${form.webAcademicOnly ? 'on' : ''}`} role="switch" aria-checked={!!form.webAcademicOnly} title="只访问 Crossref / OpenAlex / Semantic Scholar / arXiv / PubMed 等学术接口，不访问通用搜索引擎" style={{ cursor: 'pointer' }} onClick={() => set({ webAcademicOnly: !form.webAcademicOnly })} />
+                  <span style={{ fontSize: 12.5 }}>仅使用学术 API（不访问通用搜索引擎）</span>
+                </div>
+                <div className="section-title">搜索接口（可选）</div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                  <select
+                    className="set-input"
+                    style={{ width: 140 }}
+                    value={form.webSearchProvider ?? ''}
+                    onChange={(e) => set({ webSearchProvider: e.target.value as Settings['webSearchProvider'] })}
+                  >
+                    <option value="">免 Key（必应 / DuckDuckGo）</option>
+                    <option value="brave">Brave Search</option>
+                    <option value="tavily">Tavily</option>
+                    <option value="exa">Exa</option>
+                    <option value="serper">Serper（Google）</option>
+                  </select>
+                  <input
+                    className="set-input"
+                    style={{ flex: 1 }}
+                    type="password"
+                    placeholder={form.webSearchProvider ? `${form.webSearchProvider} API Key` : '选择接口后填入 API Key'}
+                    value={form.webSearchKey ?? ''}
+                    onChange={(e) => set({ webSearchKey: e.target.value.trim() })}
+                  />
                 </div>
                 <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>代理地址</span>
@@ -680,7 +707,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                 </div>
 
                 <div className="set-cites-engine">
-                  <span className="set-cites-engine-ic">⚙️</span>
+                  <span className="set-cites-engine-ic"><Icon.Gear size={14}/></span>
                   {engine?.downloaded ? (
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="set-cites-name">citeproc 引擎已就绪</div>
@@ -722,7 +749,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                     const preset = ALL_PROVIDERS.find((p) => p.id === pf.provider)
                     return (
                       <button key={i} className={`prov-row ${isActive ? 'active' : ''}`} onClick={() => setModelTab(i)}>
-                        <span className="pv-avatar" style={{ background: preset?.color ?? '#64748b' }}>{preset?.logo ?? '⚙'}</span>
+                        <span className="pv-avatar" style={{ background: preset?.color ?? 'var(--text-dim)' }}>{preset?.logo ?? '⚙'}</span>
                         <span className="prov-name ellipsis">{preset?.name ?? pf.provider}</span>
                         <span className="prov-models ellipsis">{pf.models.slice(0, 2).join('、')}{pf.models.length > 2 ? ` +${pf.models.length - 2}` : ''}</span>
                         {isActive && <i className="dot ok" title="使用中" />}
@@ -784,7 +811,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                   {profiles.length > 1 && (
                     <button
                       className="btn ghost"
-                      style={{ padding: '3px 10px', color: '#b4443c' }}
+                      style={{ padding: '3px 10px', color: 'var(--accent)' }}
                       onClick={() => {
                         void dlg.confirm({ title: `删除「${preset?.name ?? pf.provider}」配置？`, okText: '删除', danger: true }).then((ok) => {
                           if (!ok) return
@@ -805,7 +832,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
                         <div className="field pv-field">
                           <label>服务商</label>
                           <div className="pv-row">
-                            <div className="pv-avatar" style={{ background: preset?.color ?? '#64748b' }}>{preset?.logo ?? '⚙'}</div>
+                            <div className="pv-avatar" style={{ background: preset?.color ?? 'var(--text-dim)' }}>{preset?.logo ?? '⚙'}</div>
                             <select
                               value={guessProvider(pf.apiBase)}
                               onChange={(e) => {
@@ -1124,7 +1151,7 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
               <div className="section">
                 <div className="section-title">内置浏览器</div>
                 <div className="ws-row">
-                  <div className="ws-icon">🧭</div>
+                  <div className="ws-icon"><Icon.Compass size={18}/></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="ws-name">已内置 CSPAPER Connector——内置浏览器里直接右键保存文献，无需安装</div>
                     <div className="hint">打开内置浏览器：左侧模式栏「网页」。知网、万方、arXiv 等站点已备好快捷入口，保存的题录与 PDF 自动入库。</div>

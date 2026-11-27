@@ -44,8 +44,9 @@ interface Props {
   onDeleteHighlight: (id: number) => void
   // 详情面板内变更（状态/标签）后通知列表刷新
   onPapersChanged?: () => void
-  // 面板折叠（折叠后由右侧功能竖轨重新展开）
+  // 面板折叠（折叠后由顶栏按钮重新展开）
   collapsed?: boolean
+  onOpenSettings?: () => void
   // 当前 tab 变化上报（右侧功能竖轨高亮用）
   onTabChange?: (t: 'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info') => void
 }
@@ -80,7 +81,7 @@ function splitBlocks(text: string): string[] {
 }
 
 const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
-  { paper, pageContext, pageNum, onJump, models, profiles, model, thinking, thinkingLevels, onChangeModel, onChangeThinking, onAddThinkingLevel, width, fs, onFs, onDeleteHighlight, onPapersChanged, collapsed, onTabChange },
+  { paper, pageContext, pageNum, onJump, models, profiles, model, thinking, thinkingLevels, onChangeModel, onChangeThinking, onAddThinkingLevel, width, fs, onFs, onDeleteHighlight, onPapersChanged, collapsed, onTabChange, onOpenSettings },
   ref
 ): JSX.Element {
   const [tab, setTab] = useState<'chat' | 'translate' | 'full' | 'notes' | 'refs' | 'info'>('chat')
@@ -284,9 +285,11 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
     curRef.current = null
   }
 
+  const [noModel,setNoModel]=useState(false)
   const send = () => {
     const q = input.trim()
     if (!q || busy) return
+    if(models.length===0){setNoModel(true);return}
     setInput('')
     setTab('chat')
     pendingSelection.current=ctxTranslation?{text:ctxTranslation.src,page:pageNum,version:String(paper?.file_mtime??0)}:null
@@ -296,6 +299,8 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
 
   return (
     <div className={`side ${collapsed ? "side-collapsed" : ""}`} style={{ width: collapsed ? 0 : width }}>
+      {/* 页签行：未打开论文时不显示，替代旧版右侧竖轨 */}
+      {paper && (
       <div className="side-tabs">
         <div className={`side-tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
           问答
@@ -303,24 +308,29 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
         <div className={`side-tab ${tab === 'translate' ? 'active' : ''}`} onClick={() => setTab('translate')}>
           翻译
         </div>
-        <div
+                <div
           className={`side-tab ${tab === 'full' ? 'active' : ''}`}
-          onClick={() => setTab('full')}
+          onClick={() => {
+            setTab('full')
+            // 打开即自动翻译当前页（已在翻译或已译过本页则不重复）
+            if (pcRef.current && !bilRunRef.current && bilPage !== pnRef.current) translatePageFull(pcRef.current, pnRef.current)
+          }}
           title="全文翻译：当前页逐段中英对照"
         >
-          全文
+          全文翻译
         </div>
         <div className={`side-tab ${tab === 'notes' ? 'active' : ''}`} onClick={() => setTab('notes')} title="本篇划词标注">
-          标注
+          划词标注
         </div>
         <div className={`side-tab ${tab === 'refs' ? 'active' : ''}`} onClick={() => setTab('refs')} title="参考文献：抓取并可直接入库">
-          文献
+          参考文献
         </div>
         <div className={`side-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => setTab('info')} title="文献详情">
           详情
         </div>
         {/* 新对话 / 字号控件移入问答 tab 内的对话工具条（tab 栏只留 6 个内容页签） */}
       </div>
+      )}
       {tab === 'chat' && (
         <div className="chat-toolbar">
           <button className="side-new-chat" title="新对话：清空问答记录与上下文" onClick={reset}>
@@ -350,8 +360,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
             <div key={n.id} className="bil-pair">
               <div className="bil-src" style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                 <span
-                  className="pd-note-page"
-                  style={{ background: n.color === 'red' ? '#eb5050' : n.color === 'green' ? '#46c882' : '#ffd200', color: '#1d1d22', borderRadius: 4, padding: '0 5px' }}
+                  className={`pd-note-page ${n.color || 'yellow'}`}
                 >
                   p.{n.page}
                 </span>
@@ -513,19 +522,16 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
               <div style={{ color: 'var(--text-dim)', fontSize: 12, lineHeight: 1.9, padding: '6px 4px' }}>
                 {paper ? (
                   <>
-                    当前论文：<b style={{ color: 'var(--accent2)' }}>{paper.title}</b>
+                    当前论文：<b style={{ color: 'var(--accent2)' }} title="「当前论文」把整篇正文带入上下文；「全库」跨所有文献检索并给出来源页码；PDF 划词会自动翻译并加入上下文">{paper.title}</b>
                     {paper.source_kind==='record'&&<span className="source-badge record small" style={{marginLeft:6}}>题录</span>}
-                    <br />
-                    「当前论文」只在本文全文中检索；「全库」跨所有文献检索并给出来源页码。
-                    <br />
-                    在 PDF 里划词会自动翻译并加入这里的上下文。
                   </>
                 ) : (
-                  '全库模式：无需打开论文，直接跨所有文献检索问答，回答自带页码引用，点击可跳转。'
+                  '全库模式：跨所有文献检索，回答自带页码引用'
                 )}
               </div>
             }/>
           <div className="chat-input-area">
+            {models.length===0&&<div className="chat-message-error warning" role="status">尚未配置模型服务，发送前需要先配置。<button type="button" className="cmp-mini" onClick={()=>onOpenSettings?.()}>去配置模型</button></div>}
             {ctxTranslation && (
               <div className="ctx-pill" title={`${ctxTranslation.src}\n→\n${ctxTranslation.out}`}>
                 <span className="ctx-label">上下文</span>

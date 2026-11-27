@@ -48,6 +48,48 @@ export function removeSchedule(id: number): void {
   getDb().prepare('DELETE FROM agent_schedules WHERE id=?').run(id)
 }
 
+export interface ScheduleRun { id:number;schedule_id:number;started_at:string;finished_at:string|null;status:string;conversation_id:string|null;run_id:string|null;error:string|null }
+
+/** Next due time from the last run and the interval (now when never run or overdue). */
+export function nextRunAt(schedule:AgentSchedule):Date {
+  if(!schedule.enabled)return new Date(NaN)
+  if(!schedule.last_run_at)return new Date()
+  const last=new Date(schedule.last_run_at.replace(' ','T')+'Z')
+  if(Number.isNaN(last.getTime()))return new Date()
+  return new Date(Math.max(Date.now(),last.getTime()+schedule.interval_minutes*60_000))
+}
+
+export function updateSchedule(id:number,patch:{name?:string;goal?:string;intervalMinutes?:number}):AgentSchedule|null {
+  ensureTable()
+  const current=listSchedules().find(item=>item.id===id)
+  if(!current)return null
+  const name=patch.name?.trim().slice(0,80)||current.name,goal=patch.goal?.trim().slice(0,2000)||current.goal
+  const interval=Math.max(30,Math.min(525600,Math.floor(Number.isFinite(patch.intervalMinutes)?patch.intervalMinutes!:current.interval_minutes)))
+  getDb().prepare('UPDATE agent_schedules SET name=?, goal=?, interval_minutes=? WHERE id=?').run(name,goal,interval,id)
+  return listSchedules().find(item=>item.id===id)??null
+}
+
+export function listScheduleRuns(scheduleId:number,limit=8):ScheduleRun[] {
+  return getDb().prepare('SELECT * FROM agent_schedule_runs WHERE schedule_id=? ORDER BY started_at DESC LIMIT ?').all(scheduleId,Math.max(1,Math.min(50,limit))) as ScheduleRun[]
+}
+
+function recordRunStart(scheduleId:number):number {
+  return Number(getDb().prepare("INSERT INTO agent_schedule_runs(schedule_id,started_at) VALUES(?,?)").run(scheduleId,new Date().toISOString()).lastInsertRowid)
+}
+function recordRunEnd(runId:number,status:string,conversationId?:string,run?:string,error?:string):void {
+  getDb().prepare('UPDATE agent_schedule_runs SET finished_at=?, status=?, conversation_id=?, run_id=?, error=? WHERE id=?').run(new Date().toISOString(),status,conversationId??null,run??null,error?String(error).slice(0,500):null,runId)
+}
+
+/** Run a schedule immediately (manual trigger); the outcome is recorded like a scheduled run. */
+export async function runScheduleNow(id:number):Promise<{ok:boolean;outcome?:UnifiedScheduleOutcome;error?:string}> {
+  const schedule=listSchedules().find(item=>item.id===id)
+  if(!schedule)throw new Error('自动化任务不存在')
+  const services=getChatServices()
+  if(!services)throw new Error('统一对话运行时尚未初始化')
+  const outcome=await runHeadlessWithRuntime(schedule,services.runtime,services.repository)
+  return {ok:outcome.status==='completed'||outcome.status==='partial',outcome,error:outcome.status==='failed'?outcome.error:undefined}
+}
+
 export function toggleSchedule(id: number, enabled: boolean): void {
   ensureTable()
   getDb().prepare('UPDATE agent_schedules SET enabled=? WHERE id=?').run(enabled ? 1 : 0, id)
@@ -64,6 +106,20 @@ function isDue(s: AgentSchedule): boolean {
 export interface UnifiedScheduleOutcome { conversationId:string;runId:string;status:'completed'|'partial'|'failed'|'cancelled'|'interrupted';error?:string }
 
 export async function runHeadlessWithRuntime(schedule:AgentSchedule,runtime:ChatRuntime,repository:ChatRepository):Promise<UnifiedScheduleOutcome> {
+  const history=recordRunStart(schedule.id)
+  try {
+    const outcome=await runHeadlessInner(schedule,runtime,repository)
+    recordRunEnd(history,outcome.status,outcome.conversationId,outcome.runId)
+    return outcome
+  } catch(error) {
+    const message=String(error).slice(0,500)
+    const latest=listScheduleRuns(schedule.id,1)[0]
+    if(latest&&latest.id===history&&latest.status==='running')recordRunEnd(history,'failed',undefined,undefined,message)
+    throw error
+  }
+}
+
+async function runHeadlessInner(schedule:AgentSchedule,runtime:ChatRuntime,repository:ChatRepository):Promise<UnifiedScheduleOutcome> {
   const db=getDb()
   db.prepare('UPDATE agent_schedules SET last_run_at=? WHERE id=?').run(new Date().toISOString(),schedule.id)
   const workspace=repository.ensureWorkspace(getSettings().libraryPath)

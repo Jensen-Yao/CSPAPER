@@ -447,3 +447,51 @@ html[data-theme='dark'] .wb-task-status.running { background: rgba(111, 174, 130
 
 /* 工具行参数 */
 .wb-tool-args { margin: 0 0 6px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.05); white-space: pre-wrap; color: var(--text-dim); }
+
+/* 任务头：状态 + 概括标题 + 用时；一个主操作 + 更多 */
+.wb-run-elapsed { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.wb-more { position: relative; }
+.wb-pop-more { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 160px; }
+.wb-run-head .wb-run { white-space: nowrap; }
+
+/* Work 输入区：@ 引用、上下文用量 */
+.wb-mention { position: absolute; left: 12px; bottom: calc(100% + 6px); z-index: 30; min-width: 320px; max-width: 520px; padding: 6px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0,0,0,0.16); display: flex; flex-direction: column; gap: 2px; }
+.wb-ctx-meter { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-family: var(--mono, Consolas, monospace); }
+.wb-ctx-meter i { display: inline-block; width: 48px; height: 4px; border-radius: 999px; background: var(--accent); opacity: 0.7; }
+.wb-ctx-meter.over { color: var(--danger); }
+.wb-ctx-meter.over i { background: var(--danger); }
+
+/* Work 任务管理：分组工具、置顶、重命名、新任务建议 */
+.wb-task-tools { display: flex; gap: 6px; padding: 4px 10px 6px; }
+.wb-task-tools select { flex: 1; min-width: 0; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); padding: 3px 6px; }
+.wb-hist-row.pinned { background: var(--bg-elev, rgba(0,0,0,0.03)); }
+.wb-hist-row .wb-row-action.pin { opacity: 0.35; }
+.wb-hist-row .wb-row-action.pin[aria-pressed='true'] { opacity: 1; color: var(--accent); }
+.wb-suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+.wb-suggest-card { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; min-width: 180px; max-width: 260px; text-align: left; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; color: var(--text); }
+.wb-suggest-card:hover { border-color: var(--accent); background: var(--bg-elev, rgba(0,0,0,0.03)); }
+.wb-suggest-card b { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.wb-suggest-card span { font-size: 11px; color: var(--text-dim); max-width: 100%; }
+
+/* 自动化：运行历史 */
+.wb-auto-runs { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12px; }
+.wb-auto-run { display: flex; align-items: center; gap: 8px; }
+.wb-auto-run.failed span:nth-child(2), .wb-auto-run.interrupted span:nth-child(2) { color: var(--danger); }
+.wb-auto-run .wb-dim { margin-left: auto; flex: none; }
+
+/* MCP：预设与表单 */
+.wb-mcp-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.wb-mcp-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+
+/* 科研日历：月视图显示事件条；新建日程用弹窗 */
+.research-calendar-day { cursor: default; }
+.research-calendar-day-head { display: flex; align-items: center; gap: 4px; }
+.research-calendar-day-events { display: flex; flex-direction: column; gap: 2px; width: 100%; margin-top: 3px; }
+.research-calendar-bar { display: flex; gap: 4px; align-items: center; width: 100%; min-width: 0; text-align: left; border: 0; border-left: 3px solid var(--accent); border-radius: 4px; padding: 1px 4px; background: var(--accent-soft); color: var(--text); font: inherit; font-size: 11px; line-height: 1.4; cursor: pointer; }
+.research-calendar-bar.deadline { border-left-color: #b42318; background: rgba(180,35,24,0.08); }
+.research-calendar-bar.meeting { border-left-color: #1558c0; background: rgba(21,88,192,0.08); }
+.research-calendar-bar.milestone { border-left-color: #6b21a8; background: rgba(107,33,168,0.08); }
+.research-calendar-bar.done { opacity: .5; text-decoration: line-through; }
+.research-calendar-bar:hover { filter: brightness(0.96); }
+.research-calendar-more { font-size: 11px; color: var(--text-dim); padding-left: 4px; }
+.research-calendar-form.modal { width: min(560px, 92vw); max-height: 88vh; overflow: auto; }
