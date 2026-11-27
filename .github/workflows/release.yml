@@ -1,6 +1,7 @@
 name: Release
 
 # 推送 v* 标签时自动构建安装包并发布到 GitHub Releases（如：git tag v0.1.0 && git push --tags）
+# 发布顺序固定为 Windows → macOS → Android：三个发布者串行写同一个 Release，避免并发创建重复 Release 或丢上传。
 on:
   push:
     tags:
@@ -24,71 +25,78 @@ jobs:
       - run: npx electron-builder --win --publish never
       - run: npm run test:installer
 
-  release:
+  release-windows:
     needs: verify
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-
       - name: 安装 Node 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: 安装依赖
         run: npm ci
-
       - name: 重编译原生模块（better-sqlite3 适配 Electron）
         run: npm run rebuild
-
       - name: 构建并发布（Windows x64 NSIS）
-        if: matrix.os == 'windows-latest'
         run: npm run dist:win -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  release-macos:
+    needs: release-windows
+    runs-on: macos-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: 安装依赖
+        run: npm ci
+      - name: 重编译原生模块（better-sqlite3 适配 Electron）
+        run: npm run rebuild
       - name: 构建并发布（macOS dmg arm64/x64）
-        if: matrix.os == 'macos-latest'
         run: npm run dist:mac -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   android:
-    needs: verify
+    needs: release-macos
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: 安装 Gradle
         uses: gradle/actions/setup-gradle@v3
-
       - name: 清理本地配置并同步移动端页面
         run: |
           rm -f android-app/local.properties
           cp -f mobile/index.html android-app/app/src/main/assets/www/index.html
-
       - name: 构建 APK（debug 签名，可直接安装）
         working-directory: android-app
         run: gradle assembleDebug --no-daemon
-
+      - name: 等待 Release 存在后上传 APK
+        run: |
+          for i in $(seq 1 30); do
+            if gh release view "${{ github.ref_name }}" --json id >/dev/null 2>&1; then echo "release ready"; exit 0; fi
+            echo "waiting for release..."; sleep 10
+          done
+          echo "release not found" && exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: 发布 APK 到 Release
         uses: softprops/action-gh-release@v2
         with:
           files: android-app/app/build/outputs/apk/debug/app-debug.apk
-          name: CSPAPER ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
