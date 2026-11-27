@@ -1,18 +1,24 @@
+// 仓库顺序：GitHub 海外运行器直连 google() / mavenCentral()；国内本地构建可设置 CSPAPER_CN_MIRROR=1 优先走阿里云镜像
+def cnMirror = System.getenv('CSPAPER_CN_MIRROR') == '1'
+def orderedRepositories = { RepositoryHandler handler ->
+    if (cnMirror) {
+        handler.maven { url 'https://maven.aliyun.com/repository/google' }
+        handler.maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        handler.maven { url 'https://maven.aliyun.com/repository/public' }
+    }
+    handler.google()
+    handler.mavenCentral()
+    handler.gradlePluginPortal()
+}
 pluginManagement {
     repositories {
-        maven { url 'https://maven.aliyun.com/repository/google' }
-        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-        google()
-        mavenCentral()
-        gradlePluginPortal()
+        orderedRepositories(delegate)
     }
 }
 dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
-        maven { url 'https://maven.aliyun.com/repository/google' }
-        google()
-        mavenCentral()
+        orderedRepositories(delegate)
     }
 }
 rootProject.name = "CSPAPER"
