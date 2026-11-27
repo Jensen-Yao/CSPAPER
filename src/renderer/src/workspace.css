@@ -90,6 +90,16 @@ button.pcard-title { text-align: left; border: 0; background: none; padding: 0; 
 .pd-panel { width: 340px; box-shadow: none; }
 .pd-head { padding: 17px; }
 .pd-scroll { padding: 14px; gap: 12px; }
+/* 详情面板分区顺序：AI 洞察 → 深度解读 → 摘要 → 引用 → 相关 → 笔记 → 文件 → 信息（编辑区靠后） */
+.pd-sec[data-sec='info'] { order: 9; }
+.pd-sec[data-sec='ai'] { order: 1; }
+.pd-sec[data-sec='deep'] { order: 2; }
+.pd-sec[data-sec='abs'] { order: 3; }
+.pd-sec[data-sec='rel'] { order: 4; }
+.pd-sec[data-sec='cite'] { order: 5; }
+.pd-sec[data-sec='similar'] { order: 6; }
+.pd-sec[data-sec='mine'] { order: 7; }
+.pd-sec[data-sec='notes'] { order: 8; }
 .pd-sec { border-radius: var(--radius-sm); }
 .pd-sec-head { padding: 11px 12px; }
 .pd-note-ta { min-height: 130px; line-height: 1.8; }

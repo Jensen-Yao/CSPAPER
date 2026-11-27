@@ -1,14 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import net from 'node:net'
-import dns from 'node:dns/promises'
+import { assertPublicHost, resolveHost, safePublicHttpsUrl, type ResolveHostLike } from './net-guard'
 import { createHash } from 'node:crypto'
 import { app } from 'electron'
 import { getDb, getSettings, scanLibraryAsync } from './db'
 import { patchFrontmatter, readPaperMarkdown } from './paper-files'
 import { runFileOperation } from './operations/journal'
 
-const UA = 'CSPAPER/0.20 (mailto:cspaper@app.local)'
+const UA = 'CSPAPER/0.23 (mailto:cspaper@app.local)'
 const MAX_PDF_BYTES = 100 * 1024 * 1024
 
 export type OaRepairStatus = 'available' | 'not_available' | 'no_identifier' | 'no_match' | 'download_failed' | 'invalid_pdf' | 'cancelled' | 'error'
@@ -90,41 +89,6 @@ function titlesMatch(local:string,remote:string):boolean {
   return dice>=0.82||inclusion
 }
 
-function safePublicHttpsUrl(raw:string):string|null {
-  try {
-    const url=new URL(raw)
-    if(url.protocol!=='https:'||url.username||url.password)return null
-    if(net.isIP(url.hostname))return null
-    const host=url.hostname.toLowerCase()
-    if(host==='localhost'||host.endsWith('.localhost')||host.endsWith('.local')||host.endsWith('.internal')||host.endsWith('.home'))return null
-    return url.toString()
-  } catch {
-    return null
-  }
-}
-
-const blockedIps=new net.BlockList()
-for(const [address,prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.0.0.0',24],['192.168.0.0',16],['198.18.0.0',15],['224.0.0.0',4],['240.0.0.0',4]] as Array<[string,number]>)blockedIps.addSubnet(address,prefix)
-blockedIps.addAddress('::1','ipv6')
-blockedIps.addSubnet('fc00::',7,'ipv6')
-blockedIps.addSubnet('fe80::',10,'ipv6')
-function isBlockedIp(rawIp:string):boolean {
-  const ip=rawIp.toLowerCase()
-  if(ip==='::')return true
-  const mapped=ip.startsWith('::ffff:')&&net.isIPv4(ip.slice(7))?ip.slice(7):ip
-  return blockedIps.check(mapped,net.isIPv6(mapped)?'ipv6':'ipv4')
-}
-type ResolveHostLike=(hostname:string)=>Promise<string[]>
-const resolveHost:ResolveHostLike=async hostname=>(await dns.lookup(hostname,{all:true,verbatim:true})).map(item=>item.address)
-async function assertPublicHost(hostname:string,resolver:ResolveHostLike):Promise<void> {
-  if(net.isIP(hostname)) {
-    if(isBlockedIp(hostname))throw new Error('PDF 地址解析到内网/本机地址，已拒绝下载')
-    return
-  }
-  const addresses=await resolver(hostname)
-  if(!addresses.length)throw new Error('PDF 域名没有可解析地址，已拒绝下载')
-  if(addresses.some(address=>isBlockedIp(address)))throw new Error('PDF 域名解析到内网/本机地址，已拒绝下载')
-}
 function requestSignal(timeoutMs:number,external?:AbortSignal):{signal:AbortSignal;cleanup:()=>void} {
   const controller=new AbortController()
   const timer=setTimeout(()=>controller.abort(new DOMException('请求超过时间限制','TimeoutError')),timeoutMs)

@@ -22,7 +22,7 @@ export interface ToolDefinition {
 }
 
 export const domainChangeSchema = z.object({
-  entity: z.enum(['paper','note','tag','collection','comparison','synthesis','citation','workspace','external']),
+  entity: z.enum(['paper','note','tag','collection','comparison','synthesis','citation','workspace','external','task','project','calendar','web','file']),
   entityId: z.string(),
   action: z.enum(['create','update','delete','move','link','unlink','import']),
   before: z.unknown().optional(),
@@ -33,7 +33,7 @@ export type DomainChange = z.infer<typeof domainChangeSchema>
 
 export const artifactRefSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(['paper','note','comparison','synthesis','citation','file','report']),
+  kind: z.enum(['paper','note','comparison','synthesis','citation','file','report','task','project','calendar','web']),
   entityId: z.string().optional(),
   title: z.string(),
   uri: z.string().optional()

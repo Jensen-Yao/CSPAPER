@@ -29,9 +29,19 @@ Retrieval is workspace-scoped and collection refs are expanded to exact member p
 
 Citation display numbers are per-message. Persisted source IDs remain immutable. The message UI compares the saved source document stamp with the current paper stamp and shows a version-change warning; the citation viewer repeats that warning before locating the stored snippet.
 
+## Context inheritance
+
+A submission may set `inheritContext` (default true). When the turn carries no context refs, the runtime walks the message ancestors of the same conversation and inherits the nearest previous run's refs; the resolved snapshot is written back to the run with an `info` diagnostic `context_inherited`. Surfaces that let the user clear the picker send `inheritContext:false` so an explicit empty context stays empty.
+
+## Ask-mode tools
+
+Ask prompts may append the read-only tool protocol. The model requests a tool by replying with exactly one JSON object `{"tool":name,"args":{...}}` (or `{"tool_calls":[...]}`); anything else is treated as the final answer. Allowed tools are `ASK_READ_TOOLS` only; each `(tool,args)` pair runs at most once per turn and the loop is capped at four rounds before a final answer is forced. Tool calls use IDs `call_<runId>_ask_<n>` and are persisted like act calls.
+
 ## Tools
 
-Act runs validate generated plans. A failed tool triggers one validated revision, persisted as `plan.updated` with a revision number and reason; revised calls receive distinct IDs so retries cannot replay the failed call. Act runs may pause in `awaiting_approval`. The approval event carries the exact tool call ID, step ID, arguments, impact and reason. Approval covers that persisted call alone; later writes still require their own approval. Successful calls replay their stored result instead of writing again. Rejecting records a cancelled terminal state.
+Act runs validate generated plans. A failed tool triggers one validated revision, persisted as `plan.updated` with a revision number and reason; revised calls receive distinct IDs so retries cannot replay the failed call. After the plan completes, the planner may append steps based on tool results (`plan.updated` with `reason: 根据执行结果追加步骤`); a step whose `tool|args` key already executed is never repeated, and the continuation stops at an empty list, invalid JSON, 30 executed steps or 6 rounds.
+
+Conversation lists hide `reader` + `ask` conversations (translation runs) unless `includeHidden` is set, and accept a `mode` filter so Paper chat and Work show disjoint lists. Act runs may pause in `awaiting_approval`. The approval event carries the exact tool call ID, step ID, arguments, impact and reason. Approval covers that persisted call alone; later writes still require their own approval. Successful calls replay their stored result instead of writing again. Rejecting records a cancelled terminal state.
 
 `note.append` retains the existing note, supports a note-content version and carries a stable operation ID. A stale version fails while preserving the file. The same protocol backs text and binary Zotero PDF repair operations.
 

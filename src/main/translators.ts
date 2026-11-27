@@ -12,6 +12,7 @@ import vm from 'node:vm'
 import { app } from 'electron'
 import * as cheerio from 'cheerio'
 import { getSettings, getDb, getMeta, setMeta } from './db'
+import { decodeBuffer, netFetch } from './net'
 
 // ---------- 类型 ----------
 export type TranslatorOp = 'fetch' | 'meta' | 'css' | 'json' | 'jsonraw' | 'regex' | 'template' | 'download' | 'jsonlist'
@@ -216,18 +217,10 @@ interface ExecCtx {
   pdfPath?: string
 }
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 CSPAPER/0.6'
-
-async function httpGet(url: string, timeoutMs = 15000): Promise<{ text: string; buf: ArrayBuffer; type: string }> {
-  const r = await fetch(url, {
-    headers: { 'User-Agent': UA, Accept: 'text/html,application/json,application/pdf,*/*' },
-    signal: AbortSignal.timeout(timeoutMs),
-    redirect: 'follow'
-  })
-  if (!r.ok) throw new Error(`HTTP ${r.status}：${url.slice(0, 120)}`)
-  const type = r.headers.get('content-type') ?? ''
-  const buf = await r.arrayBuffer()
-  return { text: new TextDecoder('utf-8').decode(buf), buf, type }
+async function httpGet(url: string, timeoutMs = 15000): Promise<{ text: string; buf: Buffer; type: string }> {
+  // 统一网络层：跟随系统代理、逐跳公网校验、大小上限、可读的失败原因
+  const r = await netFetch(url, { timeoutMs })
+  return { text: decodeBuffer(r.buffer, r.contentType), buf: r.buffer, type: r.contentType }
 }
 
 function dotPath(obj: unknown, p: string): unknown {

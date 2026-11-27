@@ -444,3 +444,6 @@ html[data-theme='dark'] .wb-task-status.running { background: rgba(111, 174, 130
 .wb-today-foot { margin-top: 14px; line-height: 1.7; }
 @media (max-width: 1000px) { .wb-today-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .wb-today-metrics { grid-template-columns: 1fr; } .wb-today-head { align-items: flex-start; flex-direction: column; } }
+
+/* 工具行参数 */
+.wb-tool-args { margin: 0 0 6px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.05); white-space: pre-wrap; color: var(--text-dim); }

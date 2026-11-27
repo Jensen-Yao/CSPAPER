@@ -24,6 +24,22 @@ The full, sidebar and task surfaces share `conversation-store.ts`, `ChatWorkspac
 
 ## Evidence and model layer
 
+When exactly one PDF is in focus, retrieval switches to full-text mode: a compact metadata source followed by one source per page (every page when the paper fits a 48k-character budget, otherwise the opening, section starts, the ending and the pages most relevant to the question, selected by `selectContextPages`). Hybrid chunks only add pages the window did not include. Web context refs whose snippet is a bare search result are enriched by reading the page body, and URLs pasted into a question are read as well (`enrichWebSources`).
+
+A turn that carries no context objects inherits the nearest ancestor run's context in the same conversation unless `inheritContext` is false; the resolved snapshot is persisted on the run with a `context_inherited` diagnostic.
+
+### Ask-mode tools
+
+Ask runs may call read-only tools before answering (`ASK_READ_TOOLS`: paper.read, library.search, library.list, web_fetch, web_search, research.search_web, citation.format, note reads). The ask prompt appends a JSON tool protocol; when the model answers with a single JSON object `{tool,args}` the runtime executes it through the same `ToolExecutor` (read-only permission), feeds the observation back as a user message and asks again, up to four rounds. Tool calls, sources added by tools and events are persisted exactly like act runs, so every surface shows the same timeline.
+
+### Act continuation
+
+After the initial plan (and its single failure revision) completes, the planner is asked whether more steps are needed (`plannerContinuationPrompt`). Returned steps are validated, filtered against the stable `tool|args` keys of already executed steps, appended with a `plan.updated` event (`reason: 根据执行结果追加步骤`) and executed. The loop ends on an empty list, invalid output, no fresh steps, 30 executed steps or 6 rounds; approval pauses inside appended steps resume through the existing plan/revision mechanism.
+
+### Network and web reading
+
+`net.ts` is the single outbound path: Electron `net.fetch` (system proxy by default, optional `proxyUrl`), public-HTTPS-only URLs (`net-guard.ts`, shared with OpenAccess repair), per-hop redirect validation, bounded time (20s default) and size (20MB), readable failure reasons and an optional built-in-browser cookie session (`persist:cspaper-web`). `web-reader.ts` turns HTML into Markdown (Readability + Turndown with citation meta tags) and PDFs into page-marked text, caching snapshots in `web_snapshots` (migration 012). `web-search.ts` aggregates Bing, DuckDuckGo, Semantic Scholar, arXiv, PubMed plus the Crossref/OpenAlex translator scripts with DOI/URL deduplication. `web-import.ts` imports any link or rendered DOM (PDF → library, otherwise a record from page metadata); site translator scripts remain an enhancement.
+
 Retrieval is scoped by workspace and exact context objects. Collections expand to member IDs; record-only Zotero items produce bounded metadata sources; real PDFs without chunks use page-one evidence and are requeued. Sources persist paper ID, document version, locator and snippet. The renderer warns when the source stamp differs from the current file.
 
 `models/provider.ts` owns SDK transport and error normalization. Settings resolve models by `profileId + modelId`, snapshot capabilities and reasoning level into each run, and never persist credentials in conversation records. AI SDK v7 system messages are converted to top-level `instructions`.

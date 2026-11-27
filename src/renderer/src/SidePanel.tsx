@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { Jump } from './rich'
 import MessageList from './features/chat/MessageList'
+import RunPanel from './features/chat/RunPanel'
 import ChatWorkspace from './features/chat/ChatWorkspace'
 import Composer from './features/chat/Composer'
 import './features/chat/chat.css'
@@ -507,6 +508,7 @@ const SidePanel = forwardRef<SideControl, Props>(function SidePanel(
         </div>
       ) : tab === 'chat' ? (
         <ChatWorkspace layout="sidebar">
+            {chat.run&&chat.runs[chat.run.id]&&<RunPanel events={chat.runs[chat.run.id].events??[]} run={chat.run}/>}
             <MessageList messages={chat.messages} runs={chat.runs} jumpFor={jumpFor} running={busy} status={chat.run?.status} className="chat-scroll" conversationId={chat.conversation?.id} hasMore={chat.hasMore} loading={chat.loading} onLoadOlder={chat.loadOlder} empty={
               <div style={{ color: 'var(--text-dim)', fontSize: 12, lineHeight: 1.9, padding: '6px 4px' }}>
                 {paper ? (

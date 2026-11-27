@@ -72,6 +72,9 @@ export interface Settings {
   agentMaxSteps?: number
   agentTimeoutMinutes?: number
   agentGoal?: string
+  proxyUrl?: string
+  webEnabled?: boolean
+  webUseBrowserSession?: boolean
   imageModel?: string
   readingFocus?: import('../../shared/calendar').ReadingFocusSettings
 }
@@ -514,6 +517,11 @@ declare global {
       translatorsMatch: (url: string) => Promise<{ id: string; name: string } | null>
       translatorsTranslate: (url: string) => Promise<{ ok: boolean; translator?: string; csl?: Record<string, unknown>; pdfPath?: string; error?: string }>
       translatorsSearch: (q: string) => Promise<Array<Record<string, unknown> & { translator?: string }>>
+      webSearch: (input: { query: string; limit?: number; general?: boolean; academic?: boolean }) => Promise<import('../../shared/web').WebSearchResult>
+      webFetch: (input: { url: string; forceRefresh?: boolean }) => Promise<import('../../shared/web').WebPageInfo>
+      webImportHtml: (input: { url: string; html: string }) => Promise<{ ok: boolean; matched?: boolean; translator?: string; title?: string; error?: string }>
+      webSnapshots: (input: { query?: string; limit?: number }) => Promise<Array<import('../../shared/web').WebPageInfo & { id: number }>>
+      onOpenPaperRequest: (cb: (p: { paperId: number }) => void) => () => void
       translatorsImport: (payload: { csl: Record<string, unknown>; pdfPath?: string; category?: string; origin?: string }) => Promise<{ ok: boolean; slug?: string; error?: string }>
       translatorsSetDisabled: (ids: string[]) => Promise<boolean>
       translatorsReload: () => Promise<number>

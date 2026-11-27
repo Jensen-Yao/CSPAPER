@@ -49,6 +49,7 @@ import { testLibraryScan } from '../tests/main/library-scan.test'
 import { testMigrations } from '../tests/main/migrations.test'
 import { testModelBinding } from '../tests/main/model-binding.test'
 import { testModelProvider } from '../tests/main/model-provider.test'
+import { testV023 } from '../tests/main/v023.test'
 
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'cspaper-regression-'))
 const library=path.join(root,'library')
@@ -342,10 +343,10 @@ app.whenReady().then(async()=>{
     await scan;assert.equal(responsive,true)
   })
   await test('tracked migrations apply exactly once across repeated initialization',()=>{
-    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10,11])
+    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10,11,12])
     store.initDb()
-    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10,11])
-    for(const table of ['workspaces','conversations','chat_messages','chat_runs','chat_run_events','chat_tool_calls','chat_sources','chat_artifacts','operation_journal','research_projects','research_tasks'])
+    assert.deepEqual(appliedMigrations(db).map(m=>m.version),[1,2,3,4,5,6,7,8,9,10,11,12])
+    for(const table of ['workspaces','conversations','chat_messages','chat_runs','chat_run_events','chat_tool_calls','chat_sources','chat_artifacts','operation_journal','research_projects','research_tasks','web_snapshots'])
       assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table),table)
   })
   await test('research calendar persists valid dates and isolates workspace operations',()=>{
@@ -864,6 +865,7 @@ app.whenReady().then(async()=>{
   await testChatEvents(test,db,root)
   await testMigrations(test)
   await testChatRuntime(test,db,root)
+  await testV023(test,db,root,library)
   await testConversationStore(test)
   await testToolExecutor(test,db,root,one.id,library)
   await testLibraryScan(test,db,root)

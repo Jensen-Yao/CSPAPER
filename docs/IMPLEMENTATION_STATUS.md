@@ -1,6 +1,18 @@
 # 当前实施状态（2026-11-27）
 
-**状态：0.22.0 Research OS 已实现并验证——研究台、快速记录、全局搜索、项目与任务看板、对话快捷指令，以及全新的 README / GitHub Pages / 在线演示 / 横幅。**计划见 [V022_RESEARCH_OS_PLAN.md](./V022_RESEARCH_OS_PLAN.md)，此前逐项对照见 [PLAN_ACCEPTANCE.md](./PLAN_ACCEPTANCE.md)。
+**状态：0.23.0 已实现并验证——问答读懂整篇论文、联网读取任意网页、结构化提取稳定、Work 智能体按结果续步。0.22.0 Research OS 已实现并验证——研究台、快速记录、全局搜索、项目与任务看板、对话快捷指令，以及全新的 README / GitHub Pages / 在线演示 / 横幅。**计划见 [V022_RESEARCH_OS_PLAN.md](./V022_RESEARCH_OS_PLAN.md)，此前逐项对照见 [PLAN_ACCEPTANCE.md](./PLAN_ACCEPTANCE.md)。
+
+## v0.23 · 问答读得懂、联网读得到、精读提得出、Work 会续步（2026-11-27）
+
+| 工作流 | 实现 | 回归 |
+|---|---|---|
+| 问答读懂论文 | 单篇 PDF 进入全文模式：元数据源 + 逐页来源（48k 字预算，长文取引言 / 章节起始 / 结论 / 问题相关页）；`inheritContext` 让追问继承上一轮上下文；问答模式可调用只读工具（最多 4 轮）；翻译运行不再出现在对话列表；失败态显示原因 + 重试 + 去设置 | `core`：全文来源、上下文继承、问答工具循环、会话过滤；`ui`：阅读器侧栏问答工具时间线 |
+| 联网获取与网页阅读 | `net.ts`（Electron net.fetch / 系统代理 / 手动代理 / 逐跳公网校验 / 体积与时长上限 / 浏览器登录态）；`web-reader.ts`（Readability + Turndown + 学术元数据 + PDF 页级文本）；`web-search.ts`（必应 / DuckDuckGo / Semantic Scholar / arXiv / PubMed + Crossref / OpenAlex 去重）；`web_snapshots` 迁移 012；`web_fetch` / `web_search` 工具；`/fetch` `/web` 对话命令；任意链接导入与渲染后 DOM 入库；在线检索接入新学术源 | `core`：net-guard、网页抽取、检索去重；`ui`：设置面板 |
+| 提取与结构化输出 | `structured.ts`：剥离思考标签、修复 JSON、校验、失败自动重试、字段级降级；精读 / 对比 / 小结走该管线，长文按章节选页；详情面板 AI 分区置前、信息区默认收起、修复按钮仅在需要时出现、错误即时显示 | `core`：结构化解析与重试、章节选页；`ui`：思考标签模型下的深度精读字段 |
+| Work 任务循环 | 计划执行后由规划器续步（去重、30 步 / 6 轮上限）；新增平台工具（任务 / 项目 / 日历 / 独立笔记 / 文献库清单 / 打开文献 / 导出）与联网工具；模板、技能全部改为真实工具名；时间线可展开参数与结果 | `core`：续步与去重、平台工具；`ui`：Work 续步、工具行参数 |
+| 验证 | typecheck 通过；核心回归 93 / 93；Electron UI 回归 134 / 134、无 renderer 异常；CSS gate 通过 |
+
+未纳入本版（排入 0.24 / 0.25）：Paper 信息架构与阅读空间（文献库合一、工具栏瘦身、右侧面板合一）、Work 输入区（附件、@ 引用、按任务生效的模型设置）、任务列表分组与置顶、项目 / 自动化 / 插件市场深化、emoji 图标全量替换与三套模型调用链路合并。
 
 ## v0.22 · Research OS（2026-11-27）
 

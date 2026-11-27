@@ -85,11 +85,26 @@ const server=http.createServer((req,res)=>{
     if(!body.stream){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({choices:[{message:{content:'OK'}}]}));return}
     res.writeHead(200,{'Content-Type':'text/event-stream'})
     const chunk=(delta,finish=null)=>res.write('data: '+JSON.stringify({id:'test',object:'chat.completion.chunk',model:'mock-model',choices:[{index:0,delta,finish_reason:finish}]})+'\n\n')
+    // 会输出思考过程、带围栏与尾逗号的模型：验证结构化管线（剥离 <think>、修复 JSON、字段级降级）
+    if(sys.includes('资深科研文献分析师')) {
+      chunk({content:'<think>先定位方法与实验章节，再整理字段……</think>\n```json\n{"summary":"卡片小结：本文研究证据组织方法，提出可复现的文献工作流并验证其有效性。","problem":"研究问题：多文献证据如何组织与综合，", "method":"方法路线：提出结构化证据组织方法并设计对照实验。","dataset":"数据集：12 篇样本文献与 3 组对照任务。","metrics":"评价指标：可复现率与综合分析准确率。","results":"核心结果：方法在对照任务上提升了证据综合的一致性。","limitations":"未提及","novelty":"创新点：把证据组织与工具调用结合。","future":"未提及"}\n```'},'stop')
+      res.end();return
+    }
     if(sys.includes('只输出 JSON')&&sys.includes('维度名')) {
       chunk({content:JSON.stringify({'研究方法':[{t:'方法可核实',p:1}],'数据与实验':[{t:'实验证据可核实',p:1}],'核心结论':[{t:'结论可核实',p:1}]})},'stop')
     }
     else {
     const userText=(body.messages||[]).filter(m=>m.role==='user').map(m=>m.content).join('\n')
+    // 计划执行后的续步判断：默认无追加；专用用例追加一步 paper.read
+    if(sys.includes('科研任务规划器')&&sys.includes('追加步骤')) {
+      chunk({content:JSON.stringify({steps:userText.includes('CONTINUATION-CHECK')?[{id:'after-read',tool:'paper.read',args:{paperId:firstId,pages:[1]},purpose:'读取检索到的文献',risk:'read'}]:[]})},'stop')
+      res.end();return
+    }
+    // 问答模式的只读工具调用：首个请求返回工具 JSON，拿到工具结果后给出最终回答
+    if(sys.includes('科研助手')&&userText.includes('ASK-TOOL-CHECK')&&!(body.messages||[]).some(m=>m.role==='assistant'&&String(m.content).trim().startsWith('{'))) {
+      chunk({content:JSON.stringify({tool:'library.list',args:{recent:true,limit:3}})},'stop')
+      res.end();return
+    }
     if(sys.includes('学术翻译引擎')) {
       if(userText.includes('SLOW-TRANSLATION')) {
         let count=0
@@ -106,6 +121,11 @@ const server=http.createServer((req,res)=>{
         if(count>=(userText.includes('停止当前任务回归')?40:10)){clearInterval(timer);chunk({content:JSON.stringify({steps:[{id:'slow-search',tool:'library.search',args:{query:'resilience methods',limit:1},purpose:'慢任务检索',risk:'read'}]})},'stop');res.end('data: [DONE]\n\n')}
       },500)
       return
+    }
+    // 续步用例的初始计划只有一次检索（不写笔记），续步再追加 paper.read
+    if(sys.includes('科研任务规划器')&&userText.includes('CONTINUATION-CHECK')) {
+      chunk({content:JSON.stringify({steps:[{id:'step-search',tool:'library.search',args:{query:'resilience methods',limit:3},purpose:'检索文献',risk:'read'}]})},'stop')
+      res.end();return
     }
     if(sys.includes('科研任务规划器')&&userText.includes('生成综述')) {
       chunk({content:JSON.stringify({steps:[{id:'retry-synthesis',tool:'synthesis.create',args:{paperIds:[firstId]},purpose:'重试仍然不足的综述',risk:'reversible_write'}]})},'stop')
@@ -280,8 +300,7 @@ try{
   await page.waitForFunction(async info=>(await window.api.listPapers()).find(paper=>paper.id===info.id)?.category===info.from,dragInfo,{timeout:10000})
   check('category rows accept dragged papers',true)
   await page.locator('.lib-view-seg button').filter({hasText:'全部文献'}).click();await wait(100)
-  await page.locator('.side-rail-btn[title="文献详情"]').click();await wait(100)
-  check('detail rail stays on library home before a paper is opened',await page.locator('.library-surface:not(.pane-hidden)').isVisible())
+  check('side rail is hidden until a paper is opened',(await page.locator('.side-rail').count())===0&&await page.locator('.library-surface:not(.pane-hidden)').isVisible())
   await libraryHandle.focus();await page.keyboard.press('Home')
   const papers=await page.evaluate(()=>window.api.listPapers());firstId=papers[0].id
   await page.locator('.library-search input').fill(papers[0].title)
@@ -300,6 +319,12 @@ try{
   await page.keyboard.press('Escape')
   await page.locator('.pcard').first().click()
   await page.waitForSelector('.pd-note-ta')
+  // 深度精读：会输出思考过程的模型也能稳定取回字段，且 AI 分区排在信息区之前
+  check('detail panel puts AI sections before the editing section',(await page.locator('.pd-sec[data-sec="ai"]').evaluate(el=>getComputedStyle(el).order))<(await page.locator('.pd-sec[data-sec="info"]').evaluate(el=>getComputedStyle(el).order)))
+  await page.locator('.pd-sec[data-sec="deep"] .sum-gen').click()
+  await page.waitForSelector('.pd-deep-row',{timeout:20000});await wait(300)
+  check('deep reading survives thinking tags and trailing commas',(await page.locator('.pd-deep-row').count())>=6)
+  check('AI summary fills the panel after deep reading',(await page.locator('.pd-sec[data-sec="ai"] .pd-summary').textContent())?.includes('卡片小结'))
   await shot('02-detail')
   const marker='SAVE-ON-CLOSE-'+Date.now()
   await page.locator('.pd-note-ta').fill(marker)
@@ -454,6 +479,16 @@ try{
     return {id:page.items[0].id,text:JSON.stringify(messages.items)}
   })
   check('reader sidebar shares the persistent conversation',sideConversation.text.includes('阅读侧栏也必须走统一会话'))
+  // 翻译运行不再混入对话列表
+  check('translation runs stay out of the conversation list',await page.evaluate(async()=>!(await window.api.chat.listConversations({limit:100})).items.some(item=>item.title.startsWith('翻译：')||item.title.includes('SLOW-TRANSLATION'))))
+  // 问答模式只读工具循环：模型先请求 library.list，拿到结果后再回答；时间线可展开参数
+  await page.locator('.side .chat-input').fill('ASK-TOOL-CHECK：我最近读过哪些文献')
+  await page.locator('.side .send-btn').click()
+  await page.waitForFunction(()=>document.querySelectorAll('.side .msg.assistant .bubble').length>=2&&[...document.querySelectorAll('.side .msg.assistant .bubble')].at(-1).textContent.includes('研究方法和证据'),null,{timeout:20000})
+  const askTimeline=await page.locator('.side .chat-tools summary').first().textContent().catch(()=> '')
+  check('ask mode runs read-only tools before answering',askTimeline.includes('工具调用 · 1'))
+  await page.locator('.side .chat-tools li button').first().click();await wait(100)
+  check('tool rows expand to arguments and result',await page.locator('.side .chat-tool-detail').first().isVisible())
   await page.setViewportSize({width:1100,height:760});await wait(300)
   const width=await page.locator('.reader-surface').evaluate(el=>el.getBoundingClientRect().width)
   check('narrow reader keeps the document primary',width>650)
@@ -467,7 +502,7 @@ try{
   await page.waitForSelector('text=停止',{timeout:10000})
   const translationTurn=await page.evaluate(async()=>{
     const workspace=await window.api.chat.workspace()
-    const page=await window.api.chat.listConversations({workspaceId:workspace.workspaceId,limit:10})
+    const page=await window.api.chat.listConversations({workspaceId:workspace.workspaceId,limit:10,includeHidden:true})
     const conversation=page.items.find(item=>item.title.includes('SLOW-TRANSLATION'))
     if(!conversation)throw new Error('translation conversation missing')
     const loaded=await window.api.chat.loadMessages({conversationId:conversation.id,limit:10})
@@ -486,7 +521,7 @@ try{
   await page.waitForFunction(()=>document.body.textContent?.includes('本页翻译完成'),null,{timeout:30000})
   const fullPageTranslation=await page.evaluate(async()=>{
     const workspace=await window.api.chat.workspace()
-    const page=await window.api.chat.listConversations({workspaceId:workspace.workspaceId,limit:20})
+    const page=await window.api.chat.listConversations({workspaceId:workspace.workspaceId,limit:20,includeHidden:true})
     const conversation=page.items.find(item=>item.title.startsWith('翻译：'))
     if(!conversation)return null
     const loaded=await window.api.chat.loadMessages({conversationId:conversation.id,limit:200})
@@ -723,6 +758,16 @@ try{
   await page.locator('.top-switch button').filter({hasText:'Work'}).click();await wait(300)
   const noteTexts=await page.evaluate(ids=>Promise.all(ids.map(id=>window.api.myNotesGet(id))),selectedIds)
   check('final research flow appends limitations to all corresponding notes',noteTexts.every(text=>text.includes('FINAL-ACCEPTANCE-NOTE'))&&noteTexts.some(text=>text.includes('UNIFIED-ACT-VERIFIED')))
+  // 动态续步：计划执行后规划器根据结果追加一步（检索 → 再精读），且不重复已执行的步骤
+  await page.getByRole('button',{name:'新建任务',exact:false}).first().click()
+  await page.locator('.wb-compose-input').fill('CONTINUATION-CHECK：检索后精读')
+  await page.locator('.wb-send:not(.stop)').click()
+  const continued=await waitForTurn('CONTINUATION-CHECK：检索后精读')
+  const appended=continued.run.events.find(event=>event.type==='plan.updated'&&event.payload.reason==='根据执行结果追加步骤')
+  check('agent appends a step after the plan completes',continued.run.run.status==='completed'&&!!appended&&continued.run.events.filter(event=>event.type==='tool.completed'&&event.payload.tool==='paper.read').length===1&&continued.run.events.filter(event=>event.type==='tool.completed'&&event.payload.tool==='library.search').length===1)
+  await page.locator('.chat-workspace-task .chat-tools li button').last().click();await wait(100)
+
+  check('work tool rows expose arguments and result',await page.locator('.chat-workspace-task .chat-tool-detail').last().isVisible()&&(await page.locator('.chat-workspace-task .chat-tool-detail pre').last().textContent())?.includes('paperId'))
   await shot('17-task-chat');await wait(250)
   check('task composer reserves space below the conversation',await page.evaluate(()=>document.querySelector('.chat-workspace-task').getBoundingClientRect().bottom<=document.querySelector('.wb-composer').getBoundingClientRect().top+1))
   check('work actions use explicit outcome labels',await page.getByRole('button',{name:'复制结果'}).count()===1&&await page.getByRole('button',{name:'导出 Markdown'}).count()===1&&await page.getByRole('button',{name:'宽屏阅读'}).count()===1&&await page.getByRole('button',{name:'继续任务'}).count()===1)

@@ -5,11 +5,12 @@ import type { RunDetails } from '../../../../shared/chat-api'
 import type { SourceRef } from '../../types'
 import type { Jump } from '../../rich'
 import MessageItem,{messageText} from './MessageItem'
+import { friendlyRunError } from './errors'
 
-interface Props { messages:Message[];sources?:SourceRef[];runs?:Record<string,RunDetails>;jumpFor:(index:number)=>Jump;running?:boolean;status?:RunStatus;className?:string;empty?:ReactNode;conversationId?:string;hasMore?:boolean;loading?:boolean;onLoadOlder?:()=>Promise<void> }
+interface Props { messages:Message[];sources?:SourceRef[];runs?:Record<string,RunDetails>;jumpFor:(index:number)=>Jump;running?:boolean;status?:RunStatus;className?:string;empty?:ReactNode;conversationId?:string;hasMore?:boolean;loading?:boolean;onLoadOlder?:()=>Promise<void>;onOpenSettings?:()=>void }
 const labels:Partial<Record<RunStatus,string>>={queued:'排队中',preparing:'正在准备上下文',generating:'正在生成回答',executing_tools:'正在执行工具',awaiting_approval:'等待确认'}
 
-export default function MessageList({messages,sources,runs,jumpFor,running,status,className='chat-log',empty,conversationId,hasMore,loading,onLoadOlder}:Props) {
+export default function MessageList({messages,sources,runs,jumpFor,running,status,className='chat-log',empty,conversationId,hasMore,loading,onLoadOlder,onOpenSettings}:Props) {
   const parentRef=useRef<HTMLDivElement>(null)
   const atBottom=useRef(true),previous=useRef({id:conversationId,count:messages.length,first:messages[0]?.id})
   const [visible,setVisible]=useState(false),[unread,setUnread]=useState(0)
@@ -46,11 +47,11 @@ export default function MessageList({messages,sources,runs,jumpFor,running,statu
       {messages.length===0&&empty}
       <div className="chat-message-items" style={useVirtual?{height:`${virtualizer.getTotalSize()}px`,position:'relative',width:'100%'}:undefined}>
         {items.map(item=><div key={item.key} data-index={item.index} ref={useVirtual?virtualizer.measureElement:undefined} style={useVirtual?{position:'absolute',top:0,left:0,width:'100%',transform:`translateY(${item.start}px)`}:undefined}>
-          <MessageItem message={messages[item.index]} sources={sources} details={messages[item.index].runId?runs?.[messages[item.index].runId!]:undefined} runs={runs} jump={jumpFor(item.index)}/>
+          <MessageItem message={messages[item.index]} sources={sources} details={messages[item.index].runId?runs?.[messages[item.index].runId!]:undefined} runs={runs} jump={jumpFor(item.index)} onOpenSettings={onOpenSettings}/>
         </div>)}
       </div>
       {running&&<div className="chat-run-status" role="status">{status?labels[status]??'正在处理':'正在处理'}…</div>}
-      {status==='failed'&&<div className="chat-message-error">本轮运行失败，可重试或更换模型。</div>}
+      {status==='failed'&&!Object.values(runs??{}).some(item=>item.run?.status==='failed'&&item.run.error?.message)&&<div className="chat-message-error">{friendlyRunError(Object.values(runs??{}).find(item=>item.run?.status==='failed')?.run?.error)}</div>}
     </div>
     {unread>0&&<button type="button" className="chat-new-messages" onClick={scrollEnd}>{unread} 条新消息 ↓</button>}
   </div>

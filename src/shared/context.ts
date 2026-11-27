@@ -82,6 +82,8 @@ export type ContextBudget = z.infer<typeof contextBudgetSchema>
 export type PromptKind='ask'|'translation'|'plan'
 export interface ContextSnapshot {
   permission?:'auto'|'confirm'|'readonly'
+  /** Inherit the conversation's previous context objects when this turn carries none (default true). */
+  inheritContext?:boolean
   promptKind?:PromptKind
   researchGoal?:string
   skills?:Array<{name:string;source:'builtin'|'user';body:string}>

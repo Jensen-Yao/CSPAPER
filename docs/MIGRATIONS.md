@@ -15,6 +15,7 @@ Schema migrations are registered in `src/main/migrations/index.ts` and recorded 
 | 9 | `research_calendar` | Research calendar entries with dates, kinds and workspace scope |
 | 10 | `workbench_calendar_focus` | Concrete times, recurrence and auditable reading-focus sessions |
 | 11 | `research_projects_tasks` | Research projects and tasks with status, priority, due dates and linked papers/conversations |
+| 12 | `web_snapshots` | Versioned Markdown snapshots of web pages read by `web_fetch`, conversations and `/fetch` (URL, final URL, content hash, fetched time) |
 
 Each registered migration carries a SHA-256 checksum recorded in `schema_migrations`; changing an already applied migration is rejected. Legacy tables without the checksum column are upgraded and backfilled once. Repeated initialization, WAL-inclusive legacy backup through `VACUUM INTO`, checksum-drift rejection, and failed-migration rollback/retry are covered by Electron tests.
 

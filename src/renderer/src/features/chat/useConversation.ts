@@ -10,7 +10,7 @@ export function useConversation(modelBindingId:string,reasoning:ModelBindingSnap
   const modelRef=useRef({modelBindingId,reasoning});modelRef.current={modelBindingId,reasoning}
   const contextRef=useRef(buildContext);contextRef.current=buildContext
   useEffect(()=>{void store.initialize().catch(()=>{})},[store])
-  const send=useCallback(async(text:string)=>{
+  const send=useCallback(async(text:string,options?:{inheritContext?:boolean})=>{
     const latest=store.getSnapshot(),conversation=latest.activeId?latest.views[latest.activeId]?.conversation:null
     if(!conversation)throw new Error('会话尚未初始化')
     return store.send({conversationId:conversation.id,clientMessageId:'client_'+crypto.randomUUID(),parentMessageId:conversation.activeLeafMessageId,text,context:contextRef.current(conversation.workspaceId),...modelRef.current,mode:'ask',promptKind:'ask',permission:'readonly'})

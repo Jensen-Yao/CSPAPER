@@ -115,8 +115,10 @@ export async function testChatRuntime(test:Test,db:Database.Database,root:string
       call++
       if(call===1)yield JSON.stringify({steps:[{id:'fail',tool:'test.flaky',args:{value:'one'},purpose:'失败步骤',risk:'reversible_write'}]})
       else if(call===2)yield JSON.stringify({steps:[{id:'revision',tool:'test.flaky',args:{value:'two'},purpose:'修订步骤',risk:'reversible_write'}]})
+      // call 3 is the post-plan continuation check: nothing more to do.
+      else if(call===3)yield JSON.stringify({steps:[]})
       else yield '修订后执行完成。'
-      if(messages[0]?.content.includes('科研任务规划器')&&call>2)throw new Error('unexpected planner call')
+      if(messages[0]?.content.includes('科研任务规划器')&&call>3)throw new Error('unexpected planner call')
     }}
     const runtime=new ChatRuntime(repository,provider,bus,1,undefined,registry,'auto')
     const context={conversationId:conversation.id,runId:'pending',refs:[],permission:'auto' as const,budget:{totalChars:100,usedChars:0,reservedForOutput:0},diagnostics:[],createdAt:new Date().toISOString()}

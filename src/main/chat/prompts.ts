@@ -1,11 +1,11 @@
 import type { ContextSnapshot } from '../../shared/context'
 import type { Source } from '../../shared/sources'
 
-export function askPrompt(question:string,snapshot:ContextSnapshot,sources:Source[]):Array<{role:'system'|'user';content:string}> {
+export function askPrompt(question:string,snapshot:ContextSnapshot,sources:Source[],toolMenu?:string):Array<{role:'system'|'user';content:string}> {
   const context=sources.map((source,index)=>`[${index+1}] ${source.title}${source.locator.page?` p.${source.locator.page}`:''}\n${source.snippet}`).join('\n\n')
   const refs=snapshot.refs.map(ref=>JSON.stringify(ref)).join('\n')
   return [
-    {role:'system',content:'你是 CSPAPER 的科研助手。只依据提供的来源、上下文和平台工具结果回答。每个关键论断后紧跟可用引用；不得虚构来源；来源不足时明确说明；标注“题录”或“无 PDF 全文”的来源只能用于题名、作者、摘要等元数据，不得据此推断论文全文结论。中文回答，术语首次出现保留英文。'},
+    {role:'system',content:'你是 CSPAPER 的科研助手。只依据提供的来源、上下文和平台工具结果回答。每个关键论断后紧跟可用引用（方括号内的编号必须与【检索来源】的编号一致）；不得虚构来源；来源不足时明确说明；标注“题录”或“无 PDF 全文”的来源只能用于题名、作者、摘要等元数据，不得据此推断论文全文结论。当来源是同一篇论文的逐页正文时，回答要具体完整（研究问题、方法、数据、结果、结论），按主题分点，并逐条标注引用。中文回答，术语首次出现保留英文。'+(toolMenu?askToolProtocol(toolMenu):'')},
     {role:'user',content:`【上下文对象】\n${refs||'（无）'}\n\n【检索来源】\n${context||'（无）'}\n\n【问题】\n${question}`}
   ]
 }
@@ -66,7 +66,7 @@ export function ragPrompt(question:string,sources:Array<{label:string;text:strin
 export function deepReadingPrompt(title:string,text:string):SimplePromptMessage[] {
   const schema='{"summary":"150字内卡片小结：一句话研究问题+一句方法+一到两句核心结论","problem":"研究问题（1-2句）","method":"方法/技术路线（2-3句，含关键模型或算法名）","dataset":"数据集/实验对象/案例（含规模）","metrics":"评价指标（如准确率/能耗/成本，含量级）","results":"核心结果（2-3条，带关键数字）","limitations":"局限（1-2条，来自原文或合理推断）","novelty":"创新点（1-2句，与已有工作的差异）","future":"可跟进的研究方向（1-2条）"}'
   return [
-    { role:'system',content:`你是资深科研文献分析师。深度阅读论文全文，输出严格 JSON（不要围栏、不要多余文字）：\n${schema}\n全部中文；论文中没有的字段写“未提及”。` },
+    { role:'system',content:`你是资深科研文献分析师。深度阅读论文全文，输出严格 JSON（不要围栏、不要多余文字）：\n${schema}\n全部中文；论文中没有的字段写“未提及”。如需思考，先在 <think></think> 中思考，再单独输出 JSON。` },
     { role:'user',content:`【标题】${title}\n【全文】\n${text}` }
   ]
 }
@@ -82,5 +82,18 @@ export function synthesisPrompt():SimplePromptMessage[] {
   return [
     { role:'system',content:'你是学术研究助手。以下是多篇相关文献的结构化精读要点（研究问题/方法/数据/指标/结果/创新/局限）。请撰写一篇 1000-1500 字的中文综述，包括：1）共同的研究主题与脉络；2）各文献的方法与核心结论对比（分点，标注文献编号如 [1]，引用关键数字）；3）研究空白与未来方向。结构清晰，使用 markdown 小标题。只输出综述正文。' },
     { role:'user',content:'【文献要点】' }
+  ]
+}
+
+/** Read-only tools the ask mode may call before answering (max 4 rounds per turn). */
+export const ASK_READ_TOOLS=['paper.read','library.search','library.list','web_fetch','web_search','research.search_web','citation.format','standalone_note.read','note.read']
+export function askToolProtocol(menu:string):string {
+  return `\n你可以调用只读工具获取回答所需的信息（本轮最多 4 次）。当检索来源不足以回答、或用户要求查看文献库、读取链接、联网搜索时，只输出一行 JSON（不要任何其他文字）：{"tool":"工具名","args":{参数}}。系统执行后会把结果作为新的【工具结果】消息发给你，你再决定继续调用还是直接回答。可用的只读工具：\n${menu}`
+}
+/** A model that already executed its plan decides whether more steps are needed; an empty step list ends the run. */
+export function plannerContinuationPrompt(goal:string,executed:unknown,menu:string,remaining:{steps:number;rounds:number}):SimplePromptMessage[] {
+  return [
+    {role:'system',content:`你是 CSPAPER 的科研任务规划器。前面的步骤已经执行完毕，请根据目标、已执行步骤及其结果判断是否还需要追加步骤（例如：检索到文献后再逐篇精读、发现信息缺口后补一轮检索、写入后再导出）。只输出 JSON：{"steps":[{"id":"…","tool":"…","args":{…},"purpose":"…","risk":"read|reversible_write|batch_write|external_effect|destructive"}]}；若目标已完成或无需追加，输出 {"steps":[]}。不要重复已执行过的步骤。剩余预算：还可执行 ${remaining.steps} 步、${remaining.rounds} 轮。可用工具：\n${menu}`},
+    {role:'user',content:JSON.stringify({goal,executed})}
   ]
 }

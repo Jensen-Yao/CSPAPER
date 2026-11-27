@@ -12,7 +12,7 @@ export const SLASH_CMDS: SlashCmd[] = [
   { name: 'plan', args: '目标', desc: '只生成可审阅的任务计划，不执行工具', group: '任务' },
   { name: 'auto', args: '目标', desc: '以「完全访问」模式发起任务：计划生成后自动执行', group: '任务' },
   { name: 'goal', args: '长期目标', desc: '设置后续 Work 任务的长期研究背景；无参数清除', group: '任务' },
-  { name: 'tpl', args: '模板名', desc: '套用任务模板（主题调研 / 精读论文 / 多文对比 / 睡眠日报 / 深度调研）', group: '任务' },
+  { name: 'tpl', args: '模板名', desc: '套用任务模板（主题调研 / 精读论文 / 多文对比 / 文献日报 / 深度调研）', group: '任务' },
   { name: 'new', desc: '开始新任务（清空当前选择）', group: '任务' },
   { name: 'model', args: '关键词', desc: '切换智能体模型（支持模糊匹配，如 /model glm）', group: '模型' },
   { name: 'deep', args: 'low|mid|high|default', desc: '切换推理强度（模型思考等级，与对话一致）', group: '模型' },
@@ -22,6 +22,8 @@ export const SLASH_CMDS: SlashCmd[] = [
   { name: 'skills', desc: '打开技能面板', group: '导航' },
   { name: 'mcp', desc: '打开插件市场（MCP 服务器）', group: '导航' },
   { name: 'cron', desc: '打开自动化面板（定时任务）', group: '导航' },
+  { name: 'fetch', args: '网址 [问题]', desc: '读取网页正文并加入对话上下文', group: '任务' },
+  { name: 'web', args: '检索词', desc: '联网搜索并把结果加入对话上下文', group: '任务' },
   { name: 'help', desc: '显示全部命令', group: '导航' }
 ]
 
@@ -48,7 +50,7 @@ export const TPL_ALIASES: Record<string, string> = {
   调研: '主题调研', 主题: '主题调研', 综述: '主题调研',
   精读: '精读论文', 阅读: '精读论文',
   对比: '多文对比', 比较: '多文对比',
-  日报: '睡眠日报', 睡眠: '睡眠日报',
+  日报: '文献日报', 睡眠: '文献日报',
   深度: '深度调研', 深读: '深度调研'
 }
 

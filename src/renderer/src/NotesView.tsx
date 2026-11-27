@@ -58,7 +58,10 @@ function mdToPlain(md: string): string {
 const safeFileName = (s: string): string => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled'
 
 // 该篇是否有任何内容（笔记或标注）——无内容的文献不出现在列表与导出里
-const hasContent = (r: Row): boolean => r.note.trim() !== '' || r.highlights.length > 0
+// 占位提示（如 Zotero 迁移写入的“在 CSPAPER 中划词高亮或写下笔记。”）与只有标题的笔记不算真实笔记。
+export const realNoteText = (note: string): string =>
+  note.replace(/<!--[\s\S]*?-->/g, '').replace(/^#+.*$/gm, '').replace(/[*_`>#|-]/g, '').replace(/（在\s*CSPAPER\s*中划词高亮或写下笔记[。.]?）|在 CSPAPER 中划词高亮或写下笔记[。.]?/g, '').trim()
+const hasContent = (r: Row): boolean => realNoteText(r.note) !== '' || r.highlights.length > 0
 
 // 单篇文献 → markdown 小节（## 标题 + 笔记正文 + 标注引用块）
 function paperSection(r: Row): string[] {

@@ -9,6 +9,7 @@ import * as Icon from './Icon'
 import BrandIcon from './BrandIcon'
 import { isCommandInput, filterSlash, parseSlash, SLASH_CMDS, TPL_ALIASES, DEEP_ALIAS, type SlashCmd } from './slash'
 import { presetCaps } from './model-caps-presets'
+import { TOOL_LABEL, toolLabel } from './features/chat/RunPanel'
 import './wb.css'
 import ContextPicker from './features/chat/ContextPicker'
 import TaskChatWorkspace from './features/chat/TaskChatWorkspace'
@@ -67,12 +68,13 @@ interface Props {
   onOpenSettings: () => void
 }
 
+// 模板只描述目标与验收标准，工具名由智能体按可用工具列表自行选择（避免模板引用不存在的工具）。
 const TEMPLATES: Array<{ label: string; desc: string; goal: string }> = [
-  { label: '主题调研', desc: '检索 → 筛选导入 → 中文综述', goal: '调研主题：「」。检索相关文献，筛选最相关的 5-8 篇导入文献库，阅读后生成一篇中文综述（存入 AI 知识库）。' },
-  { label: '精读论文', desc: '全文阅读 → 结构化精读笔记', goal: '精读库内一篇文献（用 list_library 找到并告诉我 id）：阅读全文，写结构化精读笔记（研究问题/方法/结论/局限/启发）写入我的笔记，最后给出 3 个值得追问的问题。' },
-  { label: '多文对比', desc: '方法/数据/结论 三维对比表', goal: '对比库内同一分类下的多篇文献：生成方法/数据/结论三维度对比表，并写 300 字对比结论。' },
-  { label: '睡眠日报', desc: '技能：定时文献日报', goal: '执行「睡眠科研日报」技能：按库内关键词检索最新文献，相关性排序，产出今日日报并存入 AI 知识库。' },
-  { label: '深度调研', desc: '知识网络→检索→逐篇精读→补检索→综述', goal: '深度调研主题：「」。步骤：1) 用 knowledge_graph 的 topics 视图了解库内研究结构；2) search_papers 检索该主题最新文献并导入 5-8 篇；3) 用 read_paper 的 section=structure 逐篇深度精读；4) 针对精读中发现的信息缺口补一轮检索；5) 用 make_synthesis 生成中文综述（1000 字以上，带文献编号引用），存入 AI 知识库。' }
+  { label: '主题调研', desc: '检索 → 筛选导入 → 中文综述', goal: '调研主题：「」。先检索库内与联网题录，筛选最相关的 5-8 篇；未入库的先导入，再用 paper.read 逐篇阅读，最后用 synthesis.create 生成一篇带文献编号引用的中文综述。' },
+  { label: '精读论文', desc: '全文阅读 → 结构化精读笔记', goal: '精读库内一篇文献（先用 library.list 找到并告诉我 id）：用 paper.read 读全文，写结构化精读笔记（研究问题/方法/结论/局限/启发，带页码）用 note.append 写入该文献笔记，最后给出 3 个值得追问的问题。' },
+  { label: '多文对比', desc: '方法/数据/结论 三维对比表', goal: '对比库内同一分类下的多篇文献：用 comparison.create 生成方法/数据/结论三维度对比表，并写 300 字对比结论。' },
+  { label: '文献日报', desc: '检索最新文献 → 当日推荐', goal: '执行「文献日报」流程：用 library.list 提炼库内研究关键词，用 web_search 检索最新文献，相关性排序后产出今日文献日报，用 standalone_note.save 保存。' },
+  { label: '深度调研', desc: '检索→逐篇精读→补检索→综述', goal: '深度调研主题：「」。先检索库内与联网题录并导入 5-8 篇；用 paper.read 逐篇深度精读（覆盖方法、实验、结论）；针对精读中发现的信息缺口再补一轮检索；最后用 synthesis.create 生成 1000 字以上、带文献编号引用的中文综述。' }
 ]
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -93,13 +95,6 @@ const THINKINGS: Array<{ label: string; value: 'default' | 'low' | 'medium' | 'h
 ]
 
 const localDayText=(date:Date):string=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
-const TOOL_LABEL: Record<string, string> = {
-  search_papers: '联网检索', search_library: '库内检索', import_paper: '导入文献', read_paper: '阅读全文',
-  ask_paper: '文献问答', write_note: '写笔记', make_synthesis: '写综述', compare_papers: '对比',
-  cite_format: '引文格式', add_tag: '打标签', set_status: '设状态', ai_annotate: 'AI 标注',
-  use_skill: '加载技能', arxiv_recent: 'arXiv 最新', knowledge_graph: '知识网络', related_papers: '相关文献',
-  list_library: '浏览文献库'
-}
 
 function dateGroupOf(createdAt: string): string {
   const d = new Date(createdAt.includes('T') ? createdAt : createdAt.replace(' ', 'T') + 'Z')
@@ -240,8 +235,8 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
     const events:(AgentEvent&{t:number})[]=(bundle?.events??[] as RunEvent[]).map((event:RunEvent)=>({
       t:new Date(event.createdAt).getTime(),
       kind:event.type==='plan.created'?'plan':event.type==='approval.required'?'approval':event.type.startsWith('tool.')?'step':event.type==='message.delta'?'text':event.type==='error'?'error':event.type==='run.completed'?'done':'status',
-      toolCallId:event.type==='approval.required'?(event.payload as any)?.toolCallId:undefined,
-      args:event.type==='approval.required'?(event.payload as any)?.args:undefined,
+      toolCallId:(event.payload as any)?.toolCallId,
+      args:event.type==='approval.required'||event.type==='tool.started'?(event.payload as any)?.args:undefined,
       impact:event.type==='approval.required'?(event.payload as any)?.impact:undefined,
       tool:(event.payload as any)?.legacy?.tool??(event.type.startsWith('tool.')?(event.payload as any)?.tool??event.type.split('.')[1]:undefined),
       text:(event.payload as any)?.legacy?.text??(event.type==='message.delta'?(event.payload as any)?.delta:(event.payload as any)?.summary),
@@ -969,7 +964,7 @@ export default function WorkbenchView({ visible, papers, models, profiles, onOpe
                             {ev.ms != null && <span className="wb-tool-ms">{ev.ms >= 1000 ? `${(ev.ms / 1000).toFixed(1)}s` : `${ev.ms}ms`}</span>}
                             <span className={`wb-chev ${open ? 'open' : ''}`}>{<Icon.ChevronR />}</span>
                           </div>
-                          {open && ev.text && <div className="wb-tool-detail">{ev.text}</div>}
+                          {open && <div className="wb-tool-detail">{ev.args!==undefined&&<pre className="wb-tool-args">{JSON.stringify(ev.args)}</pre>}{ev.text&&<div>{ev.text}</div>}{!ev.text&&<div className="wb-dim">执行中…</div>}</div>}
                         </div>
                       )
                     }
@@ -1433,7 +1428,7 @@ function AutoPane(): JSX.Element {
       <div className="wb-card">
         <div className="wb-pane-head">新建自动化</div>
         <input className="wb-plan-purpose" style={{ width: '100%', marginBottom: 6 }} placeholder="任务名（如：每日 arXiv 日报）" value={name} onChange={(e) => setName(e.target.value)} />
-        <textarea className="wb-plan-purpose" style={{ width: '100%', marginBottom: 6, minHeight: 52 }} placeholder="研究目标（同工作台指令，可指定技能如「睡眠科研日报」）" value={goal} onChange={(e) => setGoal(e.target.value)} />
+        <textarea className="wb-plan-purpose" style={{ width: '100%', marginBottom: 6, minHeight: 52 }} placeholder="研究目标（同工作台指令，可指定技能如「文献日报」）" value={goal} onChange={(e) => setGoal(e.target.value)} />
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           {AUTOS.map((a) => (
             <button key={a.minutes} className={`wb-chip ${minutes === a.minutes ? 'on' : ''}`} style={minutes === a.minutes ? { borderColor: 'var(--accent,#b08d57)', color: 'var(--accent,#b08d57)' } : undefined} onClick={() => setMinutes(a.minutes)}>

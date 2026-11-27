@@ -10,6 +10,7 @@ import { migrationChecksum as sourceKindChecksum, migrationVersion as sourceKind
 import { migrationChecksum as calendarChecksum, migrationVersion as calendarVersion, migrationName as calendarName, up as calendarUp } from './009-research-calendar'
 import { migrationChecksum as workbenchChecksum, migrationVersion as workbenchVersion, migrationName as workbenchName, up as workbenchUp } from './010-workbench-calendar-focus'
 import { migrationChecksum as projectsChecksum, migrationVersion as projectsVersion, migrationName as projectsName, up as projectsUp } from './011-research-projects'
+import { migrationChecksum as webChecksum, migrationVersion as webVersion, migrationName as webName, up as webUp } from './012-web-snapshots'
 
 interface AppliedMigration { version: number; name: string; checksum: string | null; applied_at: string }
 
@@ -24,7 +25,8 @@ const migrations: Array<{version:number;name:string;checksum:string;up:(db:Datab
   { version: sourceKindVersion, name: sourceKindName, checksum: sourceKindChecksum, up: sourceKindUp },
   { version: calendarVersion, name: calendarName, checksum: calendarChecksum, up: calendarUp },
   { version: workbenchVersion, name: workbenchName, checksum: workbenchChecksum, up: workbenchUp },
-  { version: projectsVersion, name: projectsName, checksum: projectsChecksum, up: projectsUp }
+  { version: projectsVersion, name: projectsName, checksum: projectsChecksum, up: projectsUp },
+  { version: webVersion, name: webName, checksum: webChecksum, up: webUp }
 ]
 
 /** Apply each schema migration exactly once. Failures roll back only that migration. */

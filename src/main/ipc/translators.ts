@@ -15,6 +15,11 @@ import {
   type ImportTranslatedPayload
 } from '../translators'
 import type { IpcCtx } from './context'
+import { getChatServices } from './chat'
+import { getSettings } from '../db'
+import { webSearch } from '../web-search'
+import { readWebPage } from '../web-reader'
+import { listSnapshots, searchSnapshots } from '../web-cache'
 
 export function registerTranslatorsIpc(ctx: IpcCtx): void {
   ipcMain.handle('translators:list', () => ({ scripts: listScriptInfo(), userDir: userDir() }))
@@ -24,6 +29,11 @@ export function registerTranslatorsIpc(ctx: IpcCtx): void {
   })
   ipcMain.handle('translators:translate', (_e, url: string) => runWebScript(String(url)))
   ipcMain.handle('translators:search', (_e, q: string) => searchAll(String(q)))
+  // 统一联网检索（通用 + 学术源）与网页读取 / 快照
+  const activeWorkspace=():string|undefined=>{try{return getChatServices()?.repository.ensureWorkspace(getSettings().libraryPath).id}catch{return undefined}}
+  ipcMain.handle('web:search',(_e,input:unknown)=>{const q=(typeof input==='object'&&input?input:{}) as {query?:string;limit?:number;general?:boolean;academic?:boolean};return webSearch(String(q.query??''),{limit:Number(q.limit)||10,general:q.general!==false,academic:q.academic!==false})})
+  ipcMain.handle('web:fetch',async(_e,input:unknown)=>{const q=(typeof input==='object'&&input?input:{}) as {url?:string;forceRefresh?:boolean};const {pdfPath:_pdf,...page}=await readWebPage(String(q.url??''),{workspaceId:activeWorkspace(),forceRefresh:q.forceRefresh===true,timeoutMs:30000});return page})
+  ipcMain.handle('web:snapshots',(_e,input:unknown)=>{const q=(typeof input==='object'&&input?input:{}) as {query?:string;limit?:number};const workspaceId=activeWorkspace();if(!workspaceId)return [];return q.query?searchSnapshots(workspaceId,String(q.query),Number(q.limit)||20):listSnapshots(workspaceId,Number(q.limit)||100)})
   ipcMain.handle('translators:import', (_e, payload: ImportTranslatedPayload) => importTranslated(payload, ctx.send))
   ipcMain.handle('translators:set-disabled', (_e, ids: string[]) => {
     setDisabledIds(Array.isArray(ids) ? ids.map(String) : [])

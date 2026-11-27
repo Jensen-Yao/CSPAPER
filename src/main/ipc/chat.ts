@@ -12,6 +12,8 @@ import { registerLibraryTools } from '../tools/library'
 import { registerResearchTools } from '../tools/research'
 import { registerMcpTools, registerMcpToolList } from '../tools/mcp'
 import { registerCollectionTools } from '../tools/collection'
+import { registerWebTools } from '../tools/web'
+import { registerPlatformTools } from '../tools/platform'
 import { collectionPapers } from '../collection-service'
 import { callMcpTool, listMcpTools } from '../mcp'
 import { snapshotModelBinding } from '../model-config'
@@ -47,7 +49,9 @@ function ownedRun(id:unknown):Run {
 export function registerChatIpc(ctx:IpcCtx):void {
   repository=new ChatRepository(getDb())
   const bus=new ChatEventBus(repository);eventBus=bus
-  toolRegistry=new ToolRegistry();registerLibraryTools(toolRegistry);registerResearchTools(toolRegistry);registerCollectionTools(toolRegistry);registerMcpTools(toolRegistry)
+  toolRegistry=new ToolRegistry();registerLibraryTools(toolRegistry);registerResearchTools(toolRegistry);registerCollectionTools(toolRegistry);registerWebTools(toolRegistry)
+  registerPlatformTools(toolRegistry,{openPaper:paperId=>{for(const subscriber of eventSubscribers)if(!subscriber.isDestroyed())subscriber.send('workspace:open-paper',{paperId})}})
+  registerMcpTools(toolRegistry)
   runtime=new ChatRuntime(repository,new SystemChatProvider(),bus,2,async request=>{
     const details=repository.getRunDetails(request.runId)
     let paperId:number|undefined,category:string|undefined;let paperIds:number[]|undefined
@@ -101,7 +105,7 @@ export function registerChatIpc(ctx:IpcCtx):void {
     if(request.skills?.length && request.mode!=='act')throw new Error('技能只能用于 Work 任务')
     if(request.skills?.length)invalidateSkills()
     const skills=request.skills?.length?snapshotSkills(request.skills,listSkills()):undefined
-    const context=buildContextSnapshot({conversationId:request.conversationId,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:request.permission,promptKind:request.promptKind,researchGoal:request.mode==='act'?getSettings().agentGoal:undefined,skills})
+    const context=buildContextSnapshot({conversationId:request.conversationId,runId:'pending',workspaceId:conversation.workspaceId,refs:request.context,permission:request.permission,promptKind:request.promptKind,researchGoal:request.mode==='act'?getSettings().agentGoal:undefined,skills,inheritContext:request.inheritContext})
     const modelBinding=snapshotModelBinding(getSettings(),request.modelBindingId,request.reasoning,request.mode)
     return runtime.submitTurn({conversationId:request.conversationId,clientMessageId:request.clientMessageId,parentMessageId:request.parentMessageId??null,text:request.text,context,modelBinding,mode:request.mode})
   })

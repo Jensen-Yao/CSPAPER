@@ -131,6 +131,12 @@ export default function App(): JSX.Element {
   // 命令面板：Ctrl/Cmd + K 全局唤起；Ctrl+F 分流——阅读模式进 PDF 内查找，其他模式聚焦侧栏搜索
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // Esc 关闭最上层弹窗：各弹窗的遮罩点击即关闭，这里向遮罩派发同样的 mousedown
+      if (e.key === 'Escape') {
+        const masks = Array.from(document.querySelectorAll<HTMLElement>('.modal-mask'))
+        const top = masks.at(-1)
+        if (top) top.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((v) => !v)
@@ -874,7 +880,7 @@ export default function App(): JSX.Element {
                 fs={chatFs}
                 onFs={changeFs}
               />
-              <div className="side-rail">
+              {tabs.length > 0 && <div className="side-rail">
                 {([['chat', <Icon.Chat size={14} />, '问答'], ['translate', <Icon.Globe size={14} />, '翻译'], ['full', <Icon.Doc size={14} />, '全文翻译'], ['notes', <Icon.Highlight size={14} />, '划词标注'], ['refs', <Icon.Book size={14} />, '参考文献'], ['info', <Icon.Info size={14} />, '文献详情']] as const).map(
                   ([k, ico, tip]) => (
                     <button
@@ -904,7 +910,7 @@ export default function App(): JSX.Element {
                     </button>
                   )
                 )}
-              </div>
+              </div>}
             </div>
           </div>
           {/* 对话区：同样常驻，保留对话历史 */}

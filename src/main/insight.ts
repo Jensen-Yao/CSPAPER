@@ -7,6 +7,8 @@ import { dialog, BrowserWindow } from 'electron'
 import { getDb, getSettings, scanLibraryAsync } from './db'
 import { chatStream } from './llm'
 import { comparisonPrompt, deepReadingPrompt, synthesisPrompt } from './chat/prompts'
+import { generateStructured, isEmptyField } from './chat/structured'
+import { z } from 'zod'
 import { extractPagesCached } from './ingest'
 import { findCategoryDir, nextCategoryDir } from './import'
 
@@ -31,6 +33,26 @@ export interface CompareTable {
 
 const DEFAULT_DIMENSIONS = ['研究问题', '研究成果']
 const DEFAULT_FIELDS = ['作者', '期刊名称']
+
+/** Section-aware page selection for long papers: keep the opening, pages that open a methods / experiments / results / conclusion section, and the end. */
+export function selectPages(pages:string[],budgetChars=90000):Array<{page:number;text:string}> {
+  if(pages.join('').length<=budgetChars)return pages.map((text,index)=>({page:index+1,text}))
+  const sectionPattern=/(^|\n)\s*(\d{1,2}\.?\s+)?(abstract|introduction|related work|background|method|methods|methodology|approach|experiment|experiments|experimental setup|evaluation|results|discussion|limitation|conclusion|conclusions|摘要|引言|相关工作|方法|实验|结果|评估|讨论|局限|结论)\b/i
+  const keep=new Set<number>([0,1,pages.length-2,pages.length-1])
+  pages.forEach((text,index)=>{if(sectionPattern.test(text))keep.add(index)})
+  let used=0
+  const selected:number[]=[]
+  for(const index of [...keep].filter(index=>index>=0&&index<pages.length).sort((a,b)=>a-b)) {
+    const size=pages[index].length
+    if(used+size>budgetChars&&selected.length)continue
+    used+=size;selected.push(index)
+  }
+  return selected.map(index=>({page:index+1,text:pages[index]}))
+}
+
+const cellsSchema=z.record(z.string(),z.array(z.object({t:z.string(),p:z.number().nullable().optional()})).default([]))
+const extractSchema=z.object({summary:z.string().default(''),problem:z.string().default(''),method:z.string().default(''),dataset:z.string().default(''),metrics:z.string().default(''),results:z.string().default(''),limitations:z.string().default(''),novelty:z.string().default(''),future:z.string().default('')})
+const EXTRACT_LABELS:Record<string,string[]>={summary:['小结','卡片小结','摘要'],problem:['研究问题','问题'],method:['方法','方法路线','技术路线'],dataset:['数据集','数据与对象','实验对象'],metrics:['评价指标','指标'],results:['核心结果','结果','主要结论'],limitations:['局限','局限性'],novelty:['创新点','创新'],future:['未来方向','可跟进的方向','未来工作']}
 
 const parseData = (raw: string): CompareData => {
   const d = JSON.parse(raw || '{}') as Partial<CompareData>
@@ -89,32 +111,23 @@ export async function generateCells(
     pages = []
   }
   if (pages.length === 0) throw new Error('无法读取论文正文（题录占位页或 PDF 损坏）')
-  const marked = pages
-    .slice(0, 16)
-    .map((t, i) => `【第${i + 1}页】\n${t}`)
-    .join('\n\n')
-    .slice(0, 90000)
+  const selected = selectPages(pages, 90000)
+  const marked = selected.map((item) => `【第${item.page}页】\n${item.text}`).join('\n\n')
   send?.('compare:progress', { paperId, phase: 'thinking' })
-  const prompt=comparisonPrompt(paper.title,dimensions)
-  let out = ''
-  for await (const d of chatStream([...prompt.slice(0,1),{role:'user',content:marked}])) out += d
+  const prompt = comparisonPrompt(paper.title, dimensions)
+  const result = await generateStructured({ prompt: [...prompt.slice(0, 1), { role: 'user', content: marked }], schema: cellsSchema, stream: (messages, opts) => chatStream(messages, opts) })
   send?.('compare:progress', { paperId, phase: 'parsing' })
-  let json: Record<string, unknown>
-  try {
-    json = JSON.parse(out.replace(/^```json\s*/i, '').replace(/```\s*$/g, ''))
-  } catch {
-    throw new Error('AI 未返回有效 JSON，请重试或换模型')
-  }
+  const json: Record<string, unknown> = result.ok ? (result.value as Record<string, unknown>) : result.partial
   const cells: Record<string, CompareCell[]> = {}
+  let filled = 0
   for (const dim of dimensions) {
-    const arr = json[dim]
-    cells[dim] = Array.isArray(arr)
-      ? (arr as Array<{ t?: unknown; p?: unknown }>)
-          .filter((x) => x && typeof x.t === 'string' && x.t.trim())
-          .slice(0, 6)
-          .map((x) => ({ t: String(x.t).trim(), p: Number(x.p) > 0 ? Number(x.p) : null }))
-      : []
+    let raw: unknown = json[dim]
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw) } catch { raw = [] } }
+    const arr = Array.isArray(raw) ? (raw as Array<{ t?: unknown; p?: unknown }>) : []
+    cells[dim] = arr.filter((x) => x && typeof x.t === 'string' && x.t.trim()).slice(0, 6).map((x) => ({ t: String(x.t).trim(), p: Number(x.p) > 0 ? Number(x.p) : null }))
+    if (cells[dim].length) filled++
   }
+  if (!filled) throw new Error(result.ok ? 'AI 没有返回任何维度的要点' : `AI 未返回有效 JSON（已自动重试一次）：${result.error ?? ''}`.trim() + '；请重试或更换模型')
   return cells
 }
 
@@ -160,49 +173,39 @@ export async function extractPaper(paperId: number): Promise<{ summary: string; 
   } catch {
     pages = []
   }
-  const full = pages.join('\n\n')
-  const text = full.slice(0, 90000)
+  const selected = selectPages(pages, 90000)
+  const text = selected.map((item) => `【第${item.page}页】\n${item.text}`).join('\n\n')
   if (!text.trim()) throw new Error('无法读取论文正文')
-  const prompt=deepReadingPrompt(paper.title,text)
-  let out = ''
-  for await (const d of chatStream(prompt)) {
-    out += d
+  const prompt = deepReadingPrompt(paper.title, text)
+  const result = await generateStructured({ prompt, schema: extractSchema, stream: (messages, opts) => chatStream(messages, opts), labels: EXTRACT_LABELS })
+  const j: Record<string, string> = result.ok ? (result.value as unknown as Record<string, string>) : result.partial
+  const f = (x: unknown): string => String(x ?? '').trim().replace(/\s*\n\s*/g, ' ').slice(0, 1200)
+  const fields = { problem: f(j.problem), method: f(j.method), dataset: f(j.dataset), metrics: f(j.metrics), results: f(j.results), limitations: f(j.limitations), novelty: f(j.novelty), future: f(j.future) }
+  const filled = Object.values(fields).filter((value) => value && !isEmptyField(value)).length
+  // Nothing usable after the automatic retry: surface the failure instead of silently storing prose as a summary.
+  if (!result.ok && filled < 3 && isEmptyField(j.summary)) throw new Error(`AI 未返回有效的结构化精读结果（已自动重试一次）：${result.error ?? ''}`.trim() + '；请重试或更换模型')
+  let summary = f(j.summary)
+  if (!summary || summary.length > 600 || isEmptyField(summary)) {
+    const parts = [fields.problem && `研究问题：${fields.problem}`, fields.method && `方法：${fields.method}`, fields.results && `结论：${fields.results}`].filter(Boolean)
+    summary = parts.join('；').slice(0, 600)
   }
-  const cleaned = out.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
-  let summary = ''
-  let ext: PaperExtract | null = null
-  try {
-    const j = JSON.parse(cleaned) as Partial<PaperExtract> & { summary?: string }
-    summary = String(j.summary ?? '').trim()
-    const f = (x: unknown): string => String(x ?? '').trim().slice(0, 1200)
-    ext = {
-      paper_id: paperId,
-      problem: f(j.problem),
-      method: f(j.method),
-      dataset: f(j.dataset),
-      metrics: f(j.metrics),
-      results: f(j.results),
-      limitations: f(j.limitations),
-      novelty: f(j.novelty),
-      future: f(j.future),
-      extracted_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
-    }
-    db.exec(`CREATE TABLE IF NOT EXISTS paper_extract(
+  if (!summary) throw new Error('AI 未返回有效内容')
+  const ext: PaperExtract = {
+    paper_id: paperId,
+    ...fields,
+    extracted_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS paper_extract(
       paper_id INTEGER PRIMARY KEY,
       problem TEXT, method TEXT, dataset TEXT, metrics TEXT, results TEXT,
       limitations TEXT, novelty TEXT, future TEXT, extracted_at TEXT)`)
-    db.prepare(
-      `INSERT INTO paper_extract(paper_id, problem, method, dataset, metrics, results, limitations, novelty, future, extracted_at)
-       VALUES(@paper_id, @problem, @method, @dataset, @metrics, @results, @limitations, @novelty, @future, @extracted_at)
-       ON CONFLICT(paper_id) DO UPDATE SET problem=excluded.problem, method=excluded.method, dataset=excluded.dataset,
-         metrics=excluded.metrics, results=excluded.results, limitations=excluded.limitations,
-         novelty=excluded.novelty, future=excluded.future, extracted_at=excluded.extracted_at`
-    ).run(ext)
-  } catch {
-    // JSON 解析失败：退化为把整段输出当 summary（与旧版行为一致）
-    summary = cleaned.replace(/^["「]|["」]$/g, '').slice(0, 600)
-  }
-  if (!summary) throw new Error('AI 未返回有效内容')
+  db.prepare(
+    `INSERT INTO paper_extract(paper_id, problem, method, dataset, metrics, results, limitations, novelty, future, extracted_at)
+     VALUES(@paper_id, @problem, @method, @dataset, @metrics, @results, @limitations, @novelty, @future, @extracted_at)
+     ON CONFLICT(paper_id) DO UPDATE SET problem=excluded.problem, method=excluded.method, dataset=excluded.dataset,
+       metrics=excluded.metrics, results=excluded.results, limitations=excluded.limitations,
+       novelty=excluded.novelty, future=excluded.future, extracted_at=excluded.extracted_at`
+  ).run(ext)
   db.prepare('UPDATE papers SET summary=? WHERE id=?').run(summary.slice(0, 600), paperId)
   return { summary, extract: ext }
 }
@@ -416,7 +419,7 @@ export async function synthesizePapers(
       let text = ''
       try {
         const pages = await extractPagesCached(row.path)
-        text = pages.slice(0, 3).join('\n').slice(0, 12000)
+        text = selectPages(pages, 24000).map((item) => `【第${item.page}页】\n${item.text}`).join('\n\n')
       } catch {
         text = row.summary ?? ''
       }

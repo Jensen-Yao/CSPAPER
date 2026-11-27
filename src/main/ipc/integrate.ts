@@ -6,6 +6,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { matchScript, runWeb, importTranslated, extractDoi } from '../translators'
 import { getSettings } from '../db'
+import { netFetch } from '../net'
+import { importGenericUrl, importRenderedHtml } from '../web-import'
 import { importPapers } from '../import'
 
 // 内置浏览器扩展目录：开发态在项目 extension/，打包后经 extraResources 放 resources/extension
@@ -33,9 +35,8 @@ export function setupWebSession(notify: (title: string, detail: string) => void)
       item.cancel()
       void (async () => {
         try {
-          const resp = await fetch(url, { signal: AbortSignal.timeout(60000), headers: { 'User-Agent': 'Mozilla/5.0 CSPAPER' } })
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-          const buf = Buffer.from(await resp.arrayBuffer())
+          const resp = await netFetch(url, { timeoutMs: 60000 })
+          const buf = resp.buffer
           if (buf.length < 1024) throw new Error('下载内容为空')
           const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cspaper-web-')), 'paper.pdf')
           fs.writeFileSync(tmp, buf)
@@ -73,7 +74,15 @@ function registerIntegrateIpc(): void {
     if (!/^https?:\/\//i.test(target)) return { ok: false, error: '不是有效网址' }
     const doi = extractDoi(target)
     const script = matchScript(doi ? `https://doi.org/${doi}` : target)
-    if (!script) return { ok: false, matched: false, error: '没有匹配的抓取脚本（可在设置 → 在线获取 查看脚本列表）' }
+    if (!script) {
+      // 没有站点脚本：走通用网页读取（PDF 直接入库，网页按元数据建题录；需要登录的页面带上内置浏览器的 Cookie）
+      try {
+        const generic=await importGenericUrl(target,()=>{},{browserSession:true})
+        return { ok: true, matched: false, translator: '通用网页读取', title: generic.title.slice(0,80) }
+      } catch (err) {
+        return { ok: false, matched: false, error: String(err).replace(/^Error: /,'').slice(0,160) }
+      }
+    }
     // v0.19：等真实抓取/导入结果再返回（此前立即 {ok:true}，失败时界面仍显示已入库）
     try {
       const r = await runWeb(script, doi ? `https://doi.org/${doi}` : target)
@@ -86,6 +95,14 @@ function registerIntegrateIpc(): void {
     } catch (err) {
       return { ok: false, matched: true, translator: script.name, error: String(err).slice(0, 160) }
     }
+  })
+
+  // 渲染后的页面入库：登录后才能访问的站点（知网 / 出版社）由内置浏览器把 DOM 交给正文抽取
+  ipcMain.handle('web:import-html', async (_e, input: { url: string; html: string }) => {
+    const url=String(input?.url??'').trim(),html=String(input?.html??'')
+    if(!/^https?:\/\//i.test(url)||html.length<200)return { ok: false, error: '页面内容为空或地址无效' }
+    try { const r=await importRenderedHtml(url,html,()=>{}); return { ok: true, matched: false, translator: '通用网页读取', title: r.title.slice(0,80) } }
+    catch (err) { return { ok: false, error: String(err).replace(/^Error: /,'').slice(0,160) } }
   })
 
   // 打开扩展文件夹（引导装载到外部浏览器）：路径自动进剪贴板

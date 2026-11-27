@@ -69,7 +69,8 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     } catch {
       /* 无记忆用默认 */
     }
-    return { info: true, ai: true, deep: false, rel: true, abs: true, cite: false, similar: false, mine: true, notes: false, files: false }
+    // AI 小结与深度解读优先展开；编辑类信息默认收起，避免空字段先入眼。
+    return { info: false, ai: true, deep: true, rel: false, abs: false, cite: false, similar: false, mine: true, notes: false, files: false }
   })
   const setOpenPersist = (next: Record<string, boolean>): void => {
     setOpen(next)
@@ -179,9 +180,9 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
     try {
       const r = await window.api.paperExtractRun(paper.id)
       setExt(r.extract)
-      if (r.summary) onSummarized?.(paper.id, r.summary)
+      if (r.summary) { setSummary(r.summary); onSummarized?.(paper.id, r.summary) }
     } catch (e) {
-      setExtErr(String(e).replace(/^Error: /, '').slice(0, 100))
+      setExtErr(String(e).replace(/^Error: /, '').slice(0, 220))
     } finally {
       setExtBusy(false)
     }
@@ -417,7 +418,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
   }
 
   const sec = (id: string, icon: React.ReactNode, title: string, body: JSX.Element, extra?: JSX.Element): JSX.Element => (
-    <div className={`pd-sec ${open[id] ? 'open' : ''}`}>
+    <div className={`pd-sec ${open[id] ? 'open' : ''}`} data-sec={id}>
       <button className="pd-sec-head" onClick={() => setOpenPersist({ ...open, [id]: !open[id] })}>
         <span className="pd-sec-ic">{icon}</span>
         <span className="pd-sec-title">{title}</span>
@@ -597,8 +598,8 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                   '原文状态',
                   <div className="pd-source-status">
                     <span className={`source-badge ${isRecord?'record':''}`}>{isRecord?'题录 · 无 PDF 全文':missingIndex?'PDF · 索引缺失':'PDF · 已入库'}</span>
-                    <button className="cmp-mini" disabled={repairBusy} onClick={()=>void repairFromZotero()}>{repairBusy?'Zotero 修复中…':'从 Zotero 修复原文'}</button>
-                    <button className="cmp-mini" onClick={()=>onOpenOaRepair?.(paper.id)}>探测开放获取原文</button>
+                    {(isRecord||missingIndex) && <button className="cmp-mini" disabled={repairBusy} onClick={()=>void repairFromZotero()}>{repairBusy?'Zotero 修复中…':'从 Zotero 修复原文'}</button>}
+                    {(isRecord||missingIndex) && <button className="cmp-mini" onClick={()=>onOpenOaRepair?.(paper.id)}>探测开放获取原文</button>}
                     {paper.doi&&<button className="cmp-mini" onClick={()=>window.api.openExternal('https://doi.org/'+paper.doi)}>按 DOI 找原文</button>}
                     {!isRecord&&missingIndex&&<button className="cmp-mini" onClick={()=>void window.api.rebuildIndex()}>重建索引</button>}
                     {repairMsg&&<span className="pd-dim">{repairMsg}</span>}
@@ -634,7 +635,10 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
               <Icon.Sparkle size={14} />,
               'AI 洞察',
               summary ? (
-                <div className="pd-summary">{summary}</div>
+                <div>
+                  <div className="pd-summary">{summary}</div>
+                  {sumErr && <div className="sum-err">{sumErr}</div>}
+                </div>
               ) : isRecord ? (
                 <div className="pd-source-alert">
                   该条目来自 Zotero 题录，未导入 PDF 全文。AI 小结、全文问答和结构化精读会等待原文补充后再执行。
@@ -679,6 +683,7 @@ export default function PaperDetailPanel({ paper, onClose, onOpen, onSummarized,
                         <span className="pd-deep-v">{v}</span>
                       </div>
                     ))}
+                  {extErr && <div className="sum-err">{extErr}</div>}
                   <div className="pd-deep-meta">抽取于 {ext.extracted_at} · <button className="pd-deep-redo" disabled={extBusy} onClick={() => void runExtract()}>{extBusy ? '重新精读中…' : '重新精读'}</button></div>
                 </div>
               ) : isRecord ? (

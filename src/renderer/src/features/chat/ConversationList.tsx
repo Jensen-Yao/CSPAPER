@@ -21,14 +21,20 @@ export default function ConversationList({conversations,activeId,onSelect,onNew,
     const title=await dialog.prompt({title:'重命名会话',defaultValue:active.title,validate:value=>value.trim()?'':'请输入名称'})
     if(title?.trim())try{await onRename(active.id,title.trim());setError('')}catch(error){setError(String(error))}
   }
+  // 问答与 Work 任务分组显示：翻译运行已在主进程隐藏，Work 会话带来源标记
+  const needle=query.toLocaleLowerCase(),matches=(conversation:Conversation)=>conversation.title.toLocaleLowerCase().includes(needle)
+  const ask=conversations.filter(conversation=>conversation.mode!=='act'),work=conversations.filter(conversation=>conversation.mode==='act')
+  const row=(conversation:Conversation)=><div key={conversation.id} className={`chat-conversation-row ${conversation.id===activeId?'active':''}`}>
+    <button type="button" aria-current={conversation.id===activeId?'page':undefined} title={conversation.title} onClick={()=>onSelect(conversation.id)}>{conversation.mode==='act'&&<span className="chat-conversation-badge">Work</span>}{conversation.archivedAt?'[已归档] ':''}{conversation.title||'新会话'}</button>
+    <button type="button" className="chat-conversation-delete" aria-label={`删除会话：${conversation.title||'新会话'}`} title="永久删除会话" onClick={()=>void remove(conversation)}>×</button>
+  </div>
   return <aside className="chat-conversations" aria-label="会话列表">
     <header><b>对话</b><button type="button" onClick={onNew}>新建</button></header>
     <input className="chat-conversation-search" aria-label="搜索会话" placeholder="搜索会话…" value={query} onChange={event=>setQuery(event.target.value)}/>
     <div className="chat-conversation-list">
-      {conversations.filter(item=>item.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(conversation=><div key={conversation.id} className={`chat-conversation-row ${conversation.id===activeId?'active':''}`}>
-        <button type="button" aria-current={conversation.id===activeId?'page':undefined} title={conversation.title} onClick={()=>onSelect(conversation.id)}>{conversation.archivedAt?'[已归档] ':''}{conversation.title||'新会话'}</button>
-        <button type="button" className="chat-conversation-delete" aria-label={`删除会话：${conversation.title||'新会话'}`} title="永久删除会话" onClick={()=>void remove(conversation)}>×</button>
-      </div>)}
+      {ask.filter(matches).map(row)}
+      {work.some(matches)&&<div className="chat-conversation-group">Work 任务 · {work.filter(matches).length}</div>}
+      {work.filter(matches).map(row)}
       {hasMore&&<button className="chat-history-load" onClick={onLoadMore}>加载更多会话</button>}
     </div>
     {active&&<div className="chat-conversation-options">

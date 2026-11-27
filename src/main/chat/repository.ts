@@ -49,15 +49,16 @@ export class ChatRepository {
     return this.getConversation(id)!
   }
 
-  listConversations(input:{workspaceId:string;includeArchived?:boolean;cursor?:string|null;limit?:number}):{items:Conversation[];nextCursor:string|null} {
+  /** Hidden entries (reader translations) never appear in chat lists; `mode` splits ask conversations from Work tasks. */
+  listConversations(input:{workspaceId:string;includeArchived?:boolean;cursor?:string|null;limit?:number;mode?:ConversationMode;includeHidden?:boolean}):{items:Conversation[];nextCursor:string|null} {
     const limit=Math.max(1,Math.min(100,input.limit??50))
     const rows=this.db.prepare(`
       SELECT c.* FROM conversations c
-      WHERE c.workspace_id=? AND (? = 0 OR c.archived_at IS NULL)
+      WHERE c.workspace_id=? AND (? = 0 OR c.archived_at IS NULL) AND (? = 1 OR NOT (c.entry='reader' AND c.mode='ask')) AND (? IS NULL OR c.mode=?)
         AND (? IS NULL OR c.updated_at < (SELECT x.updated_at FROM conversations x WHERE x.id=?)
              OR (c.updated_at = (SELECT x.updated_at FROM conversations x WHERE x.id=?) AND c.id < ?))
       ORDER BY c.updated_at DESC,c.id DESC LIMIT ?
-    `).all(input.workspaceId,input.includeArchived?0:1,input.cursor??null,input.cursor,input.cursor,input.cursor,limit+1) as ConversationRow[]
+    `).all(input.workspaceId,input.includeArchived?0:1,input.includeHidden?1:0,input.mode??null,input.mode??null,input.cursor??null,input.cursor,input.cursor,input.cursor,limit+1) as ConversationRow[]
     const page=rows.slice(0,limit).map(rowToConversation)
     return { items:page,nextCursor:rows.length>limit?rows[limit-1].id:null }
   }
@@ -190,6 +191,11 @@ export class ChatRepository {
       modelBinding:parseJson<ModelBindingSnapshot>(row.model_binding_json,{bindingId:'unknown',profileId:'unknown',provider:'unknown',model:'unknown',capabilities:[],reasoning:'default'}),
       context:parseJson<ContextSnapshot>(row.context_snapshot_json,{conversationId:row.conversation_id,runId:row.id,refs:[],budget:{totalChars:0,usedChars:0,reservedForOutput:0},diagnostics:[],createdAt:row.created_at})
     }
+  }
+
+  /** Persist the resolved context (e.g. inherited refs) so retries and the UI see what the run actually used. */
+  updateRunContext(id:string,context:ContextSnapshot):void {
+    this.db.prepare('UPDATE chat_runs SET context_snapshot_json=? WHERE id=?').run(JSON.stringify(context),id)
   }
 
   listUnfinishedRuns():Run[] {

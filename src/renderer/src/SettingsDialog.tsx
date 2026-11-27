@@ -561,6 +561,28 @@ export default function SettingsDialog({ settings, indexed, indexInfo, onSave, o
 
             {sec === 'translators' && (
               <div className="section set-translators">
+                <div className="section-title">联网与网页读取</div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <span className={`set-switch ${form.webEnabled !== false ? 'on' : ''}`} role="switch" aria-checked={form.webEnabled !== false} title="关闭后联网检索、网页读取与题录检索都不再发出请求" style={{ cursor: 'pointer' }} onClick={() => set({ webEnabled: form.webEnabled === false })} />
+                  <span style={{ fontSize: 12.5 }}>允许联网（网页读取、联网检索、题录检索）</span>
+                </div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <span className={`set-switch ${form.webUseBrowserSession ? 'on' : ''}`} role="switch" aria-checked={!!form.webUseBrowserSession} title="读取网页时携带内置浏览器的 Cookie，适用于登录后才能访问的站点" style={{ cursor: 'pointer' }} onClick={() => set({ webUseBrowserSession: !form.webUseBrowserSession })} />
+                  <span style={{ fontSize: 12.5 }}>读取网页时使用内置浏览器登录态（知网、出版社页面）</span>
+                </div>
+                <div className="set-row" style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>代理地址</span>
+                  <input
+                    className="set-input"
+                    style={{ flex: 1 }}
+                    placeholder="留空跟随系统代理，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+                    value={form.proxyUrl ?? ''}
+                    onChange={(e) => set({ proxyUrl: e.target.value.trim() })}
+                  />
+                </div>
+                <div className="hint" style={{ marginBottom: 14 }}>
+                  请求默认跟随系统代理；填写后立即对所有联网请求生效。网页读取只接受公网 HTTPS 地址，内网与本机地址会被拒绝；响应体上限 20MB。
+                </div>
                 <div className="section-title">抓取脚本（对标 Zotero Translators）</div>
                 <div className="set-translators-tools">
                   <button className="btn ghost" onClick={() => void window.api.translatorsOpenDir()}>

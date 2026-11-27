@@ -176,9 +176,12 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
     } catch {
       /* 忽略 */
     }
-    void window.api
-      .translatorsSearch(term)
-      .then((raw) => {
+    void Promise.all([
+      window.api.translatorsSearch(term).catch(() => [] as Array<Record<string, unknown>>),
+      // 统一学术检索：Semantic Scholar / arXiv / PubMed（Crossref / OpenAlex 仍由脚本提供完整题录）
+      window.api.webSearch({ query: term, limit: 30, general: false, academic: true }).catch(() => ({ hits: [], sources: [], errors: [] }))
+    ])
+      .then(([raw, extra]) => {
         const hitsOut: AggHit[] = raw
           .map((h) => {
             const { translator, translatorId, ...csl } = h as Record<string, unknown> & { translator?: string; translatorId?: string }
@@ -201,6 +204,19 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
             }
           })
           .filter((h) => h.title)
+        const seenDoi = new Set(hitsOut.map((h) => (h.doi || '').toLowerCase()).filter(Boolean))
+        const seenUrl = new Set(hitsOut.map((h) => h.url))
+        for (const hit of extra.hits) {
+          const doi = (hit.doi || '').toLowerCase()
+          if (!hit.title || (doi && seenDoi.has(doi)) || seenUrl.has(hit.url)) continue
+          seenDoi.add(doi)
+          seenUrl.add(hit.url)
+          const authors = (hit.authors || '').split(/[,，;；]/).map((a) => a.trim()).filter(Boolean)
+          hitsOut.push({
+            title: hit.title, authors: authors.slice(0, 6).join(', '), year: hit.year ?? null, venue: '', doi: hit.doi, url: hit.url, abstract: hit.snippet, source: hit.source === 'semantic_scholar' ? 'Semantic Scholar' : hit.source === 'arxiv' ? 'arXiv' : hit.source === 'pubmed' ? 'PubMed' : hit.source,
+            csl: { type: hit.doi ? 'article-journal' : 'webpage', title: hit.title, URL: hit.url, ...(hit.doi ? { DOI: hit.doi } : {}), ...(authors.length ? { author: authors.map((a) => ({ literal: a })) } : {}), ...(hit.year ? { issued: { 'date-parts': [[hit.year]] } } : {}), ...(hit.snippet ? { abstract: hit.snippet } : {}), ...(hit.pdfUrl ? { link: [{ URL: hit.pdfUrl }] } : {}) }
+          })
+        }
         setHits(hitsOut)
         if (hitsOut.length === 0) setSearchErr('没有检索到结果——换个关键词试试，或用下方站点直达在谷歌学术/知网里搜')
       })
@@ -248,7 +264,16 @@ export default function WebSearchView({ visible }: { visible: boolean }): JSX.El
     }
     setSave({ kind: 'busy', text: '保存中…' })
     try {
-      const r = await window.api.webSavePage(url)
+      // 内置浏览器已渲染的页面（登录后才能访问的站点）直接把 DOM 交给正文抽取；失败再退回通用读取
+      let r: { ok: boolean; matched?: boolean; translator?: string; title?: string; error?: string } | null = null
+      try {
+        const html = await Promise.race([
+          (webRef.current as unknown as { executeJavaScript?: (code: string) => Promise<unknown> } | null)?.executeJavaScript?.('document.documentElement.outerHTML') ?? Promise.resolve(''),
+          new Promise<string>((resolve) => setTimeout(() => resolve(''), 2500))
+        ])
+        if (typeof html === 'string' && html.length > 2000) r = await window.api.webImportHtml({ url, html })
+      } catch { /* fall back to the generic reader */ }
+      if (!r || !r.ok) r = await window.api.webSavePage(url)
       if (r.ok) {
         setSave({ kind: 'ok', text: '✓ 已入库', tip: r.translator ? `已由「${r.translator}」脚本抓取入库` : '已入库' })
       } else {

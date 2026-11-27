@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { synthesizePapers } from '../insight'
+import { importGenericUrl } from '../web-import'
 import { createComparison, updateComparison } from '../comparison-service'
 import { formatCite } from '../csl'
 import { extractDoi, matchScript, runWeb, importTranslated, searchAll } from '../translators'
@@ -20,7 +21,7 @@ export function registerResearchTools(registry:ToolRegistry):void {
     execute:async(_ctx,args)=>ok((await searchAll(args.query)).slice(0,args.limit),`联网检索到最多 ${args.limit} 条题录`)
   })
   registry.register({
-    definition:{name:'paper.import',version:1,title:'导入文献',description:'从 DOI、arXiv 或网页抓取题录与 PDF 并入库。',risk:'batch_write',defaultPermission:'approval_required',inputSchema:{type:'object'},canCancel:true,timeoutMs:120000},
+    definition:{name:'paper.import',version:1,title:'导入文献',description:'从 DOI、arXiv 或任意公开网页 / PDF 链接抓取题录与全文并入库（站点脚本优先，其余走通用网页读取）。',risk:'batch_write',defaultPermission:'approval_required',inputSchema:{type:'object'},canCancel:true,timeoutMs:120000},
     schema:z.object({url:z.string().trim().min(3).max(2000)}),
     execute:async(ctx,args)=>{
       let target=args.url
@@ -28,7 +29,11 @@ export function registerResearchTools(registry:ToolRegistry):void {
         const doi=extractDoi(target);if(!doi)throw new Error('不是有效链接或 DOI')
         target=`https://doi.org/${doi}`
       }
-      const script=matchScript(target);if(!script)throw new Error('没有匹配的抓取脚本')
+      const script=matchScript(target)
+      if(!script) {
+        const generic=await importGenericUrl(target)
+        return ok(generic,`已入库：${generic.title}`,{artifacts:[artifact(ctx,'paper',generic.slug,generic.title)],changes:[{entity:'paper',entityId:generic.slug,action:'import',after:{slug:generic.slug,title:generic.title,kind:generic.kind},reversible:true}]})
+      }
       const captured=await runWeb(script,target)
       if(!captured.ok||!captured.csl)throw new Error(captured.error??'抓取失败')
       const imported=await importTranslated({csl:captured.csl,pdfPath:captured.pdfPath,origin:target},()=>{})
@@ -71,3 +76,4 @@ export function registerResearchTools(registry:ToolRegistry):void {
     }
   })
 }
+

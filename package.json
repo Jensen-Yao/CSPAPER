@@ -1,6 +1,6 @@
 {
   "name": "cspaper",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "CSPAPER — 本地优先的科研文献工作台：PDF 精读、可溯源问答、项目任务与 Work 智能体",
   "main": "out/main/index.js",
   "productName": "CSPAPER",
@@ -100,10 +100,12 @@
     "@ai-sdk/openai-compatible": "^3.0.53",
     "@huggingface/transformers": "^3.5.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@mozilla/readability": "^0.6.0",
     "@tanstack/react-virtual": "^3.14.23",
     "ai": "^7.0.107",
     "better-sqlite3": "^11.9.0",
     "cheerio": "^1.2.0",
+    "linkedom": "^0.18.15",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -111,6 +113,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "turndown": "^7.2.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -118,6 +121,7 @@
     "@types/better-sqlite3": "^7.6.11",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.12",

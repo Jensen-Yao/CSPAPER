@@ -83,6 +83,10 @@ export interface Settings {
   agentTimeoutMinutes?: number
   agentGoal?: string
   imageModel?: string
+  // 网络层（v0.23）：手动代理、联网开关、内置浏览器登录态
+  proxyUrl?: string
+  webEnabled?: boolean
+  webUseBrowserSession?: boolean
   readingFocus?: import('../shared/calendar').ReadingFocusSettings
 }
 
@@ -116,6 +120,9 @@ const DEFAULTS: Settings = {
   agentModel: '',
   agentMaxSteps: 24,
   agentTimeoutMinutes: 10,
+  proxyUrl: '',
+  webEnabled: true,
+  webUseBrowserSession: false,
   readingFocus: { focusMinutes:25, shortBreakMinutes:5, longBreakMinutes:15, waterMinutes:30, activityMinutes:45, notify:true }
 }
 

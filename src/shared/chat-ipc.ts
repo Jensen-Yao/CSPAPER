@@ -17,7 +17,9 @@ export const listConversationsRequestSchema = z.object({
   workspaceId: idSchema,
   includeArchived: z.boolean().default(false),
   cursor: z.string().nullish(),
-  limit: z.number().int().min(1).max(100).default(50)
+  limit: z.number().int().min(1).max(100).default(50),
+  mode:z.enum(['ask','act']).optional(),
+  includeHidden:z.boolean().optional()
 })
 
 export const loadMessagesRequestSchema = z.object({
@@ -37,7 +39,8 @@ export const submitTurnRequestSchema = z.object({
   reasoning:z.string().min(1).max(40).default('default'),
   mode: conversationModeSchema.default('ask'),
   promptKind: z.enum(['ask','translation','plan']).default('ask'),
-  permission:z.enum(['auto','confirm','readonly']).default('auto')
+  permission:z.enum(['auto','confirm','readonly']).default('auto'),
+  inheritContext:z.boolean().optional()
 }).strict()
 
 export const cancelRunRequestSchema = z.object({ runId: idSchema, reason: z.string().max(500).optional() })

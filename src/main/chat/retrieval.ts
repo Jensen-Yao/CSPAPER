@@ -5,6 +5,8 @@ import { getDb } from '../db'
 import { readPaperNote } from '../note-service'
 import type { Source } from '../../shared/sources'
 import { documentVersion, newSourceId } from './context'
+import { readWebPage } from '../web-reader'
+import { webEnabled } from '../net'
 
 export interface RetrievalRequest { query:string;workspaceId:string;paperIds?:number[];paperId?:number;category?:string;refs?:ContextRef[];limit?:number;runId:string;signal?:AbortSignal }
 
@@ -56,6 +58,68 @@ function paperMetadataSource(paper:ActivePaper,runId:string,workspaceId:string,f
   return {id:newSourceId(),runId,kind:'paper_page',workspaceId,paperId:paper.id,title:paper.source_kind==='record'?`${paper.title}（题录）`:paper.title,documentVersion:documentVersion(paper.path),locator:{page:1,uri:`cspaper://paper/${paper.slug}?page=1`,anchor:paper.source_kind==='record'?'record':'first-page'},snippet:lines.join('\n'),status:'available',createdAt:new Date().toISOString()}
 }
 
+/** Query tokens: CJK bigrams plus Latin words, used to rank pages of a single long paper. */
+function queryTokens(query:string):string[] {
+  const tokens=new Set<string>()
+  for(const word of query.toLowerCase().match(/[a-z0-9][a-z0-9_-]{1,}/g)??[])if(!['this','that','what','about','the','paper'].includes(word))tokens.add(word)
+  const cjk=query.replace(/[^\u4e00-\u9fff]/g,'')
+  for(let index=0;index+1<cjk.length;index++)if(!'这篇了么什的是和与或在有不'.includes(cjk[index]))tokens.add(cjk.slice(index,index+2))
+  return [...tokens]
+}
+const SECTION_PATTERN=/(^|\n)\s*(\d{1,2}\.?\s+)?(abstract|introduction|related work|background|method|methods|methodology|approach|experiment|experiments|experimental setup|evaluation|results|discussion|limitation|conclusion|conclusions|摘要|引言|相关工作|方法|实验|结果|评估|讨论|局限|结论)\b/i
+/** Pages of one paper that enter the context: every page when it fits, otherwise the opening, section starts, the end and the pages most relevant to the question. */
+export function selectContextPages(pages:string[],query:string,budget:number):number[] {
+  const sizes=pages.map(text=>text.length),total=sizes.reduce((sum,size)=>sum+size,0)
+  if(total<=budget)return pages.map((_page,index)=>index)
+  const tokens=queryTokens(query)
+  const chosen=new Set<number>()
+  const push=(index:number):boolean=>{if(index<0||index>=pages.length||chosen.has(index))return false;chosen.add(index);return true}
+  push(0);push(1)
+  pages.forEach((text,index)=>{if(SECTION_PATTERN.test(text)){push(index);push(index+1)}})
+  push(pages.length-1);push(pages.length-2)
+  const scored=pages.map((text,index)=>({index,score:tokens.reduce((sum,token)=>sum+(text.toLowerCase().includes(token)?1:0),0)})).filter(item=>!chosen.has(item.index)&&item.score>0).sort((x,y)=>y.score-x.score)
+  for(const item of scored)push(item.index)
+  let used=0
+  const ordered=[...chosen].sort((x,y)=>x-y).filter(index=>{const next=used+sizes[index];if(next>budget&&used>0)return false;used=next;return true})
+  if(!ordered.includes(0))ordered.unshift(0)
+  return ordered.sort((x,y)=>x-y)
+}
+export const FULL_TEXT_PAGE_BUDGET=48000
+
+/** Full-text mode: one explicit PDF becomes page-level sources under a character budget, with a compact metadata source first. */
+async function paperPageSources(paper:ActivePaper,request:RetrievalRequest,budget=FULL_TEXT_PAGE_BUDGET):Promise<Source[]|null> {
+  let pages:string[]
+  try {pages=await extractPagesCached(paper.path,{signal:request.signal,timeoutMs:20000})}catch(error){if((error as Error)?.name==='AbortError'||(error as Error)?.name==='TimeoutError')throw error;return null}
+  if(!pages.length)return null
+  const version=documentVersion(paper.path),now=new Date().toISOString()
+  const head=[`标题：${paper.title}`,`作者：${paper.authors||'未提供'}`,`年份：${paper.year??'未提供'}`,`来源：${paper.venue||'未提供'}`,...(paper.doi?[`DOI：${paper.doi}`]:[]),`共 ${pages.length} 页`]
+  const digest=(paper.abstract||paper.summary||'').replace(/\s+/g,' ').trim()
+  if(digest)head.push(`摘要：${digest.slice(0,4000)}`)
+  const sources:Source[]=[{id:newSourceId(),runId:request.runId,kind:'paper_page',workspaceId:request.workspaceId,paperId:paper.id,title:paper.title,documentVersion:version,locator:{page:1,uri:`cspaper://paper/${paper.slug}?page=1`,anchor:'metadata'},snippet:head.join('\n'),status:'available',createdAt:now}]
+  for(const index of selectContextPages(pages,request.query,budget)) {
+    const page=index+1
+    sources.push({id:newSourceId(),runId:request.runId,kind:'paper_page',workspaceId:request.workspaceId,paperId:paper.id,title:`${paper.title} p.${page}`,documentVersion:version,locator:{page,uri:`cspaper://paper/${paper.slug}?page=${page}`},snippet:pages[index],status:'available',createdAt:now})
+  }
+  return sources
+}
+
+/** Web context: a search snippet is replaced by the page body; URLs pasted into the question are read as well. */
+async function enrichWebSources(sources:Source[],request:RetrievalRequest,query:string):Promise<Source[]> {
+  if(!webEnabled())return sources
+  const out=[...sources],seen=new Set(out.map(source=>source.locator.uri))
+  const candidates:Array<{source?:Source;url:string}>=[]
+  for(const source of out)if(source.kind==='web'&&source.snippet.length<600&&/^https:\/\//i.test(source.locator.uri??''))candidates.push({source,url:source.locator.uri!})
+  for(const match of query.matchAll(/https:\/\/[^\s<>"'）)]+/g)) {const url=match[0].replace(/[.,;:]+$/,'');if(!seen.has(url)){seen.add(url);candidates.push({url})}}
+  for(const candidate of candidates.slice(0,3)) {
+    try {
+      const page=await readWebPage(candidate.url,{signal:request.signal,workspaceId:request.workspaceId,timeoutMs:15000})
+      const snippet=page.markdown.slice(0,20000)
+      if(candidate.source) {candidate.source.snippet=snippet||candidate.source.snippet;candidate.source.title=page.title||candidate.source.title;candidate.source.documentVersion=`web:${page.contentHash}`}
+      else out.push({id:newSourceId(),runId:request.runId,kind:'web',workspaceId:request.workspaceId,title:page.title||page.finalUrl,documentVersion:`web:${page.contentHash}`,locator:{uri:page.url},snippet,status:'available',createdAt:page.fetchedAt})
+    } catch { /* a page that cannot be read keeps its search snippet */ }
+  }
+  return out
+}
 export async function retrieveSources(request:RetrievalRequest):Promise<Source[]> {
   request.signal?.throwIfAborted()
   const limit=request.limit??12
@@ -64,11 +128,32 @@ export async function retrieveSources(request:RetrievalRequest):Promise<Source[]
   const allowed=request.paperIds?new Set(request.paperIds):null
   const sources:Source[]=[]
   for(const source of explicitContextSources(request))if(sources.length<limit)sources.push(source)
-  // Explicit papers are never reduced to an opaque ID. Records always carry metadata;
-  // a full-text PDF without chunks falls back to page one until its index is repaired.
   const explicitPaperIds=[...(request.refs??[])].filter(ref=>ref.kind==='paper').map(ref=>ref.paperId)
   const collectionPaperIds=(request.refs??[]).filter(ref=>ref.kind==='collection').flatMap(ref=>getDb().prepare('SELECT paper_id FROM paper_collections WHERE collection_id=? ORDER BY paper_id').all(ref.collectionId) as Array<{paper_id:number}>).map(row=>row.paper_id)
   const chunkCount=getDb().prepare('SELECT COUNT(*) AS n FROM chunks WHERE paper_id=?')
+  // Full-text mode: exactly one paper in focus → the paper itself enters the context page by page.
+  const focusIds=request.paperId?[request.paperId]:[...new Set(explicitPaperIds)]
+  const focusPaper=focusIds.length===1?activePaper(focusIds[0]):undefined
+  let fullText:Source[]|null=null
+  if(focusPaper&&focusPaper.source_kind!=='record') {
+    try {fullText=await paperPageSources(focusPaper,request)}catch(error){if((error as Error)?.name==='AbortError'||(error as Error)?.name==='TimeoutError')throw error;fullText=null}
+  }
+  if(fullText) {
+    const covered=new Set(fullText.map(source=>source.locator.page))
+    for(const source of fullText)sources.push(source)
+    // Hybrid chunks only add pages the full-text window did not include.
+    let extra=0
+    for(const chunk of chunks) {
+      if(sources.length>=limit+fullText.length||extra>=4)break
+      if(covered.has(chunk.page))continue
+      const paper=activePaper(chunk.paperId)
+      if(!paper||paper.id!==focusPaper!.id)continue
+      sources.push({id:newSourceId(),runId:request.runId,kind:'chunk',workspaceId:request.workspaceId,paperId:paper.id,title:paper.title,documentVersion:documentVersion(paper.path),locator:{page:chunk.page,uri:`cspaper://paper/${paper.slug}?page=${chunk.page}`},snippet:chunk.snippet,status:'available',createdAt:new Date().toISOString()})
+      extra++
+    }
+    request.signal?.throwIfAborted()
+    return enrichWebSources(sources,request,request.query)
+  }
   for(const paperId of new Set(explicitPaperIds)) {
     if(sources.length>=limit)break
     const paper=activePaper(paperId)
@@ -108,5 +193,5 @@ export async function retrieveSources(request:RetrievalRequest):Promise<Source[]
     collectionFallbackDone.add(paperId)
   }
   request.signal?.throwIfAborted()
-  return sources
+  return enrichWebSources(sources,request,request.query)
 }

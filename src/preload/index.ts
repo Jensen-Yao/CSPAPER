@@ -314,6 +314,15 @@ const api = {
   translatorsMatch: (url: string) => ipcRenderer.invoke('translators:match', url),
   translatorsTranslate: (url: string) => ipcRenderer.invoke('translators:translate', url),
   translatorsSearch: (q: string) => ipcRenderer.invoke('translators:search', q),
+  webSearch: (input: { query: string; limit?: number; general?: boolean; academic?: boolean }) => ipcRenderer.invoke('web:search', input),
+  webFetch: (input: { url: string; forceRefresh?: boolean }) => ipcRenderer.invoke('web:fetch', input),
+  webImportHtml: (input: { url: string; html: string }) => ipcRenderer.invoke('web:import-html', input),
+  webSnapshots: (input: { query?: string; limit?: number }) => ipcRenderer.invoke('web:snapshots', input),
+  onOpenPaperRequest: (cb: (p: { paperId: number }) => void) => {
+    const h = (_e: unknown, p: { paperId: number }) => cb(p)
+    ipcRenderer.on('workspace:open-paper', h)
+    return () => ipcRenderer.removeListener('workspace:open-paper', h)
+  },
   translatorsImport: (payload: unknown) => ipcRenderer.invoke('translators:import', payload),
   translatorsSetDisabled: (ids: string[]) => ipcRenderer.invoke('translators:set-disabled', ids),
   translatorsReload: () => ipcRenderer.invoke('translators:reload'),

@@ -88,3 +88,25 @@
 .chat-conversation-delete { flex:none; width:22px; height:22px; border-radius:5px; color:var(--text-dim); font-size:12px; line-height:1; }
 .chat-conversation-delete:hover { color:var(--danger); background:rgba(213,96,108,.12); }
 .chat-message-error.warning { color: var(--warn); }
+
+/* 工具调用时间线（问答 / Work 共用）：每一步可展开查看参数与结果摘要 */
+.chat-tools { padding: 8px 0 4px; font-size: 12px; }
+.chat-tools summary { cursor: pointer; color: var(--text-dim); }
+.chat-tools ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.chat-tools li button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; padding: 4px 6px; border-radius: 8px; color: var(--text); cursor: pointer; font: inherit; }
+.chat-tools li button:hover { background: var(--bg-hover, rgba(0,0,0,0.04)); }
+.chat-tools li.fail button { color: var(--danger); }
+.chat-tool-state { display: inline-flex; width: 16px; height: 16px; border-radius: 50%; align-items: center; justify-content: center; font-size: 11px; background: var(--accent); color: #fff; flex: none; }
+.chat-tool-state.bad { background: var(--danger); }
+.chat-tools li.running .chat-tool-state { background: var(--text-dim); }
+.chat-tools b { font-weight: 600; flex: none; }
+.chat-tools .ellipsis { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.chat-tool-detail { margin: 0 0 6px 30px; padding: 8px 10px; border-radius: 8px; background: var(--bg-elev, rgba(0,0,0,0.03)); font-size: 11px; line-height: 1.6; }
+.chat-tool-detail pre { margin: 0 0 6px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.05); white-space: pre-wrap; word-break: break-word; font-family: var(--mono, Consolas, monospace); font-size: 11px; }
+.chat-approval pre { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.05); white-space: pre-wrap; font-size: 11px; }
+.chat-run-failed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.chat-run-failed span { flex: 1 1 100%; }
+
+/* 会话分组：问答在前，Work 任务带标记 */
+.chat-conversation-group { padding: 8px 6px 4px; font-size: 11px; color: var(--text-dim); letter-spacing: 0.04em; }
+.chat-conversation-badge { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 999px; background: var(--bg-elev, rgba(0,0,0,0.06)); font-size: 11px; line-height: 16px; color: var(--text-dim); vertical-align: 1px; }
