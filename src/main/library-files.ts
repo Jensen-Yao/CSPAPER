@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getDb, getSettings, getExtraCats, setExtraCats } from './db'
 import { isWithinDirectory, normalizePath } from './paper-files'
+import { renameWithRetry } from './fs-retry'
 
 /** Plan moves first, then update exact descendants. Compensate file moves on DB failure. */
 export function renameLibraryCategory(from: string, to: string): { renamed: string } {
@@ -24,7 +25,7 @@ export function renameLibraryCategory(from: string, to: string): { renamed: stri
   const targetExisted=fs.existsSync(target)
   try {
     fs.mkdirSync(target,{recursive:true})
-    for(const move of moves) {fs.renameSync(move.from,move.to);moved.push(move)}
+    for(const move of moves) {renameWithRetry(move.from,move.to);moved.push(move)}
     db.transaction(()=>{
       for(const row of rows) {
         const move=moves.find(m=>isWithinDirectory(row.path,m.from))

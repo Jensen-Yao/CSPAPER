@@ -8,6 +8,7 @@ import { getDb, getSettings, scanLibraryAsync, setExtraCats, getExtraCats } from
 import { extractPages } from './ingest'
 import { chatStream } from './llm'
 import { enqueueSummaries } from './insight'
+import { renameWithRetry } from './fs-retry'
 
 export interface ImportOutcome {
   file: string
@@ -457,7 +458,7 @@ export function movePaperToCategory(
   const moved:typeof moves=[]
   const newPath=path.join(dest,path.basename(p.path))
   try {
-    for(const move of moves) {fs.renameSync(move.from,move.to);moved.push(move)}
+    for(const move of moves) {renameWithRetry(move.from,move.to);moved.push(move)}
     db.prepare('UPDATE papers SET path=?,category=?,source_stamp=NULL WHERE id=?').run(newPath,name,paperId)
   } catch(error) {
     for(const move of moved.reverse()) fs.renameSync(move.to,move.from)
