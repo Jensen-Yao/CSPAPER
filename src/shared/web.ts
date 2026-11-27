@@ -7,6 +7,6 @@ export interface WebSearchResult { hits:WebHit[];sources:string[];errors:Array<{
 /** List view of a stored snapshot (without the markdown body). */
 export interface WebSnapshotInfo { id:number;url:string;finalUrl:string;title:string;excerpt:string;kind:'html'|'pdf';fetchedAt:string;contentHash:string;bytes:number }
 /** A read web page as returned to the renderer (temp file paths stay in the main process). */
-export interface WebPageInfo { url:string;finalUrl:string;title:string;byline:string;excerpt:string;language:string;siteName:string;markdown:string;chars:number;contentHash:string;fetchedAt:string;contentType:string;kind:'html'|'pdf';fromCache:boolean }
+export interface WebPageInfo { url:string;finalUrl:string;title:string;byline:string;excerpt:string;language:string;siteName:string;markdown:string;chars:number;contentHash:string;fetchedAt:string;contentType:string;kind:'html'|'pdf';fromCache:boolean;doi?:string;pdfUrl?:string;publishedAt?:string }
 
 export const webContextSnippetSchema=z.object({url:z.string().url()}).passthrough()

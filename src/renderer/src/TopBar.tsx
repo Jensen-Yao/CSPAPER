@@ -79,7 +79,7 @@ export default function TopBar({ isMac, menus, openMenu, setOpenMenu, topMode, o
             <Icon.Library size={13} /> Paper
           </button>
         </div>
-        {topMode === 'paper' && mode !== 'home' && (
+        {topMode === 'paper' && mode === 'read' && (
           <button className={`icon-btn tb-toggle ${showLib ? 'on' : ''}`} title={showLib ? '隐藏 文献边栏' : '显示 文献边栏'} onClick={onToggleLib}>
             <SidebarIcon />
           </button>

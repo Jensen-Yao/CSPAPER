@@ -108,7 +108,22 @@ export default function OnlineAddDialog({ open, onClose, onDone, cats }: Props):
       if (d.kind === 'query') {
         const q = d.q ?? t
         setOrigin(`检索「${q}」`)
-        const hits = await window.api.translatorsSearch(q)
+        // 与「学术检索」页同一套检索源：站点脚本题录 + Semantic Scholar / arXiv / PubMed / 通用搜索
+        const [scriptHits, web] = await Promise.all([
+          window.api.translatorsSearch(q).catch(() => [] as Array<Record<string, unknown>>),
+          window.api.webSearch({ query: q, limit: 10 }).catch(() => ({ hits: [] as Array<import('../../shared/web').WebHit>, sources: [], errors: [] }))
+        ])
+        const seenDoi = new Set(scriptHits.map((h) => String(h.DOI ?? h.doi ?? '').toLowerCase()).filter(Boolean))
+        const seenUrl = new Set(scriptHits.map((h) => String(h.URL ?? h.url ?? '')))
+        const extra = web.hits.filter((hit) => !(hit.doi && seenDoi.has(hit.doi.toLowerCase())) && !seenUrl.has(hit.url)).map((hit) => {
+          const authors = (hit.authors || '').split(/[,，;；]/).map((a) => a.trim()).filter(Boolean)
+          return {
+            title: hit.title, URL: hit.url, ...(hit.doi ? { DOI: hit.doi } : {}), ...(authors.length ? { author: authors.map((a) => ({ literal: a })) } : {}),
+            ...(hit.year ? { issued: { 'date-parts': [[hit.year]] } } : {}), ...(hit.snippet ? { abstract: hit.snippet } : {}), ...(hit.pdfUrl ? { link: [{ URL: hit.pdfUrl }] } : {}),
+            translator: hit.source === 'semantic_scholar' ? 'Semantic Scholar' : hit.source === 'arxiv' ? 'arXiv' : hit.source === 'pubmed' ? 'PubMed' : '联网检索'
+          } as Record<string, unknown>
+        })
+        const hits = [...scriptHits, ...extra]
         setRows(
           hits.map((h, i) => ({
             key: `s-${i}`,
@@ -126,8 +141,22 @@ export default function OnlineAddDialog({ open, onClose, onDone, cats }: Props):
       setOrigin(target)
       const r = await window.api.translatorsTranslate(target)
       if (!r.ok || !r.csl) {
-        setError(r.error ?? '抓取失败，请稍后再试。')
-        setRows([])
+        // 没有站点脚本命中：用通用网页读取拿题录元数据（标题 / 作者 / DOI / 摘要 / PDF 链接）
+        let generic: Record<string, unknown> | null = null
+        try {
+          const page = await window.api.webFetch({ url: target })
+          if (page.title || page.markdown) {
+            const authors = (page.byline || '').split(/[,，;；]/).map((a) => a.trim()).filter(Boolean)
+            generic = { type: page.doi ? 'article-journal' : 'webpage', title: page.title || target, URL: page.finalUrl || target, ...(page.doi ? { DOI: page.doi } : {}), ...(authors.length ? { author: authors.map((a) => ({ literal: a })) } : {}), ...(page.excerpt ? { abstract: page.excerpt } : {}) }
+          }
+        } catch { /* fall through to the original error */ }
+        if (generic) {
+          setRows([{ key: 'single', csl: generic, translator: '网页读取', status: 'pending' as const }])
+          setError('')
+        } else {
+          setError(r.error ?? '抓取失败，请稍后再试。')
+          setRows([])
+        }
       } else {
         setRows([{ key: 'single', csl: r.csl, translator: r.translator ?? '抓取', status: 'pending' as const }])
       }

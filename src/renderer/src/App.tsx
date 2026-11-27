@@ -723,7 +723,8 @@ export default function App(): JSX.Element {
           />
         </div>
         <div className={`paper-workspace ${topMode==='paper'?'':'pane-hidden'}`}>
-        {showLib && mode !== 'home' && (
+        {/* 文献栏只在阅读 / 文献库模式出现：问答、纵览、笔记、对比有自己的筛选与列表 */}
+        {showLib && mode === 'read' && (
           <>
             <LibraryPane
               width={libWidth}
