@@ -1,24 +1,28 @@
-// 仓库顺序：GitHub 海外运行器直连 google() / mavenCentral()；国内本地构建可设置 CSPAPER_CN_MIRROR=1 优先走阿里云镜像
-def cnMirror = System.getenv('CSPAPER_CN_MIRROR') == '1'
-def addRepositories = { repos ->
-    if (cnMirror) {
-        repos.maven { url 'https://maven.aliyun.com/repository/google' }
-        repos.maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-        repos.maven { url 'https://maven.aliyun.com/repository/public' }
-    }
-    repos.google()
-    repos.mavenCentral()
-    repos.gradlePluginPortal()
-}
+// pluginManagement 必须是脚本的第一条语句。
+// 仓库顺序：GitHub 海外运行器直连 google() / mavenCentral()；国内本地构建可设置 CSPAPER_CN_MIRROR=1 优先走阿里云镜像。
 pluginManagement {
     repositories {
-        addRepositories(delegate)
+        if (System.getenv('CSPAPER_CN_MIRROR') == '1') {
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+        }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
-        addRepositories(delegate)
+        if (System.getenv('CSPAPER_CN_MIRROR') == '1') {
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+        }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
     }
 }
 rootProject.name = "CSPAPER"
